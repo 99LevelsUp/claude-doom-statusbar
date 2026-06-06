@@ -20,23 +20,57 @@ mode: repo-grounded
 
 **Ecosystem:**
 - Incumbent: `ccstatusline` (~10k ⭐, TypeScript/Bun) — data dashboard style, no gamification
-- DOOM HUD: HP bar, ammo counter, Doomguy face (45 emotional sprites), skull keys (3 colors), automap, score
+- DOOM HUD: HP bar, ammo counter, Doomguy face (42 sprites), skull keys (6 variants: keycard + skull × 3 colors)
 - Prior art: `rpg-cli` (filesystem → RPG combat), `RPGIT` (commits → XP), `doom-ascii` (full DOOM in terminal)
 
 **Gaps identified:** No pixel art in Claude Code status bar. No health-depletion metaphor. No hook-driven animation. No "when to restart" signal.
 
 ---
 
+## Visual Direction & Layout Vision
+
+The status bar attaches **below the prompt line** and is divided into **segment boxes**. Each box owns one set of related parameters; the **mugshot (Doomguy face) sits in the center** as the emotional readout.
+
+```
+┌─ CONTEXT ────┐ ┌─ USAGE ──────┐   ╔══════════════╗   ┌─ CWD / GIT ──┐ ┌─ AGENTS ─────┐
+│ HP ███████░ 78│ │ 5h  ▮▮▮▮▯  64%│   ║              ║   │ ~/proj ⎇ main │ │ ▶ 2 running  │
+│ 31k / 200k tok│ │ day ▮▮▯▯▯  31%│   ║  ( mugshot ) ║   │ +124 / -37   │ │ explore,plan │
+│ window: open  │ │ $1.83 session│   ║   scales to  ║   │ ● 3 changed  │ │ ··· geiger   │
+│ ⚡ active      │ │ BFG equipped │   ║  tallest box ║   │ 🟥🟨 keys     │ │ ▒▒ depth     │
+└───────────────┘ └──────────────┘   ╚══════════════╝   └──────────────┘ └──────────────┘
+```
+
+**Scaling rules:**
+- Bar height is driven by the **tallest box** (number of parameters in its busiest segment).
+- The mugshot **scales continuously** with that height — roughly **4 to 16 character rows** tall, with intermediate sizes in between (not a fixed set of steps).
+- Boxes appear/disappear and grow/shrink with available metrics; the face re-sizes to match.
+
+### Mugshot rendering
+
+The face is produced by **chafa** from the original DOOM sprite, using the symbol set **`block + half + quad + sextant + wedge + legacy`**. The `legacy` class (Unicode "Symbols for Legacy Computing" U+1FB00.. and its Supplement U+1CD00..) adds the most sub-cell detail, so the face stays readable even at small sizes.
+
+Example at **8 character rows** — original sprite (left) and the actual chafa block-art mugshot (right), both at the same display height. Note how the right image is genuinely built from glyphs: half-blocks, quadrants, sextants/octants, and diagonal wedge cuts along the jaw and cheeks.
+
+<p>
+  <img src="../images/mugshot_orig_08.png" alt="Original DOOM face sprite" height="220">
+  &nbsp;&nbsp;➜&nbsp;&nbsp;
+  <img src="../images/mugshot_blockart_08.png" alt="chafa block-art mugshot at 8 rows" height="220">
+</p>
+
+> **Rendering note.** In a terminal, chafa's legacy-computing glyphs are drawn by the terminal's *built-in* glyph rasteriser (e.g. Windows Terminal) — no font required. A static PNG bake cannot reuse that path: no common installed font covers U+1FB00.. / U+1CD00.. (a font bake yields empty boxes/tofu), and a font-free pixel resample loses the glyph texture entirely (it just looks like a shrunken photo). The block-art preview above is therefore a **screenshot of chafa's real terminal output** — the exact glyphs the live HUD uses — with the terminal background keyed transparent. The original sprite (left) is the source DOOM face with its magenta key colour made transparent.
+
+---
+
 ## Ranked Ideas
 
 ### 1. Face-First Architecture
-**Description:** Claude IS Doomguy. The 45-sprite face is the PRIMARY display — not decoration. Hook events drive narrative beats: `PreToolUse` = combat begins, `PostToolUse` = resolves, `Stop` = level end, error = pain sprite, clean completion = grin. Numbers are secondary legend. Face encodes full session state peripherally, without requiring direct attention.
+**Description:** Claude IS Doomguy. The 42-sprite face is the PRIMARY display — not decoration. Hook events drive narrative beats: `PreToolUse` = combat begins, `PostToolUse` = resolves, `Stop` = level end, error = pain sprite, clean completion = grin. Numbers are secondary legend. Face encodes full session state peripherally, without requiring direct attention.
 
-**Warrant:** `direct:` — 45 DOOM face sprites documented across 5 health tiers × gaze directions × pain/ouch/god/dead states; hooks fire discrete events with JSON payloads; no existing Claude Code tool uses face as primary readout. `external:` Sandy Petersen (id Software) documented that playtesting showed players ignored HP numbers under stress — the face was added specifically because it solved attention capture that numbers failed at.
+**Warrant:** `direct:` — 42 DOOM face sprites (8 types × 5 health levels + dead + god) confirmed in DOOM source code (ST_NUMFACES); hooks fire discrete events with JSON payloads; no existing Claude Code tool uses face as primary readout. `external:` Sandy Petersen (id Software) documented that playtesting showed players ignored HP numbers under stress — the face was added specifically because it solved attention capture that numbers failed at.
 
 **Rationale:** The same problem exists in dev tools. ccstatusline users glance at numbers; they don't react until they're in trouble. A peripheral emotional readout reacts for them. Reframing Claude=Doomguy makes pain and death semantically correct — Claude is the agent taking damage, not the user.
 
-**Downsides:** Team must define all 45 face states in Claude terms. Braille pixel art for the face requires careful sprite sizing (~8x8 terminal cells minimum).
+**Downsides:** Team must define all 42 face states in Claude terms. Braille pixel art for the face requires careful sprite sizing (~8x8 terminal cells minimum).
 
 **Confidence:** 92% | **Complexity:** Medium | **Status:** Unexplored
 
