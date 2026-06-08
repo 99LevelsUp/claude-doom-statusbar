@@ -15,7 +15,7 @@ Wire the events you want in settings.json (see the ideation doc's "Wiring"):
 PostToolUse, PostToolUseFailure, Stop, PermissionDenied (face) and
 SubagentStart, SubagentStop, TaskCreated, TaskCompleted (activity).
 
-State file: $DOOMFACE_STATE, else <temp>/doomface_<session_id>.json.
+State file: $MUGSHOT_STATE, else <temp>/mugshot_<session_id>.json.
 """
 
 import json
@@ -35,11 +35,11 @@ WRITE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit", "Bash",
 
 
 def state_path(ev):
-    env = os.environ.get("DOOMFACE_STATE")
+    env = os.environ.get("MUGSHOT_STATE")
     if env:
         return env
     sid = re.sub(r"[^A-Za-z0-9_-]", "_", str(ev.get("session_id") or "default"))[:48]
-    return os.path.join(tempfile.gettempdir(), f"doomface_{sid}.json")
+    return os.path.join(tempfile.gettempdir(), f"mugshot_{sid}.json")
 
 
 def _base(tool):

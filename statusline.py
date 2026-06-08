@@ -2,17 +2,17 @@
 """Claude Code statusLine — the live DOOM HUD wired to real session data.
 
 Reads the statusline JSON on stdin, fills metric values from it (+ git via
-shell + the reaction state file written by hooks/doomface_hook.py), picks the
+shell + the reaction state file written by hooks/mugshot_hook.py), picks the
 mugshot (HP from usage headroom, expression from the hook state with decay,
 idle from the wall clock, dead at exhaustion), and renders a preset.
 
 settings.json:
   "statusLine": { "type": "command",
       "command": "python /abs/path/statusline.py", "refreshInterval": 1 }
-  plus map the lifecycle events to hooks/doomface_hook.py (see that file).
+  plus map the lifecycle events to hooks/mugshot_hook.py (see that file).
 
 Config:  $DOOMBAR_PRESET  (default: presets/default.toml)
-State:   $DOOMFACE_STATE  (default: <temp>/doomface_state.json)
+State:   $MUGSHOT_STATE  (default: <temp>/mugshot_state.json)
 """
 
 import json
@@ -83,11 +83,11 @@ def _pick(bucket):
 
 
 def state_path(data):
-    env = os.environ.get("DOOMFACE_STATE")
+    env = os.environ.get("MUGSHOT_STATE")
     if env:
         return env
     sid = re.sub(r"[^A-Za-z0-9_-]", "_", str(data.get("session_id") or "default"))[:48]
-    return os.path.join(tempfile.gettempdir(), f"doomface_{sid}.json")
+    return os.path.join(tempfile.gettempdir(), f"mugshot_{sid}.json")
 
 
 def read_state(data):
@@ -131,7 +131,7 @@ def _cpu_percent():
         total, idle = sum(t), t.idle
     except Exception:
         return None
-    cache = os.path.join(tempfile.gettempdir(), "doomface_cpu.json")
+    cache = os.path.join(tempfile.gettempdir(), "mugshot_cpu.json")
     prev = None
     try:
         prev = json.load(open(cache))

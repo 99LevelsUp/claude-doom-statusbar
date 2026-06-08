@@ -2,7 +2,7 @@
 """Interactive prototype of the hook -> state-file -> render reaction loop.
 
 Press a key to SIMULATE Claude Code firing a hook: it spawns the real hook
-script (hooks/doomface_hook.py) with a sample payload on stdin, which writes the
+script (hooks/mugshot_hook.py) with a sample payload on stdin, which writes the
 shared state file. The render loop below is independent — it only polls that
 file, applies the decay timer, and otherwise plays the idle animation. That is
 exactly the production decoupling: the hook process is not the render process.
@@ -25,8 +25,8 @@ from face_live import face, sprite_name, pick, read_key, out, MUG_BG  # noqa: E4
 from mockup_boxes import face_cell, RESET  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-HOOK = os.path.join(REPO, "hooks", "doomface_hook.py")
-STATE = os.path.join(tempfile.gettempdir(), "doomface_demo_state.json")
+HOOK = os.path.join(REPO, "hooks", "mugshot_hook.py")
+STATE = os.path.join(tempfile.gettempdir(), "mugshot_demo_state.json")
 DECAY = 1.5
 CYCLE = 2
 
@@ -39,7 +39,7 @@ PAYLOADS = {
 
 
 def fire(payload):
-    env = dict(os.environ, DOOMFACE_STATE=STATE)
+    env = dict(os.environ, MUGSHOT_STATE=STATE)
     subprocess.run([sys.executable, HOOK], input=json.dumps(payload).encode(), env=env)
 
 
@@ -91,7 +91,7 @@ def main():
             buf.append(f"  HP lvl {hp}   {src}   sprite {sprite_name(state, hp, frame)}\x1b[K\n")
             buf.append("\x1b[K\n")
             buf.append("  [o] tool-error   [e] Stop   [k] Bash   [l] Read    [d]amage [h]eal   [q]uit\x1b[K\n")
-            buf.append("  (each key spawns hooks/doomface_hook.py, which writes the state file)\x1b[K\n")
+            buf.append("  (each key spawns hooks/mugshot_hook.py, which writes the state file)\x1b[K\n")
             out("".join(buf) + RESET)
             sys.stdout.flush()
             time.sleep(0.08)

@@ -141,8 +141,8 @@ HP = min(remaining_5h, remaining_7d) / total_5h
 
 **Reactions need persisted state.** A reactive expression (`ouch`/`evl`/`kill`) can't be derived from the clock — it comes from an event the render pass didn't witness. The event-driven layer (Idea #2) bridges this: a hook writes the event + timestamp to a small state file; each status-line render reads it and shows that expression until it **decays** (age > ~1–2 s), then falls back to the idle/HP face. So idle is stateless (clock), reactions are stateful (event marker + decay).
 
-Concrete protocol (`hooks/doomface_hook.py` is an event-bus; `statusline.py` reads it):
-- **State file** (`$DOOMFACE_STATE`, default `<temp>/doomface_<session_id>.json`), written atomically on every event:
+Concrete protocol (`hooks/mugshot_hook.py` is an event-bus; `statusline.py` reads it):
+- **State file** (`$MUGSHOT_STATE`, default `<temp>/mugshot_<session_id>.json`), written atomically on every event:
   ```json
   { "expr": "ouch", "ts": 0,
     "tools": [<epochs>], "agents": ["explore"], "tasks": {"created": 2, "completed": 1}, "errors": 1 }
@@ -594,7 +594,7 @@ Unavailable metrics hide themselves, so the same preset degrades gracefully (e.g
 
 ## Wiring it up (settings.json)
 
-The live HUD is two pieces: a `statusLine` command (renders from the stdin JSON) and the hooks (write transient expressions). Prototype: `statusline.py` + `hooks/doomface_hook.py`.
+The live HUD is two pieces: a `statusLine` command (renders from the stdin JSON) and the hooks (write transient expressions). Prototype: `statusline.py` + `hooks/mugshot_hook.py`.
 
 ```json
 {
@@ -604,16 +604,16 @@ The live HUD is two pieces: a `statusLine` command (renders from the stdin JSON)
     "refreshInterval": 1
   },
   "hooks": {
-    "PostToolUse":        [{ "hooks": [{ "type": "command", "command": "python /abs/path/claude-doom-statusbar/hooks/doomface_hook.py" }] }],
-    "PostToolUseFailure": [{ "hooks": [{ "type": "command", "command": "python /abs/path/claude-doom-statusbar/hooks/doomface_hook.py" }] }],
-    "Stop":               [{ "hooks": [{ "type": "command", "command": "python /abs/path/claude-doom-statusbar/hooks/doomface_hook.py" }] }],
-    "PermissionDenied":   [{ "hooks": [{ "type": "command", "command": "python /abs/path/claude-doom-statusbar/hooks/doomface_hook.py" }] }]
+    "PostToolUse":        [{ "hooks": [{ "type": "command", "command": "python /abs/path/claude-doom-statusbar/hooks/mugshot_hook.py" }] }],
+    "PostToolUseFailure": [{ "hooks": [{ "type": "command", "command": "python /abs/path/claude-doom-statusbar/hooks/mugshot_hook.py" }] }],
+    "Stop":               [{ "hooks": [{ "type": "command", "command": "python /abs/path/claude-doom-statusbar/hooks/mugshot_hook.py" }] }],
+    "PermissionDenied":   [{ "hooks": [{ "type": "command", "command": "python /abs/path/claude-doom-statusbar/hooks/mugshot_hook.py" }] }]
   }
 }
 ```
 
 - `refreshInterval: 1` keeps the bar re-running while idle so the face animates.
-- `$DOOMBAR_PRESET` selects the preset (default `presets/default.toml`); `$DOOMFACE_STATE` the reaction file.
+- `$DOOMBAR_PRESET` selects the preset (default `presets/default.toml`); `$MUGSHOT_STATE` the reaction file.
 - **Wired to real data:** context (`context_window.used_percentage`), rate limits, cost, git (branch / ahead-behind / status via shell), **activity** (geiger / agents / tasks / errors via the hook-bus), and **system** (`sys.ram` / `sys.cpu` / `sys.disk` / `sys.clock` via psutil, with stdlib fallbacks — `shutil.disk_usage`, Windows ctypes RAM, cached-delta CPU so it never blocks). The face's HP row comes from usage headroom (context fallback), its expression from the hook state with decay, idle from the wall clock. **All five boxes of the `full` preset now light from real data.**
 - Availability auto-hides anything a deployment can't supply (rate limits off API keys, git outside a repo, psutil-less hosts), so one config degrades cleanly everywhere.
 - Activity needs the extra hook events mapped too: `SubagentStart`/`SubagentStop`, `TaskCreated`/`TaskCompleted` (alongside the face events).
