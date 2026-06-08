@@ -98,15 +98,23 @@ Example at **8 character rows** — original sprite (left) and the actual chafa 
 
 The face is "Claude as Doomguy" (Idea #1). DOOM's 42 sprites are **8 expressions × 5 health levels + god + dead**. Two independent axes drive the choice: a **health level** (which of 5 rows) and an **expression** (which of 8, plus the two specials).
 
-**Health level** — driven by context headroom (`context_window.used_percentage`); HP = remaining context. Healthier = more context free.
+**Health level** — driven by **usage headroom**, not context. The HP value is:
 
-| HP row | context used | look |
-|--------|--------------|------|
-| 0 (best) | 0–20 % | fresh, composed |
-| 1 | 21–40 % | fine |
-| 2 | 41–60 % | working, tense |
-| 3 | 61–80 % | battered |
-| 4 (worst) | 81–99 % | bloodied, near the edge |
+```
+HP = min(remaining_5h, remaining_7d) / total_5h
+```
+
+— the tightest of the 5-hour and weekly budgets, normalised to a full 5-hour clip. It expresses *how much usage is left before the binding rate limit* (lower = closer to running out → more hurt). `hp_thresholds` (default `[20, 40, 60, 80]`, %) cut it into the five rows; **higher headroom = healthier**.
+
+| HP row | headroom | look |
+|--------|----------|------|
+| 0 (best) | > 80 % | fresh, composed |
+| 1 | 60–80 % | fine |
+| 2 | 40–60 % | working, tense |
+| 3 | 20–40 % | battered |
+| 4 (worst) | 1–20 % | bloodied, near the limit |
+
+`remaining_x = 100 − rate_limits.x.used_percentage`; with only percentage data the two remainings are each relative to their own window and `/ total_5h` normalises to one 5-hour clip (so the value can read as "5-hour-clips of headroom left", capped healthy when plenty remains). **Fallback:** `rate_limits` is Claude.ai-only — on API-key deployments without it, HP falls back to context headroom (`100 − context_window.used_percentage`).
 
 **Expression** — a transient reaction chosen by session events; decays back to the idle/look faces. Priority high→low:
 
@@ -366,7 +374,10 @@ terminal_background = "term-bg"    # used for the empty-bar-track blend; or "#00
 ```toml
 [mugshot]
 background     = "#000000"         # term-bg | "#rrggbb"  (independent of boxes)
-hp_thresholds  = [20, 40, 60, 80]  # context-used % cuts between the 5 HP rows
+# HP value = min(remaining_5h, remaining_7d) / total_5h  (usage headroom);
+# hp_thresholds are the % cut points between the 5 rows (higher = healthier).
+hp_thresholds  = [20, 40, 60, 80]
+hp_fallback    = "context"         # when rate_limits is absent (API-key deployments)
 idle_cycle     = 2.0               # seconds between idle glances (st0/1/2)
 reaction_decay = 1.5               # seconds a reaction holds before relaxing
 ```
