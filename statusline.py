@@ -18,6 +18,7 @@ State:   $DOOMFACE_STATE  (default: <temp>/doomface_state.json)
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -96,6 +97,73 @@ def read_state(data):
         return {}
 
 
+def _ram_percent():
+    try:
+        import psutil
+        return round(psutil.virtual_memory().percent)
+    except Exception:
+        pass
+    if sys.platform == "win32":                          # stdlib-only Windows fallback
+        try:
+            import ctypes
+
+            class MS(ctypes.Structure):
+                _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
+                            ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
+                            ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
+                            ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
+                            ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+            m = MS()
+            m.dwLength = ctypes.sizeof(MS)
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m))
+            return int(m.dwMemoryLoad)
+        except Exception:
+            return None
+    return None
+
+
+def _cpu_percent():
+    """Non-blocking CPU%: delta of cumulative cpu_times between renders (cached)."""
+    try:
+        import psutil
+        t = psutil.cpu_times()
+        total, idle = sum(t), t.idle
+    except Exception:
+        return None
+    cache = os.path.join(tempfile.gettempdir(), "doomface_cpu.json")
+    prev = None
+    try:
+        prev = json.load(open(cache))
+    except Exception:
+        pass
+    try:
+        json.dump({"total": total, "idle": idle}, open(cache, "w"))
+    except Exception:
+        pass
+    if not prev:
+        return None
+    dt, di = total - prev["total"], idle - prev["idle"]
+    return round(max(0, min(100, 100 * (1 - di / dt)))) if dt > 0 else None
+
+
+def sys_values(cwd):
+    """OS metrics (psutil if present, else stdlib fallbacks). Absent -> hidden."""
+    v = {}
+    ram = _ram_percent()
+    if ram is not None:
+        v["sys.ram"] = ram
+    cpu = _cpu_percent()
+    if cpu is not None:
+        v["sys.cpu"] = f"{cpu}%"
+    try:
+        du = shutil.disk_usage(cwd or os.getcwd())
+        v["sys.disk"] = round(du.used / du.total * 100)
+    except Exception:
+        pass
+    v["sys.clock"] = time.strftime("%H:%M")
+    return v
+
+
 def activity_values(st, now):
     """Derive act.* metrics from the hook-bus state (absent keys -> hidden)."""
     v = {}
@@ -129,8 +197,10 @@ def main():
 
     now = time.time()
     st = read_state(data)
+    cwd = data.get("cwd") or (data.get("workspace") or {}).get("current_dir")
     values = build_values(data)
     values.update(activity_values(st, now))             # act.* from the hook-bus
+    values.update(sys_values(cwd))                      # sys.* from the OS
     rp.VALUES = values                                  # engine reads real data now
 
     exhausted = values.get("context.hp", 0) >= 99

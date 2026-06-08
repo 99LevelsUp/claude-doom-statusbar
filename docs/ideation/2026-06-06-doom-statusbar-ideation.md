@@ -614,8 +614,8 @@ The live HUD is two pieces: a `statusLine` command (renders from the stdin JSON)
 
 - `refreshInterval: 1` keeps the bar re-running while idle so the face animates.
 - `$DOOMBAR_PRESET` selects the preset (default `presets/default.toml`); `$DOOMFACE_STATE` the reaction file.
-- **Wired to real data today:** context (`context_window.used_percentage`), rate limits, cost, git (branch / ahead-behind / status via shell), and **activity** (geiger / agents / tasks / errors via the hook-bus). The face's HP row comes from usage headroom (context fallback), its expression from the hook state with decay, idle from the wall clock.
-- **Hidden until their provider exists:** system (`sys.*` — needs an OS provider, e.g. psutil). Availability auto-hides it, so the `full` preset degrades cleanly to whatever data is present.
+- **Wired to real data:** context (`context_window.used_percentage`), rate limits, cost, git (branch / ahead-behind / status via shell), **activity** (geiger / agents / tasks / errors via the hook-bus), and **system** (`sys.ram` / `sys.cpu` / `sys.disk` / `sys.clock` via psutil, with stdlib fallbacks — `shutil.disk_usage`, Windows ctypes RAM, cached-delta CPU so it never blocks). The face's HP row comes from usage headroom (context fallback), its expression from the hook state with decay, idle from the wall clock. **All five boxes of the `full` preset now light from real data.**
+- Availability auto-hides anything a deployment can't supply (rate limits off API keys, git outside a repo, psutil-less hosts), so one config degrades cleanly everywhere.
 - Activity needs the extra hook events mapped too: `SubagentStart`/`SubagentStop`, `TaskCreated`/`TaskCompleted` (alongside the face events).
 
 ---
