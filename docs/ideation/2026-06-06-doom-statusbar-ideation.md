@@ -20,6 +20,7 @@ mode: repo-grounded
 
 **Ecosystem:**
 - Incumbent: `ccstatusline` (~10k ⭐, TypeScript/Bun) — data dashboard style, no gamification
+- Also relevant: `claude-hud` — another Claude Code status/HUD project worth drawing inspiration from
 - DOOM HUD: HP bar, ammo counter, Doomguy face (42 sprites), skull keys (6 variants: keycard + skull × 3 colors)
 - Prior art: `rpg-cli` (filesystem → RPG combat), `RPGIT` (commits → XP), `doom-ascii` (full DOOM in terminal)
 
@@ -89,6 +90,143 @@ Example at **8 character rows** — original sprite (left) and the actual chafa 
 </p>
 
 > **Rendering note.** In a terminal, chafa's legacy-computing glyphs are drawn by the terminal's *built-in* glyph rasteriser (e.g. Windows Terminal) — no font required. A static PNG bake cannot reuse that path: no common installed font covers U+1FB00.. / U+1CD00.. (a font bake yields empty boxes/tofu), and a font-free pixel resample loses the glyph texture entirely (it just looks like a shrunken photo). The block-art preview above is therefore a **screenshot of chafa's real terminal output** — the exact glyphs the live HUD uses — with the terminal background keyed transparent. The original sprite (left) is the source DOOM face with its magenta key colour made transparent.
+
+---
+
+## Metrics & Box Composition
+
+There is a large **catalog of metrics**, grouped into **categories**. The user's configuration defines **which boxes exist and which metrics each box shows** — categories only organise the picker; any metric can go in any box. The mugshot is the fixed centre and is not a metric.
+
+A metric is defined by: `id`, `category`, `label`, **provider** (where the value comes from), value type/format, an optional **DOOM mapping**, and an **availability** condition (so a box hides gracefully when its source is absent — see the WAD hide-conditions in Idea #3).
+
+### Providers
+
+- **statusline-json** — fields from the Claude Code status line JSON on stdin; refreshed every render.
+- **hook-bus** — values accumulated from lifecycle hook events (counts, last event, running subagents/tasks, errors). Requires the event-driven layer (Idea #2).
+- **shell** — derived by running a command in the status line script (e.g. git).
+- **external** — metrics from outside Claude Code (OS/system or third-party): RAM, CPU, disk, battery, clock. Sourced via shell/OS. **Cost note:** each shell/external read is a subprocess per refresh — cache/throttle them.
+
+> Field paths below reflect the current Claude Code status line JSON and hook payloads. Some are **conditional** (present only on Claude.ai subscriptions, certain models, or after the first API call) — flagged in *Availability*.
+
+### Catalog
+
+**Vitals — context** (provider: statusline-json)
+
+| Metric | Source | Format | DOOM | Availability |
+|--------|--------|--------|------|--------------|
+| context.hp | `context_window.used_percentage` | 0–100 % | **Health (HP)** | always |
+| context.remaining | `context_window.remaining_percentage` | 0–100 % | HP remaining | always |
+| context.tokens | `context_window.total_input_tokens` / `total_output_tokens` | tokens | — | always |
+| context.window | `context_window.context_window_size` | 200k / 1M | — | always |
+| context.cache | `context_window.current_usage.cache_read_input_tokens` … | tokens | — | null before 1st call / after compact |
+| context.over200k | `exceeds_200k_tokens` | bool | danger flag | always |
+
+**Ammo — rate limits** (provider: statusline-json)
+
+| Metric | Source | Format | DOOM | Availability |
+|--------|--------|--------|------|--------------|
+| ratelimit.5h | `rate_limits.five_hour.used_percentage` | 0–100 % | **Ammo (5h clip)** | Claude.ai only, after 1st response |
+| ratelimit.5h.reset | `rate_limits.five_hour.resets_at` | epoch → countdown | reload timer | Claude.ai only |
+| ratelimit.7d | `rate_limits.seven_day.used_percentage` | 0–100 % | **Ammo (weekly)** | Claude.ai only |
+| ratelimit.7d.reset | `rate_limits.seven_day.resets_at` | epoch → countdown | reload timer | Claude.ai only |
+
+**Loadout — model & reasoning** (provider: statusline-json)
+
+| Metric | Source | Format | DOOM | Availability |
+|--------|--------|--------|------|--------------|
+| model.name | `model.display_name` | text | **Weapon equipped** | always |
+| effort.level | `effort.level` | low…max | weapon mod | model-dependent |
+| thinking.on | `thinking.enabled` | bool | scope/zoom | when present |
+| output.style | `output_style.name` | text | — | always |
+| vim.mode | `vim.mode` | NORMAL/INSERT/… | — | vim mode on |
+
+**Economy — cost & output** (provider: statusline-json, some derived)
+
+| Metric | Source | Format | DOOM | Availability |
+|--------|--------|--------|------|--------------|
+| cost.total | `cost.total_cost_usd` | USD | score | always (estimate) |
+| time.elapsed | `cost.total_duration_ms` | duration | par time | always |
+| time.api | `cost.total_api_duration_ms` | duration | — | always |
+| edits.added / removed | `cost.total_lines_added` / `total_lines_removed` | counts | frags/spawns | always |
+| rate.cost_min | derived: cost / minutes | USD/min | bleed rate | derived |
+| rate.tok_s | derived: out tokens / api seconds | tok/s | fire rate | derived |
+
+**Location — workspace, git, PR**
+
+| Metric | Source | Provider | DOOM | Availability |
+|--------|--------|----------|------|--------------|
+| loc.cwd | `cwd` / `workspace.current_dir` | statusline-json | level name | always |
+| loc.project | `workspace.project_dir` | statusline-json | — | always |
+| loc.repo | `workspace.repo.owner` / `name` / `host` | statusline-json | — | in git repo |
+| git.branch | `git branch --show-current` | shell | — | derived |
+| git.status | `git status --porcelain` (counts) | shell | — | derived |
+| loc.worktree | `worktree.name` / `workspace.git_worktree` | statusline-json | — | in worktree |
+| pr.state | `pr.number` / `pr.review_state` | statusline-json | — | when PR found |
+
+**Activity — hooks** (provider: hook-bus)
+
+| Metric | Source | Format | DOOM | Availability |
+|--------|--------|--------|------|--------------|
+| act.geiger | PostToolUse frequency (rolling window) | rate glyphs | **activity click-rate** (Idea #6) | event layer |
+| act.last_tool | last `PreToolUse.tool_name` | text | current action | event layer |
+| act.agents | SubagentStart − SubagentStop | count | active demons | event layer |
+| act.tasks | TaskCreated / TaskCompleted | n/m | objectives | event layer |
+| act.errors | PostToolUseFailure / StopFailure count | count | pain hits | event layer |
+| act.compactions | PreCompact / PostCompact | count + tokens freed | — | event layer |
+
+**Access — permissions / keys** (provider: statusline-json + hook-bus)
+
+| Metric | Source | Format | DOOM | Availability |
+|--------|--------|--------|------|--------------|
+| perm.mode | `permission_mode` (hook common field) | text | — | event layer |
+| perm.keys | granted tool classes (bash/write/MCP) | icons | **Skull keys** (3 colours) | derived |
+
+**Session — meta** (provider: statusline-json)
+
+| Metric | Source | Format | DOOM | Availability |
+|--------|--------|--------|------|--------------|
+| sess.name | `session_name` | text | — | if named |
+| sess.id | `session_id` | text | — | always |
+| app.version | `version` | text | — | always |
+| agent.name | `agent.name` | text | — | with `--agent` |
+
+**System / External — off Claude Code** (provider: external/shell)
+
+| Metric | Source | Format | DOOM | Availability |
+|--------|--------|--------|------|--------------|
+| sys.ram | OS (e.g. used / total MB) | % or MB | **Armor** | external (subprocess) |
+| sys.cpu | OS load / % | % | engine heat | external |
+| sys.disk | free space on cwd volume | % or GB | — | external |
+| sys.battery | OS battery level | % | — | external (laptops) |
+| sys.net | up/down or online state | text | — | external |
+| sys.clock | wall-clock time | HH:MM | — | external |
+
+### Box composition (configuration)
+
+Boxes are user-defined and reference catalog ids. Styling per box uses the model from *Visual Direction*. Sketch:
+
+```toml
+[[box]]                       # left
+title   = "VITALS"
+metrics = ["context.hp", "context.tokens", "context.window"]
+
+[[box]]
+title   = "AMMO"
+metrics = ["ratelimit.5h", "ratelimit.7d"]
+
+# mugshot — implicit centre, not a box of metrics
+
+[[box]]                       # right
+title   = "GIT"
+metrics = ["git.branch", "git.status", "pr.state"]
+
+[[box]]
+title   = "SYS"
+metrics = ["sys.ram", "sys.cpu", "sys.clock"]
+```
+
+- A metric whose *Availability* fails (e.g. `ratelimit.*` on an API-key deployment) hides itself; an emptied box collapses. This keeps one config portable across Claude.ai / API / CI.
+- Categories drive the **config picker** grouping only; the user is free to mix any metrics in any box.
 
 ---
 
