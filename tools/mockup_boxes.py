@@ -138,9 +138,11 @@ def face_cell(cells, w, box_background):
     """Render one face row as a box cell of inner width w (centered).
 
     On a coloured box background the sprite's own pure-black surround is mapped
-    to the box background, so the face integrates into the panel instead of
-    sitting in a black bounding box. On a terminal background it is left as is
-    (black already blends into the terminal).
+    to the box background -- in both foreground and background of a cell, since
+    the anti-aliased silhouette uses half-blocks whose transparent half is the
+    glyph foreground. The face interior carries no pure black, so this composites
+    the face onto the panel without touching it. On a terminal background the
+    black is left as is (it already blends into the terminal).
     """
     blend = box_background != TERM_BG
     vis = len(cells)
@@ -149,8 +151,11 @@ def face_cell(cells, w, box_background):
     right = total - left
     s = bg(box_background) + " " + " " * left
     for ch, efg, ebg in cells:
-        if blend and ebg == (0, 0, 0):
-            ebg = box_background
+        if blend:
+            if efg == (0, 0, 0):
+                efg = box_background
+            if ebg == (0, 0, 0):
+                ebg = box_background
         s += f"\x1b[38;2;{efg[0]};{efg[1]};{efg[2]}m\x1b[48;2;{ebg[0]};{ebg[1]};{ebg[2]}m" + ch
     s += RESET + bg(box_background) + " " * right + " " + RESET
     return s
