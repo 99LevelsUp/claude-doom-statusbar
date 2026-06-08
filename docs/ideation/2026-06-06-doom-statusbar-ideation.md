@@ -456,6 +456,130 @@ text           = "#b6bac8"
 
 ---
 
+## Default Presets
+
+Three presets ship out of the box — instances of the schema above. They also span the styling range (none / vertical / panel). The bar height follows the tallest box, with a **floor of 4 rows** (the mugshot's minimum size), so short boxes simply pad to the face.
+
+### `minimal` — blends into the terminal, smallest footprint
+
+Borderless, no headers, transparent backgrounds; just the essentials beside a small face.
+
+```toml
+[bar]
+border_style   = "none"
+box_background = "term-bg"
+headers        = false
+[mugshot]
+background = "term-bg"
+
+[[segment]]
+type = "box"
+metric = [
+  { id = "context.hp",   render = "bar",    icon = "🧠", color = "threshold" },
+  { id = "ratelimit.5h", render = "ammo",   icon = "🕔" },
+  { id = "cost.total",   render = "number", icon = "💰" },
+]
+
+[[segment]]
+type = "mugshot"
+```
+
+### `default` — balanced (the live-mockup look)
+
+Vertical separators, headers on, black mugshot on a terminal-background bar.
+
+```toml
+[bar]
+border_style   = "vertical"
+border_color   = "term-fg"
+box_background = "term-bg"
+headers        = true
+[mugshot]
+background = "#000000"
+
+[[segment]]
+type  = "box"
+title = "USAGE"
+metric = [
+  { id = "context.hp",   render = "bar", icon = "🧠", color = "threshold" },
+  { id = "ratelimit.5h", render = "bar", icon = "🕔", color = "threshold" },
+  { id = "ratelimit.7d", render = "bar", icon = "📅", color = "threshold" },
+]
+
+[[segment]]
+type = "mugshot"
+
+[[segment]]
+type  = "box"
+title = "GIT"
+metric = [
+  { id = "git.branch", render = "text",   icon = "🌿" },
+  { group = ["git.behind", "git.ahead"], render = "number", sep = " ", icon = "⇅" },
+  { id = "cost.total", render = "number", icon = "💰" },
+]
+```
+
+### `full` — DOOM panel, everything on
+
+Solid dark panel with term-bg cuts; activity + system boxes added.
+
+```toml
+[bar]
+border_style   = "vertical"
+border_color   = "term-bg"      # seamless cuts through the panel
+box_background = "#1c2036"
+headers        = true
+[mugshot]
+background = "#000000"
+
+[[segment]]
+type  = "box"
+title = "USAGE"
+metric = [
+  { id = "context.hp",   render = "bar",    icon = "🧠", color = "threshold" },
+  { id = "ratelimit.5h", render = "bar",    icon = "🕔", color = "threshold" },
+  { id = "ratelimit.7d", render = "bar",    icon = "📅", color = "threshold" },
+  { id = "cost.total",   render = "number", icon = "💰" },
+]
+
+[[segment]]
+type  = "box"
+title = "FIGHT"
+metric = [
+  { id = "act.geiger", render = "spark",  icon = "📟" },
+  { id = "act.agents", render = "number", icon = "👹" },
+  { id = "act.tasks",  render = "number", icon = "🎯" },
+  { id = "act.errors", render = "number", icon = "💢", color = "threshold" },
+]
+
+[[segment]]
+type = "mugshot"
+
+[[segment]]
+type  = "box"
+title = "GIT"
+metric = [
+  { id = "git.branch", render = "text",   icon = "🌿" },
+  { group = ["git.behind", "git.ahead"], render = "number", sep = " ", icon = "⇅" },
+  { id = "git.status", render = "number", icon = "✎" },
+  { id = "pr.state",   render = "text",   icon = "⇧" },
+]
+
+[[segment]]
+type  = "box"
+title = "SYS"
+metric = [
+  { id = "sys.ram",   render = "bar",    icon = "💾", color = "threshold" },
+  { id = "sys.cpu",   render = "number", icon = "🔥" },
+  { id = "sys.disk",  render = "bar",    icon = "🗄", color = "threshold" },
+  { id = "sys.clock", render = "text",   icon = "🕓" },
+]
+```
+
+Unavailable metrics hide themselves, so the same preset degrades gracefully (e.g. `ratelimit.*` and `sys.*` drop out on a CI/API run, collapsing those rows).
+
+---
+
 ## Ranked Ideas
 
 ### 1. Face-First Architecture
