@@ -10,10 +10,17 @@ Unified model (what the installer will ask):
 
 Variants A / B / C are then just presets of that model.
 
-The mugshot is the real chafa face, loaded from
-``doomguy_faces_ansi/<rows>/STFST01.ans`` at the height the bar needs. When
-headers are shown (vertical/none styles) the mugshot has no title of its own,
-so it grows by one row (size 4 -> size 5) to span the full bar height.
+The mugshot is the real chafa face. It is baked at run time from the *magenta-
+keyed sprite made transparent first*, so chafa encodes the transparent surround
+as an unset (default) cell colour rather than black. The bar then composites the
+face by mapping only that unset colour to the box background -- explicit colours,
+including any genuine black inside the face, are left untouched. This is the
+"fix the data, not the algorithm" approach: transparency stays distinguishable
+from real black, so faces of any state (even ones with black interior pixels)
+composite correctly onto a coloured panel.
+
+The face is baked at exactly the height the bar needs. With headers (vertical/
+none) the headerless mugshot grows one row; in frame style it grows two.
 
 Run directly in a real terminal to see true colours:
 
@@ -21,7 +28,9 @@ Run directly in a real terminal to see true colours:
 """
 
 import os
+import subprocess
 import sys
+import tempfile
 
 RESET = "\x1b[0m"
 BOLD = "\x1b[1m"
@@ -32,7 +41,9 @@ TERM_FG = "term-fg"
 TEXT = (170, 170, 170)
 TITLE = (220, 200, 120)
 
-ANSI_BASE = r"D:\Smeti\Dev\claude-doom-statusbar\doomguy_faces_ansi"
+SPRITE = r"D:\Smeti\Dev\claude-doom-statusbar\doomguy_faces_orig\STFST01.png"
+SYMS = "block+half+quad+sextant+wedge+legacy"
+MAGENTA_TOL = 40
 
 # Data boxes carry 4 lines so the bar is 4 rows tall (matching the size-4 face);
 # with headers it becomes 5 rows (header + 4), matching the size-5 face.
@@ -70,43 +81,46 @@ def pad(s, w):
 # --- real chafa face loading ------------------------------------------------
 
 _face_cache = {}
+_alpha_sprite = None
 
 
-def _apply_sgr(params, fgc, bgc, rev, dfg, dbg):
-    i = 0
-    while i < len(params):
-        tok = params[i]
-        try:
-            p = int(tok) if tok else 0
-        except ValueError:
-            i += 1
-            continue
-        if p == 0:
-            fgc, bgc, rev = dfg, dbg, False
-        elif p == 7:
-            rev = True
-        elif p == 27:
-            rev = False
-        elif p in (38, 48) and i + 4 < len(params) and params[i + 1] == "2":
-            col = (int(params[i + 2]), int(params[i + 3]), int(params[i + 4]))
-            if p == 38:
-                fgc = col
-            else:
-                bgc = col
-            i += 4
-        i += 1
-    return fgc, bgc, rev
+def alpha_sprite():
+    """Return a path to the sprite with its magenta key colour made transparent.
+
+    Feeding chafa a transparent sprite makes it encode the surround as an unset
+    (default) colour, never black -- which is what keeps transparency
+    distinguishable from genuine black inside the face.
+    """
+    global _alpha_sprite
+    if _alpha_sprite:
+        return _alpha_sprite
+    from PIL import Image
+    im = Image.open(SPRITE).convert("RGBA")
+    px = im.load()
+    w, h = im.size
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            if abs(r - 255) <= MAGENTA_TOL and g <= MAGENTA_TOL and abs(b - 255) <= MAGENTA_TOL:
+                px[x, y] = (r, g, b, 0)
+    path = os.path.join(tempfile.gettempdir(), "doomguy_STFST01_alpha.png")
+    im.save(path)
+    _alpha_sprite = path
+    return path
 
 
 def load_face(rows):
-    """Parse doomguy_faces_ansi/<rows>/STFST01.ans into rows of (char, fg, bg)."""
+    """Bake the face at the given character height via chafa on the transparent
+    sprite. Returns rows of (char, fg, bg) where fg/bg are an (r,g,b) tuple or
+    None when chafa left that colour unset (i.e. transparent)."""
     if rows in _face_cache:
         return _face_cache[rows]
-    path = os.path.join(ANSI_BASE, str(rows), "STFST01.ans")
-    text = open(path, encoding="utf-8").read()
+    cmd = ["chafa", "-f", "symbols", "--polite", "on", "--colors", "full",
+           "--symbols", SYMS, "--size", f"9999x{rows}", alpha_sprite()]
+    text = subprocess.run(cmd, capture_output=True).stdout.decode("utf-8", "replace")
+
     ESC = "\x1b"
-    dfg, dbg = (170, 170, 170), (0, 0, 0)
-    fgc, bgc, rev = dfg, dbg, False
+    fgc, bgc, rev = None, None, False
     out, row = [], []
     i = 0
     while i < len(text):
@@ -122,7 +136,28 @@ def load_face(rows):
             while j < len(text) and text[j] not in "ABCDEFGHJKSTfhilmnpqrsu":
                 j += 1
             if j < len(text) and text[j] == "m":
-                fgc, bgc, rev = _apply_sgr(text[i + 2:j].split(";"), fgc, bgc, rev, dfg, dbg)
+                ps = text[i + 2:j].split(";")
+                k = 0
+                while k < len(ps):
+                    p = int(ps[k]) if ps[k] else 0
+                    if p == 0:
+                        fgc, bgc, rev = None, None, False
+                    elif p == 7:
+                        rev = True
+                    elif p == 27:
+                        rev = False
+                    elif p == 39:
+                        fgc = None
+                    elif p == 49:
+                        bgc = None
+                    elif p in (38, 48) and k + 4 < len(ps) and ps[k + 1] == "2":
+                        col = (int(ps[k + 2]), int(ps[k + 3]), int(ps[k + 4]))
+                        if p == 38:
+                            fgc = col
+                        else:
+                            bgc = col
+                        k += 4
+                    k += 1
             i = j + 1
         else:
             efg, ebg = (bgc, fgc) if rev else (fgc, bgc)
@@ -134,29 +169,30 @@ def load_face(rows):
     return out
 
 
+def _color(c, box_background, which):
+    """SGR for one face colour: an explicit colour stays; an unset colour
+    becomes the box background (or the terminal default on a term-bg box)."""
+    if c is None:
+        if box_background == TERM_BG:
+            return "\x1b[39m" if which == "fg" else "\x1b[49m"
+        c = box_background
+    code = 38 if which == "fg" else 48
+    return f"\x1b[{code};2;{c[0]};{c[1]};{c[2]}m"
+
+
 def face_cell(cells, w, box_background):
     """Render one face row as a box cell of inner width w (centered).
 
-    On a coloured box background the sprite's own pure-black surround is mapped
-    to the box background -- in both foreground and background of a cell, since
-    the anti-aliased silhouette uses half-blocks whose transparent half is the
-    glyph foreground. The face interior carries no pure black, so this composites
-    the face onto the panel without touching it. On a terminal background the
-    black is left as is (it already blends into the terminal).
+    Only the transparent (unset) colour is composited onto the box background;
+    explicit colours -- including any real black inside the face -- are kept.
     """
-    blend = box_background != TERM_BG
     vis = len(cells)
     total = max(0, w - vis)
     left = total // 2
     right = total - left
     s = bg(box_background) + " " + " " * left
     for ch, efg, ebg in cells:
-        if blend:
-            if efg == (0, 0, 0):
-                efg = box_background
-            if ebg == (0, 0, 0):
-                ebg = box_background
-        s += f"\x1b[38;2;{efg[0]};{efg[1]};{efg[2]}m\x1b[48;2;{ebg[0]};{ebg[1]};{ebg[2]}m" + ch
+        s += _color(efg, box_background, "fg") + _color(ebg, box_background, "bg") + ch
     s += RESET + bg(box_background) + " " * right + " " + RESET
     return s
 
