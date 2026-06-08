@@ -51,7 +51,7 @@ Box framing is **chosen by the user at install time** from a single model, not f
 
 - `box.background` ∈ { terminal background, specific colour }
 - `border.color` ∈ { terminal background, terminal foreground, specific colour }
-- `border.style` ∈ { `frame`, `vertical` }
+- `border.style` ∈ { `frame`, `vertical`, `none` }
 - `headers` ∈ { shown, hidden } — whether each box shows a title row
 
 The "variants" are just presets of this model:
@@ -62,11 +62,14 @@ The "variants" are just presets of this model:
 | **B** lines | terminal bg | gray | `vertical` (separators only) | 0 rows |
 | **C** panel | dark colour | terminal bg | `vertical` (solid panel, seamless cuts) | 0 rows |
 | **C′** panel | dark colour | black | `vertical` (solid panel, black dividers) | 0 rows |
+| **N** none | dark *or* terminal bg | — | `none` (no borders; boxes merge into one panel, or are separated only by spacing) | 0 rows |
 
 Notes:
 - A separator coloured as *terminal background* renders as a true gap — a hole punched through the panel to the terminal behind it — which is why preset **C**'s cuts are seamless against any colour scheme.
 - A discarded "variant D" gave **each box its own background colour**. It is intentionally out of scope: a single terminal cell carries one background colour, so a divider between a blue box and a red box cannot be blue on one side and red on the other without a per-boundary half-block (`▌`) seam — more visual noise than the DOOM palette wants.
-- **Headers** are optional (configurable). When shown as their own row (`vertical` style), the **mugshot box gains one extra row** so the face spans the full bar height — it has no header of its own to fill that band. In `frame` style the title sits inside the top border, so no extra row is added.
+- The `none` style draws no borders at all. On a coloured `box.background` the boxes merge into one continuous panel (grouping comes from content and spacing); on a terminal background they are separated only by a blank gap. Cheapest and most minimal look.
+- **Headers** are optional (configurable): each box may or may not show a title row.
+- The **mugshot is never framed and never headed** — it is the visual centre, always bare, and always spans the full bar height. It absorbs whatever rows the sibling boxes spend on chrome: **+2 rows** in `frame` style (where the others have top and bottom borders) and **+1 row** when headers occupy their own row (`vertical` / `none`). The face is loaded at exactly that height (`doomguy_faces_ansi/<rows>/`).
 - This styling model is a natural fit for the declarative-segment / WAD skin system (Idea #3): a skin is just a chosen set of these colour/style values.
 
 Prototype: `tools/mockup_boxes.py` renders the presets in 24-bit ANSI for side-by-side comparison.
