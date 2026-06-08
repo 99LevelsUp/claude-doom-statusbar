@@ -108,6 +108,14 @@ def main():
     if expr:
         st["expr"], st["ts"] = expr, now
 
+    # God mode while the advisor tool is running: set on PreToolUse(advisor),
+    # cleared when it returns (PostToolUse / failure). Safety TTL on the read side.
+    if _base(ev.get("tool_name", "")) == "advisor":
+        if name == "PreToolUse":
+            st["god_since"] = now
+        elif name in ("PostToolUse", "PostToolUseFailure"):
+            st.pop("god_since", None)
+
     tmp = f"{path}.{os.getpid()}.tmp"               # atomic write
     try:
         with open(tmp, "w") as fh:

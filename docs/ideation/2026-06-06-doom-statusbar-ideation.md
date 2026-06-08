@@ -132,7 +132,7 @@ HP = min(remaining_5h, remaining_7d) / total_5h
 
 | State | Meaning | Trigger |
 |-------|---------|---------|
-| `god` | invulnerable — no gates | `permission_mode == bypassPermissions` (all-access "god mode") |
+| `god` | invulnerable | **while the advisor tool runs** — `PreToolUse(advisor)` sets a sticky `god_since`, cleared on its `PostToolUse` (safety TTL ~180 s); also conceptually `permission_mode == bypassPermissions` |
 | `dead` | out of headroom | context effectively exhausted (used → 100 %) or `SessionEnd` |
 
 **Resolution order:** `dead` > `god` > `ouch` > `kill` > `evl` > `tl`/`tr` > idle. The HP row picks the sprite row; the expression picks the column within it. Transient expressions show briefly (≈1–2 s or until the next event), then relax to look/idle — this needs the event-driven layer (Idea #2) plus a short decay timer.

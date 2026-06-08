@@ -31,6 +31,7 @@ import render_preset as rp  # noqa: E402
 
 DECAY = 1.5            # seconds a reaction holds before relaxing to idle
 IDLE_CYCLE = 2         # seconds per idle glance
+GOD_TTL = 180.0        # safety cap on god mode if the advisor never returns
 GEIGER_WINDOW = 30.0  # must match the hook's window
 GEIGER_BINS = 7       # sparkline buckets
 
@@ -212,6 +213,8 @@ def main():
     def sprite_for(hp):
         if exhausted:
             return "STFDEAD0"
+        if st.get("god_since") and now - st["god_since"] < GOD_TTL:
+            return "STFGOD0"                             # invulnerable while the advisor thinks
         if st.get("expr") and now - st.get("ts", 0) < DECAY:
             return {
                 "ouch": f"STFOUCH{hp}", "kill": f"STFKILL{hp}", "evl": f"STFEVL{hp}",
