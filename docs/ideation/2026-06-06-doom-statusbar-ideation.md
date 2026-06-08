@@ -587,6 +587,33 @@ Unavailable metrics hide themselves, so the same preset degrades gracefully (e.g
 
 ---
 
+## Wiring it up (settings.json)
+
+The live HUD is two pieces: a `statusLine` command (renders from the stdin JSON) and the hooks (write transient expressions). Prototype: `statusline.py` + `hooks/doomface_hook.py`.
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "python /abs/path/claude-doom-statusbar/statusline.py",
+    "refreshInterval": 1
+  },
+  "hooks": {
+    "PostToolUse":        [{ "hooks": [{ "type": "command", "command": "python /abs/path/claude-doom-statusbar/hooks/doomface_hook.py" }] }],
+    "PostToolUseFailure": [{ "hooks": [{ "type": "command", "command": "python /abs/path/claude-doom-statusbar/hooks/doomface_hook.py" }] }],
+    "Stop":               [{ "hooks": [{ "type": "command", "command": "python /abs/path/claude-doom-statusbar/hooks/doomface_hook.py" }] }],
+    "PermissionDenied":   [{ "hooks": [{ "type": "command", "command": "python /abs/path/claude-doom-statusbar/hooks/doomface_hook.py" }] }]
+  }
+}
+```
+
+- `refreshInterval: 1` keeps the bar re-running while idle so the face animates.
+- `$DOOMBAR_PRESET` selects the preset (default `presets/default.toml`); `$DOOMFACE_STATE` the reaction file.
+- **Wired to real data today:** context (`context_window.used_percentage`), rate limits, cost, and git (branch / ahead-behind / status via shell). The face's HP row comes from usage headroom (context fallback), its expression from the hook state with decay, idle from the wall clock.
+- **Hidden until their providers exist:** activity (geiger / agents / tasks — need the hook-bus) and system (`sys.*` — need an OS provider). Availability auto-hides them, so the `full` preset degrades cleanly to whatever data is present.
+
+---
+
 ## Ranked Ideas
 
 ### 1. Face-First Architecture

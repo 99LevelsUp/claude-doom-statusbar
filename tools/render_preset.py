@@ -108,6 +108,10 @@ def r_spark(values):
     return f(SPARK) + "".join(g[0 if hi == lo else round((v - lo) / (hi - lo) * 6)] for v in values)
 
 
+# The engine reads metric values from VALUES (statusline.py swaps in real data).
+VALUES = SAMPLE
+
+
 def render_value(entry, cells, box_rgb):
     """Return the metric body string (icon label + rendered value)."""
     icon = entry.get("icon", "")
@@ -117,9 +121,9 @@ def render_value(entry, cells, box_rgb):
 
     if "group" in entry:
         sep = entry.get("sep", " ")
-        parts = [str(SAMPLE.get(i, "?")) for i in entry["group"]]
+        parts = [str(VALUES[i]) for i in entry["group"] if i in VALUES]
         return label + f(TEXT) + sep.join(parts)
-    val = SAMPLE.get(entry["id"], "?")
+    val = VALUES.get(entry["id"], "?")
     if render == "bar":
         return label + r_bar(val, cells, box_rgb, color or "threshold")
     if render == "ammo":
@@ -138,11 +142,11 @@ def render_value(entry, cells, box_rgb):
 
 
 def bar_meta(entry):
-    """(label_width, suffix_width) for width budgeting; suffix only for bar/ammo."""
+    """(label_width, suffix_width, render) for width budgeting."""
     icon = entry.get("icon", "")
     lw = vlen((icon + " ") if icon else "")
     if entry.get("render") in ("bar", "ammo"):
-        pct = SAMPLE.get(entry["id"], 0)
+        pct = VALUES.get(entry["id"], 0)
         return lw, vlen(f" {pct}%"), entry.get("render")
     return lw, 0, entry.get("render", "text")
 
@@ -156,14 +160,21 @@ def metric_fixed_width(entry):
     r = entry.get("render", "text")
     if "group" in entry:
         sep = entry.get("sep", " ")
-        return lw + vlen(sep.join(str(SAMPLE.get(i, "?")) for i in entry["group"]))
+        return lw + vlen(sep.join(str(VALUES[i]) for i in entry["group"] if i in VALUES))
     if r == "spark":
-        return lw + len(SAMPLE.get(entry["id"], []))
+        return lw + len(VALUES.get(entry["id"], []))
     if r == "ammo":
-        return lw + 5 + vlen(f" {SAMPLE.get(entry['id'], 0)}%")
+        return lw + 5 + vlen(f" {VALUES.get(entry['id'], 0)}%")
     if r == "bar":
         return None                       # flexible
-    return lw + vlen(str(SAMPLE.get(entry["id"], "?")))
+    return lw + vlen(str(VALUES.get(entry["id"], "?")))
+
+
+def available(entry):
+    """A metric is shown only if its value(s) are present in VALUES."""
+    if "group" in entry:
+        return any(i in VALUES for i in entry["group"])
+    return entry["id"] in VALUES
 
 
 def box_width(box, cells):
@@ -182,50 +193,55 @@ def box_width(box, cells):
     return w
 
 
-def hp_row(thresholds):
-    rem5 = 100 - SAMPLE.get("ratelimit.5h", 0)
-    rem7 = 100 - SAMPLE.get("ratelimit.7d", 0) if "ratelimit.7d" in SAMPLE else 100
-    headroom = min(rem5, rem7)
-    row = 0
-    for t in thresholds:
-        if headroom < t:
-            row += 1
-    return 4 - row                        # higher headroom -> lower row index (healthier)
-
-
-def main():
-    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    if len(sys.argv) > 1:
-        arg = sys.argv[1]
-        path = arg if os.path.isabs(arg) else os.path.join(os.getcwd(), arg)
-        if not os.path.exists(path):
-            path = os.path.join(repo, "presets", os.path.basename(arg))
+def hp_row(thresholds=HP_THRESHOLDS):
+    """HP row 0..4 from usage headroom; falls back to context when no rate limits."""
+    if "ratelimit.5h" in VALUES or "ratelimit.7d" in VALUES:
+        rem5 = 100 - VALUES.get("ratelimit.5h", 0)
+        rem7 = 100 - VALUES.get("ratelimit.7d", 0) if "ratelimit.7d" in VALUES else 100
+        headroom = min(rem5, rem7)
     else:
-        path = os.path.join(repo, "presets", "default.toml")
-    target = int(sys.argv[2]) if len(sys.argv) > 2 else 100
+        headroom = 100 - VALUES.get("context.hp", 0)      # context fallback
+    row = sum(1 for t in thresholds if headroom < t)
+    return 4 - row                        # higher headroom -> lower row (healthier)
 
-    cfg = tomllib.load(open(path, "rb"))
+
+def build_bar(cfg, target, sprite_for=None):
+    """Assemble the bar from a parsed preset + the current VALUES. sprite_for(hp)
+    returns the mugshot sprite basename. Returns {lines, style, headers, cells, hp}."""
+    if sprite_for is None:
+        def sprite_for(hp):
+            return f"STFST{hp}1"
+
     bar = cfg.get("bar", {})
     style = bar.get("border_style", "vertical")
     headers = bar.get("headers", True) and style != "frame"
-    box_spec = bar.get("box_background", "term-bg")
-    box_rgb = rgb_of(box_spec)
+    box_rgb = rgb_of(bar.get("box_background", "term-bg"))
     bcol = bar.get("border_color", "term-fg")
-    mug_spec = cfg.get("mugshot", {}).get("background", "#000000")
-    mug_rgb = rgb_of(mug_spec)
+    mug_rgb = rgb_of(cfg.get("mugshot", {}).get("background", "#000000"))
 
-    boxes = [s for s in cfg["segment"] if s["type"] == "box"]
-    data_rows = max(len(b["metric"]) for b in boxes)
-    total_rows = max(data_rows + (1 if headers else 0), 4)   # 4 = mugshot floor
+    # availability: drop metrics whose value is absent; collapse empty boxes.
+    segs = []
+    for s in cfg["segment"]:
+        if s["type"] == "mugshot":
+            segs.append(s)
+            continue
+        mets = [m for m in s["metric"] if available(m)]
+        if mets:
+            segs.append({**s, "metric": mets})
 
-    # choose a global bar cell count that fits the target width
-    n_cols = len(cfg["segment"])
-    face = load_face_from(os.path.join(WAD_DIR, f"STFST{hp_row(HP_THRESHOLDS)}1.png"), total_rows)
+    boxes = [s for s in segs if s["type"] == "box"]
+    data_rows = max((len(b["metric"]) for b in boxes), default=0)
+    headers_extra = 1 if headers else 0
+    total_rows = max(data_rows + headers_extra, 4)        # 4 = mugshot floor
+    n_cols = len(segs)
+
+    hp = hp_row()
+    face = load_face_from(os.path.join(WAD_DIR, sprite_for(hp) + ".png"), total_rows)
     face_w = max(len(r) for r in face)
 
     def total_width(cells):
         tot = 2 + (n_cols - 1)
-        for s in cfg["segment"]:
+        for s in segs:
             tot += (face_w + 2) if s["type"] == "mugshot" else (box_width(s, cells) + 2)
         return tot
 
@@ -235,9 +251,8 @@ def main():
             cells = c
             break
 
-    # build each column
     columns = []
-    for s in cfg["segment"]:
+    for s in segs:
         if s["type"] == "mugshot":
             columns.append([face_cell(face[r], face_w, mug_rgb) for r in range(total_rows)])
             continue
@@ -256,7 +271,7 @@ def main():
                 body = render_value(m, 0, box_rgb)
             body += " " * max(0, w - vlen(body))
             col.append(bgsgr_box(box_rgb) + " " + body + " " + RESET)
-        while len(col) < total_rows:                       # pad to face floor
+        while len(col) < total_rows:                      # pad to face floor
             col.append(bgsgr_box(box_rgb) + " " * (w + 2) + RESET)
         columns.append(col)
 
@@ -267,13 +282,29 @@ def main():
             return RESET + " "
         return bgsgr_box(box_rgb) + border_fg(bcol) + "│"
 
-    out = [""]
-    out.append(f"  preset: {os.path.basename(path)}   style={style}  headers={str(headers).lower()}  bar={cells}")
-    out.append("")
+    lines = []
     for r in range(total_rows):
-        line = "".join((sep() if i else "") + c[r] for i, c in enumerate(columns))
-        out.append("  " + line + RESET)
-    out.append("")
+        lines.append("".join((sep() if i else "") + c[r] for i, c in enumerate(columns)) + RESET)
+    return {"lines": lines, "style": style, "headers": headers, "cells": cells, "hp": hp}
+
+
+def main():
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if len(sys.argv) > 1:
+        arg = sys.argv[1]
+        path = arg if os.path.isabs(arg) else os.path.join(os.getcwd(), arg)
+        if not os.path.exists(path):
+            path = os.path.join(repo, "presets", os.path.basename(arg))
+    else:
+        path = os.path.join(repo, "presets", "default.toml")
+    target = int(sys.argv[2]) if len(sys.argv) > 2 else 100
+
+    cfg = tomllib.load(open(path, "rb"))
+    res = build_bar(cfg, target)
+    out = ["", f"  preset: {os.path.basename(path)}   style={res['style']}  "
+           f"headers={str(res['headers']).lower()}  bar={res['cells']}", ""]
+    out += ["  " + ln for ln in res["lines"]]
+    out += [""]
     sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
 
 
