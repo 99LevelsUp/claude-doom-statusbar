@@ -120,11 +120,13 @@ HP = min(remaining_5h, remaining_7d) / total_5h
 
 | Expr | Meaning | Trigger (provider) |
 |------|---------|--------------------|
-| `ouch` | took a big hit | error (`PostToolUseFailure` / `StopFailure`) or a sudden large jump in context used |
-| `kill` | rampage / focused fire | sustained burst of rapid tool calls (geiger cascade) |
-| `evl` | evil grin / power-up | clean `Stop`, `TaskCompleted`, permission granted, or model upgrade |
-| `tl` / `tr` | looking around | scanning tools (`Read`/`Grep`/`Glob`); alternate L/R for liveliness |
+| `ouch` | took a hit / blocked | `PostToolUseFailure` · `StopFailure` · `PermissionDenied` |
+| `kill` | rampage / focused fire | **every** write-class `PostToolUse` — `Edit`/`Write`/`MultiEdit`/`NotebookEdit`/`Bash` |
+| `evl` | evil grin / power-up | **every** clean `Stop` (turn finished); also `TaskCompleted`, permission granted |
+| `tl` / `tr` | looking around (scanning) | read-class `PostToolUse` — `Read`/`Grep`/`Glob`; alternate L/R |
 | `st0`/`st1`/`st2` | forward idle | no recent event; cycles slowly |
+
+> **lean-ctx tools** map the same way by base name: `ctx_read`/`ctx_multi_read`/`ctx_search`/`ctx_semantic_search`/`ctx_tree` → `tl`/`tr` (scanning); `ctx_shell`/`ctx_edit` → `kill` (action). MCP tool names arrive as `mcp__lean-ctx__ctx_*`; the hook strips the prefix.
 
 **Specials** (override both axes):
 

@@ -33,19 +33,34 @@ def state_path():
         tempfile.gettempdir(), "doomface_state.json")
 
 
+# Read-class (scanning -> look around) and write-class (-> rampage). Covers both
+# native tools and lean-ctx MCP tools (mcp__lean-ctx__ctx_*), matched by base name.
+READ_TOOLS = {"Read", "Grep", "Glob",
+              "ctx_read", "ctx_multi_read", "ctx_search", "ctx_semantic_search",
+              "ctx_tree", "ctx_overview"}
+WRITE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit", "Bash",
+               "ctx_shell", "ctx_edit"}
+
+
+def _base(tool):
+    """Strip the mcp__<server>__ prefix so lean-ctx tools match by base name."""
+    return tool.split("__")[-1] if tool.startswith("mcp__") else tool
+
+
 def expression(ev):
     """Map a hook event to a face expression (or None for no reaction)."""
     name = ev.get("hook_event_name", "")
-    tool = ev.get("tool_name", "")
-    if name in ("PostToolUseFailure", "StopFailure"):
-        return "ouch"                                   # took a hit
+    base = _base(ev.get("tool_name", ""))
+    if name in ("PostToolUseFailure", "StopFailure", "PermissionDenied"):
+        return "ouch"                                   # took a hit / blocked
     if name in ("Stop", "TaskCompleted"):
-        return "evl"                                    # success grin
+        return "evl"                                    # success grin (every clean end)
     if name == "PostToolUse":
-        if tool in ("Read", "Grep", "Glob"):            # scanning -> look around
+        if base in READ_TOOLS:                          # scanning -> look around
             return "tl" if int(time.time() * 2) % 2 == 0 else "tr"
-        return "kill"                                   # acting -> rampage
-    return None
+        if base in WRITE_TOOLS:                          # write/edit/bash/shell -> rampage
+            return "kill"
+    return None                                         # other events: no reaction
 
 
 def main():
