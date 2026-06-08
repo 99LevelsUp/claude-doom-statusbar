@@ -265,6 +265,39 @@ How a metric *looks* is configurable and independent of what it measures. The DO
 | sys.net | up/down or online state | text | — | external |
 | sys.clock | wall-clock time | HH:MM | — | external |
 
+### Additional metrics from prior art
+
+Cross-checked against **ccstatusline** (sirmalloc) and **claude-hud** (jarrodwatts). Metrics they expose that extend the catalog. Provenance is honest: several are *derived* or *source-uncertain* (the projects obtain them from the transcript, config, env, or undocumented fields), flagged below.
+
+| Metric | From | Provider / source | Note |
+|--------|------|-------------------|------|
+| context.usable_pct | ccstatusline | derived | % of *usable* window (excl. reserved/system), distinct from raw used % |
+| context.autocompact_pct | claude-hud | derived + config | % against a configurable sub-window → graduated warning instead of the binary `exceeds_200k` |
+| cache.ttl_countdown | claude-hud | derived | countdown to prompt-cache expiry (TTL 300 s; 3600 s on Max) |
+| rate.tok_in_s / rate.tok_out_s | ccstatusline | derived | input- and output-speed split (we had total only) |
+| ratelimit.weekly.sonnet / .opus | ccstatusline | statusline-json? / derived (uncertain) | per-model weekly usage (limits are model-specific on some plans) |
+| usage.overage.util / .remaining | ccstatusline | derived (uncertain) | post-limit overage utilisation + remaining credit |
+| git.conflicts | ccstatusline | shell | merge-conflict file count |
+| git.sha | ccstatusline | shell | short commit hash |
+| git.clean | ccstatusline | shell | clean/dirty flag |
+| git.is_fork / git.upstream_owner | ccstatusline | statusline-json `repo` / shell | fork flag, upstream owner (vs origin) |
+| cfg.counts | claude-hud | hook-bus (`InstructionsLoaded`/`ConfigChange`) / shell | CLAUDE.md · rules · MCP · hooks counts (config health) |
+| act.idle | claude-hud | hook-bus | time since last assistant response (idle / latency) |
+| sess.start | claude-hud | derived | absolute session-start timestamp |
+| model.provider | claude-hud | env / derived | Bedrock / Vertex / direct |
+| advisor.model | claude-hud | uncertain | active `/advisor` model name |
+| term.width | ccstatusline | shell/env | terminal columns (layout decisions) |
+| sess.account_email | ccstatusline | uncertain | logged-in account email |
+| voice.status | ccstatusline | uncertain | voice input on/off |
+| custom.cmd | ccstatusline | shell | arbitrary shell-command output as a metric (generic) |
+
+**Computation patterns worth adopting:**
+- **Auto-compact window** (claude-hud): compute context % against a configurable lower bound (e.g. 150k), turning the binary 200k flag into a graduated warning. *Highest-value adoption.*
+- **Block timer from transcript** (ccstatusline): derive the 5-hour window boundary from the first message timestamp in the transcript JSONL, not wall-clock — aligns with how the window is actually measured.
+- **Prompt-cache countdown** (claude-hud): surface the cache TTL as a live countdown (Max = 1 h vs standard 5 min).
+- **Per-model weekly breakdown** (ccstatusline): track weekly Sonnet/Opus separately, not just aggregate 7-day.
+- **Shared usage file** (claude-hud `externalUsagePath`): a file other tools (e.g. ccusage) read/write — a coordination hook if the bar must coexist with other usage tools.
+
 ### Box composition (configuration)
 
 Boxes are user-defined and reference catalog ids. Styling per box uses the model from *Visual Direction*. Sketch:
