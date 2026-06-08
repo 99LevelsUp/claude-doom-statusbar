@@ -104,9 +104,32 @@ A metric is defined by: `id`, `category`, `label`, **provider** (where the value
 - **statusline-json** — fields from the Claude Code status line JSON on stdin; refreshed every render.
 - **hook-bus** — values accumulated from lifecycle hook events (counts, last event, running subagents/tasks, errors). Requires the event-driven layer (Idea #2).
 - **shell** — derived by running a command in the status line script (e.g. git).
-- **external** — metrics from outside Claude Code (OS/system or third-party): RAM, CPU, disk, battery, clock. Sourced via shell/OS. **Cost note:** each shell/external read is a subprocess per refresh — cache/throttle them.
+- **external** — metrics from outside Claude Code (OS/system or third-party): RAM, CPU, disk, battery, clock. **Pluggable:** a provider is a user-defined shell command → value; several ship by default (RAM, CPU, clock). **Cost note:** each external read is a subprocess per refresh — cache/throttle them.
 
 > Field paths below reflect the current Claude Code status line JSON and hook payloads. Some are **conditional** (present only on Claude.ai subscriptions, certain models, or after the first API call) — flagged in *Availability*.
+
+### Metric rendering
+
+How a metric *looks* is configurable and independent of what it measures. The DOOM aesthetic is a set of render choices, not a fixed mapping.
+
+**Value types**
+- **text** — strings (cwd, branch, model name); optional truncation.
+- **numeric** — numbers, with a choice of render style.
+
+**Render styles** (numeric)
+- `number` — `78%`, `$1.83`, `1.2k` (optional unit / precision)
+- `bar` — progress bar: `█████▓░ 78%`
+- `ammo` — segmented gauge: `▮▮▮▮▯ 64%`
+
+**Colour** — each metric has a colour; numeric metrics may use **threshold colours** (e.g. the context bar green → amber → red as it fills). Same colour model as boxes/borders.
+
+**Headers / labels** — a box header (or a per-metric label) is **text** (`CONTEXT`) or a **unicode icon** (`🧠` context, `🕔` 5-hour, `📅` weekly, `🌿` branch, `💰` cost). Icons keep boxes narrow.
+
+**Grouping (side by side)** — related metrics can share one line: git `🌿 main  ↓2 ↑3`, edits `+124 -37`, limits `🕔 64%  📅 31%`.
+
+**DOOM flavour, à la carte** — the mugshot is the centrepiece; `ammo` style + a clip icon gives the ammo feel; a threshold `bar` gives the HP feel; permission icons give skull keys. Opt into as much or as little DOOM as you like.
+
+> The *DOOM* column in the catalog below is illustrative flavour only — actual presentation is the configurable render style / colour / icon described here.
 
 ### Catalog
 
@@ -160,6 +183,7 @@ A metric is defined by: `id`, `category`, `label`, **provider** (where the value
 | loc.repo | `workspace.repo.owner` / `name` / `host` | statusline-json | — | in git repo |
 | git.branch | `git branch --show-current` | shell | — | derived |
 | git.status | `git status --porcelain` (counts) | shell | — | derived |
+| git.ahead / git.behind | `git rev-list --count @{u}..` / `..@{u}` | shell | side-by-side `↓2 ↑3` | derived |
 | loc.worktree | `worktree.name` / `workspace.git_worktree` | statusline-json | — | in worktree |
 | pr.state | `pr.number` / `pr.review_state` | statusline-json | — | when PR found |
 
@@ -206,23 +230,35 @@ A metric is defined by: `id`, `category`, `label`, **provider** (where the value
 Boxes are user-defined and reference catalog ids. Styling per box uses the model from *Visual Direction*. Sketch:
 
 ```toml
-[[box]]                       # left
-title   = "VITALS"
-metrics = ["context.hp", "context.tokens", "context.window"]
+[[box]]                                  # left
+header = "🧠"                            # icon OR text
+metrics = [
+  { id = "context.hp",     render = "bar",    color = "threshold" },   # █████▓░ 78%
+  { id = "context.tokens", render = "number", unit  = "tok" },
+]
 
 [[box]]
-title   = "AMMO"
-metrics = ["ratelimit.5h", "ratelimit.7d"]
+header = "AMMO"
+metrics = [
+  { id = "ratelimit.5h", render = "ammo", icon = "🕔" },               # 🕔 ▮▮▮▮▯ 64%
+  { id = "ratelimit.7d", render = "ammo", icon = "📅" },
+]
 
 # mugshot — implicit centre, not a box of metrics
 
-[[box]]                       # right
-title   = "GIT"
-metrics = ["git.branch", "git.status", "pr.state"]
+[[box]]                                  # right
+header = "🌿"
+metrics = [
+  { id = "git.branch", render = "text" },
+  { group = ["git.behind", "git.ahead"], render = "number", sep = " " },  # ↓2 ↑3
+]
 
 [[box]]
-title   = "SYS"
-metrics = ["sys.ram", "sys.cpu", "sys.clock"]
+header = "SYS"
+metrics = [
+  { id = "sys.ram",   render = "bar",    color = "threshold" },
+  { id = "sys.clock", render = "text",   icon  = "🕓" },
+]
 ```
 
 - A metric whose *Availability* fails (e.g. `ratelimit.*` on an API-key deployment) hides itself; an emptied box collapses. This keeps one config portable across Claude.ai / API / CI.
