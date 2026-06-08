@@ -3,10 +3,11 @@
 
 Unified model (what the installer will ask):
 
-    box.background  in { term-bg, <rgb> }            # fill behind a box
-    border.color    in { term-bg, term-fg, <rgb> }   # separators / frame lines
-    border.style    in { frame, vertical, none }      # A = frame, B/C = vertical
-    headers         in { shown, hidden }              # title row per box
+    box.background      in { term-bg, <rgb> }        # fill behind a data box
+    mugshot.background  in { term-bg, <rgb> }        # fill behind the face (independent)
+    border.color        in { term-bg, term-fg, <rgb> }  # separators / frame lines
+    border.style        in { frame, vertical, none }    # A = frame, B/C = vertical
+    headers             in { shown, hidden }            # title row per box
 
 Variants A / B / C are then just presets of that model.
 
@@ -169,15 +170,33 @@ def load_face(rows):
     return out
 
 
-def _color(c, box_background, which):
-    """SGR for one face colour: an explicit colour stays; an unset colour
-    becomes the box background (or the terminal default on a term-bg box)."""
-    if c is None:
-        if box_background == TERM_BG:
-            return "\x1b[39m" if which == "fg" else "\x1b[49m"
-        c = box_background
-    code = 38 if which == "fg" else 48
+def _truecolor(code, c):
     return f"\x1b[{code};2;{c[0]};{c[1]};{c[2]}m"
+
+
+def _emit_cell(ch, efg, ebg, box_background):
+    """Emit one face cell, compositing the transparent (unset) colour.
+
+    On a coloured box the transparent colour becomes the box colour. On a
+    term-bg (transparent) box the transparent colour must become the *terminal*
+    background. That is trivial when transparency sits in the cell background
+    (default bg, \x1b[49m), but when it sits in the foreground a default fg
+    would paint it white. We instead flip the cell with reverse video
+    (\x1b[7m): the glyph's "on" pixels then take the (default) background, i.e.
+    the terminal, and the explicit colour moves to the "off" pixels -- same
+    picture, no white edge, fully portable.
+    """
+    if box_background != TERM_BG:
+        f = efg if efg is not None else box_background
+        b = ebg if ebg is not None else box_background
+        return "\x1b[27m" + _truecolor(38, f) + _truecolor(48, b) + ch
+    if efg is None and ebg is None:
+        return "\x1b[27m\x1b[39m\x1b[49m" + ch
+    if efg is None:  # transparent foreground -> reverse so "on" pixels show terminal
+        return "\x1b[7m" + _truecolor(38, ebg) + "\x1b[49m" + ch
+    if ebg is None:  # transparent background -> terminal shows through directly
+        return "\x1b[27m" + _truecolor(38, efg) + "\x1b[49m" + ch
+    return "\x1b[27m" + _truecolor(38, efg) + _truecolor(48, ebg) + ch
 
 
 def face_cell(cells, w, box_background):
@@ -192,7 +211,7 @@ def face_cell(cells, w, box_background):
     right = total - left
     s = bg(box_background) + " " + " " * left
     for ch, efg, ebg in cells:
-        s += _color(efg, box_background, "fg") + _color(ebg, box_background, "bg") + ch
+        s += _emit_cell(ch, efg, ebg, box_background)
     s += RESET + bg(box_background) + " " * right + " " + RESET
     return s
 
@@ -200,7 +219,10 @@ def face_cell(cells, w, box_background):
 # --- bar rendering ----------------------------------------------------------
 
 
-def render(box_background, border_color, style, show_headers):
+def render(box_background, border_color, style, show_headers, mugshot_background=None):
+    # The mugshot has its own background, independent of the data boxes
+    # (e.g. blue boxes with a black mugshot). Defaults to the box background.
+    mug_bg = box_background if mugshot_background is None else mugshot_background
     data_rows = max(len(l) for _, l in DATA_BOXES if l)
     headered = show_headers and style != "frame"
     # The mugshot is never framed or headed; it spans the full bar height, so it
@@ -226,8 +248,8 @@ def render(box_background, border_color, style, show_headers):
     for title, lines in DATA_BOXES:
         is_face = title.startswith("__")
         if is_face:
-            # Bare, full-height mugshot: no frame, no header, ever.
-            col = [face_cell(face[r], face_w, box_background) for r in range(total_rows)]
+            # Bare, full-height mugshot: no frame, no header, ever; own background.
+            col = [face_cell(face[r], face_w, mug_bg) for r in range(total_rows)]
         else:
             w = max([len(title) + 2] + [vlen(x) for x in lines])
             col = []
@@ -277,6 +299,9 @@ PRESETS = [
      dict(box_background=(28, 32, 54), border_color=TERM_BG, style="none")),
     ("N' none   (background=term, no borders, gap-separated)",
      dict(box_background=TERM_BG, border_color=TERM_BG, style="none")),
+    ("M  panel  (BLUE boxes, BLACK mugshot -- independent backgrounds)",
+     dict(box_background=(28, 32, 54), border_color=TERM_BG, style="vertical",
+          mugshot_background=(0, 0, 0))),
 ]
 
 

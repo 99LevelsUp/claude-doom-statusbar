@@ -50,6 +50,7 @@ The status bar attaches **below the prompt line** and is divided into **segment 
 Box framing is **chosen by the user at install time** from a single model, not from fixed themes. Two colours and one topology cover every look:
 
 - `box.background` ∈ { terminal background, specific colour }
+- `mugshot.background` ∈ { terminal background, specific colour } — independent of `box.background` (e.g. blue boxes, black mugshot)
 - `border.color` ∈ { terminal background, terminal foreground, specific colour }
 - `border.style` ∈ { `frame`, `vertical`, `none` }
 - `headers` ∈ { shown, hidden } — whether each box shows a title row
@@ -70,6 +71,7 @@ Notes:
 - The `none` style draws no borders at all. On a coloured `box.background` the boxes merge into one continuous panel (grouping comes from content and spacing); on a terminal background they are separated only by a blank gap. Cheapest and most minimal look.
 - **Headers** are optional (configurable): each box may or may not show a title row.
 - The **mugshot is never framed and never headed** — it is the visual centre, always bare, and always spans the full bar height. It absorbs whatever rows the sibling boxes spend on chrome: **+2 rows** in `frame` style (where the others have top and bottom borders) and **+1 row** when headers occupy their own row (`vertical` / `none`). The face is loaded at exactly that height (`doomguy_faces_ansi/<rows>/`).
+- The **mugshot composites onto its own background**, not the box background. The face is baked from a *transparent* sprite (the magenta key turned transparent), so chafa encodes the surround as an unset colour rather than black; the renderer maps only that unset colour to `mugshot.background`, leaving any real black inside the face untouched. On a terminal (transparent) `mugshot.background`, silhouette cells whose transparent part falls in the glyph foreground are drawn with reverse video so the edge stays clean instead of showing a white fringe.
 - This styling model is a natural fit for the declarative-segment / WAD skin system (Idea #3): a skin is just a chosen set of these colour/style values.
 
 Prototype: `tools/mockup_boxes.py` renders the presets in 24-bit ANSI for side-by-side comparison.
