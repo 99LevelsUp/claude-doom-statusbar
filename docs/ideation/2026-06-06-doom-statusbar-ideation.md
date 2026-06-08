@@ -141,10 +141,15 @@ HP = min(remaining_5h, remaining_7d) / total_5h
 
 **Reactions need persisted state.** A reactive expression (`ouch`/`evl`/`kill`) can't be derived from the clock — it comes from an event the render pass didn't witness. The event-driven layer (Idea #2) bridges this: a hook writes the event + timestamp to a small state file; each status-line render reads it and shows that expression until it **decays** (age > ~1–2 s), then falls back to the idle/HP face. So idle is stateless (clock), reactions are stateful (event marker + decay).
 
-Concrete protocol (prototype: `hooks/doomface_hook.py` + `tools/face_hook_demo.py`):
-- **State file** (`$DOOMFACE_STATE`, default `<temp>/doomface_state.json`): `{"expr": "ouch", "ts": <epoch>}`.
-- **Hook mapping:** `PostToolUseFailure`/`StopFailure` → `ouch`; `Stop`/`TaskCompleted` → `evl`; `PostToolUse` → `kill` (or `tl`/`tr` for `Read`/`Grep`/`Glob`). Other events write nothing. The hook always exits 0 (never blocks).
-- **Wiring:** map those events to the hook in `settings.json`; the render reads the file with a `reaction_decay` window (default 1.5 s). The hook process and the render process are fully decoupled.
+Concrete protocol (`hooks/doomface_hook.py` is an event-bus; `statusline.py` reads it):
+- **State file** (`$DOOMFACE_STATE`, default `<temp>/doomface_<session_id>.json`), written atomically on every event:
+  ```json
+  { "expr": "ouch", "ts": 0,
+    "tools": [<epochs>], "agents": ["explore"], "tasks": {"created": 2, "completed": 1}, "errors": 1 }
+  ```
+- **Face mapping:** `PostToolUseFailure`/`StopFailure`/`PermissionDenied` → `ouch`; `Stop`/`TaskCompleted` → `evl`; `PostToolUse` → `kill` (write-class) or `tl`/`tr` (read-class). Read with a `reaction_decay` window (default 1.5 s).
+- **Activity (hook-bus) → `act.*`:** `PostToolUse` appends a timestamp to `tools` (pruned to a 30 s window) → `act.geiger` sparkline; `SubagentStart/Stop` maintain `agents` → `act.agents`; `TaskCreated/Completed` → `act.tasks`; failures increment `errors` → `act.errors`. Absent keys hide their metric, so the FIGHT box lights up only once events have flowed.
+- **Wiring:** map face events + `SubagentStart/Stop`, `TaskCreated/Completed` to the hook. The hook always exits 0; the hook process and the render process are fully decoupled via the file.
 
 > Sprite/file names (e.g. `STFST01`) are not yet fixed — naming is deferred. The mapping above is the contract; assets are wired to it later.
 
@@ -609,8 +614,9 @@ The live HUD is two pieces: a `statusLine` command (renders from the stdin JSON)
 
 - `refreshInterval: 1` keeps the bar re-running while idle so the face animates.
 - `$DOOMBAR_PRESET` selects the preset (default `presets/default.toml`); `$DOOMFACE_STATE` the reaction file.
-- **Wired to real data today:** context (`context_window.used_percentage`), rate limits, cost, and git (branch / ahead-behind / status via shell). The face's HP row comes from usage headroom (context fallback), its expression from the hook state with decay, idle from the wall clock.
-- **Hidden until their providers exist:** activity (geiger / agents / tasks — need the hook-bus) and system (`sys.*` — need an OS provider). Availability auto-hides them, so the `full` preset degrades cleanly to whatever data is present.
+- **Wired to real data today:** context (`context_window.used_percentage`), rate limits, cost, git (branch / ahead-behind / status via shell), and **activity** (geiger / agents / tasks / errors via the hook-bus). The face's HP row comes from usage headroom (context fallback), its expression from the hook state with decay, idle from the wall clock.
+- **Hidden until their provider exists:** system (`sys.*` — needs an OS provider, e.g. psutil). Availability auto-hides it, so the `full` preset degrades cleanly to whatever data is present.
+- Activity needs the extra hook events mapped too: `SubagentStart`/`SubagentStop`, `TaskCreated`/`TaskCompleted` (alongside the face events).
 
 ---
 

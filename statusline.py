@@ -17,6 +17,7 @@ State:   $DOOMFACE_STATE  (default: <temp>/doomface_state.json)
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -29,6 +30,8 @@ import render_preset as rp  # noqa: E402
 
 DECAY = 1.5            # seconds a reaction holds before relaxing to idle
 IDLE_CYCLE = 2         # seconds per idle glance
+GEIGER_WINDOW = 30.0  # must match the hook's window
+GEIGER_BINS = 7       # sparkline buckets
 
 
 def git(cwd, *args):
@@ -77,13 +80,42 @@ def _pick(bucket):
     return x % 3
 
 
-def read_reaction():
-    path = os.environ.get("DOOMFACE_STATE") or os.path.join(tempfile.gettempdir(), "doomface_state.json")
+def state_path(data):
+    env = os.environ.get("DOOMFACE_STATE")
+    if env:
+        return env
+    sid = re.sub(r"[^A-Za-z0-9_-]", "_", str(data.get("session_id") or "default"))[:48]
+    return os.path.join(tempfile.gettempdir(), f"doomface_{sid}.json")
+
+
+def read_state(data):
     try:
-        with open(path) as fh:
+        with open(state_path(data)) as fh:
             return json.load(fh)
     except Exception:
-        return None
+        return {}
+
+
+def activity_values(st, now):
+    """Derive act.* metrics from the hook-bus state (absent keys -> hidden)."""
+    v = {}
+    if "tools" in st:
+        binw = GEIGER_WINDOW / GEIGER_BINS
+        series = [0] * GEIGER_BINS
+        for t in st["tools"]:
+            age = now - t
+            if 0 <= age < GEIGER_WINDOW:
+                idx = GEIGER_BINS - 1 - int(age / binw)
+                if 0 <= idx < GEIGER_BINS:
+                    series[idx] += 1
+        v["act.geiger"] = series
+    if "agents" in st:
+        v["act.agents"] = str(len(st["agents"]))
+    if "tasks" in st:
+        v["act.tasks"] = f"{st['tasks'].get('completed', 0)}/{st['tasks'].get('created', 0)}"
+    if "errors" in st:
+        v["act.errors"] = str(st["errors"])
+    return v
 
 
 def main():
@@ -95,11 +127,12 @@ def main():
     preset = os.environ.get("DOOMBAR_PRESET") or os.path.join(HERE, "presets", "default.toml")
     cfg = tomllib.load(open(preset, "rb"))
 
+    now = time.time()
+    st = read_state(data)
     values = build_values(data)
+    values.update(activity_values(st, now))             # act.* from the hook-bus
     rp.VALUES = values                                  # engine reads real data now
 
-    now = time.time()
-    react = read_reaction()
     exhausted = values.get("context.hp", 0) >= 99
     if "ratelimit.5h" in values or "ratelimit.7d" in values:
         rem = min(100 - values.get("ratelimit.5h", 0),
@@ -109,11 +142,11 @@ def main():
     def sprite_for(hp):
         if exhausted:
             return "STFDEAD0"
-        if react and now - react.get("ts", 0) < DECAY:
+        if st.get("expr") and now - st.get("ts", 0) < DECAY:
             return {
                 "ouch": f"STFOUCH{hp}", "kill": f"STFKILL{hp}", "evl": f"STFEVL{hp}",
                 "tl": f"STFTL{hp}0", "tr": f"STFTR{hp}0",
-            }.get(react.get("expr"), f"STFST{hp}1")
+            }.get(st["expr"], f"STFST{hp}1")
         return f"STFST{hp}{_pick(int(now // IDLE_CYCLE))}"   # idle glance from the clock
 
     target = int(os.environ.get("COLUMNS") or 100)

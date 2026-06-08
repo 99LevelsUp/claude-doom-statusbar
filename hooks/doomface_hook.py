@@ -1,40 +1,32 @@
 #!/usr/bin/env python3
-"""Claude Code hook: map a lifecycle event to a transient mugshot expression.
+"""Claude Code hook: an event-bus for the DOOM HUD.
 
-Reads the hook JSON on stdin and writes {expr, ts} to a small state file that
-the status line reads (and decays) on its next render. This is the bridge that
-lets the bar REACT to events the render pass didn't witness — the event-driven
-layer (Idea #2). Idle is stateless (wall clock); reactions are stateful (here).
+Each invocation reads the shared state file, folds in the lifecycle event, and
+writes it back atomically. The state carries two things the status line reads:
 
-Wire in settings.json, mapping the events you care about to this script, e.g.:
+  - face reaction: {"expr": <expr>, "ts": <epoch>}  (decays on the render side)
+  - activity:      tools[] timestamps (geiger), agents[] (running subagents),
+                   tasks{created,completed}, errors  (lights the FIGHT box)
 
-  "hooks": {
-    "PostToolUse":        [{ "hooks": [{ "type": "command",
-        "command": "python /abs/path/hooks/doomface_hook.py" }] }],
-    "PostToolUseFailure": [{ "hooks": [{ "type": "command",
-        "command": "python /abs/path/hooks/doomface_hook.py" }] }],
-    "Stop":               [{ "hooks": [{ "type": "command",
-        "command": "python /abs/path/hooks/doomface_hook.py" }] }]
-  }
-
-State file: $DOOMFACE_STATE, else <temp>/doomface_state.json.
+Idle is stateless (wall clock); reactions and activity are stateful (here).
 The hook always exits 0 so it never blocks the tool/turn.
+
+Wire the events you want in settings.json (see the ideation doc's "Wiring"):
+PostToolUse, PostToolUseFailure, Stop, PermissionDenied (face) and
+SubagentStart, SubagentStop, TaskCreated, TaskCompleted (activity).
+
+State file: $DOOMFACE_STATE, else <temp>/doomface_<session_id>.json.
 """
 
 import json
 import os
+import re
 import sys
 import tempfile
 import time
 
+GEIGER_WINDOW = 30.0          # seconds of tool-call history kept for the sparkline
 
-def state_path():
-    return os.environ.get("DOOMFACE_STATE") or os.path.join(
-        tempfile.gettempdir(), "doomface_state.json")
-
-
-# Read-class (scanning -> look around) and write-class (-> rampage). Covers both
-# native tools and lean-ctx MCP tools (mcp__lean-ctx__ctx_*), matched by base name.
 READ_TOOLS = {"Read", "Grep", "Glob",
               "ctx_read", "ctx_multi_read", "ctx_search", "ctx_semantic_search",
               "ctx_tree", "ctx_overview"}
@@ -42,25 +34,58 @@ WRITE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit", "Bash",
                "ctx_shell", "ctx_edit"}
 
 
+def state_path(ev):
+    env = os.environ.get("DOOMFACE_STATE")
+    if env:
+        return env
+    sid = re.sub(r"[^A-Za-z0-9_-]", "_", str(ev.get("session_id") or "default"))[:48]
+    return os.path.join(tempfile.gettempdir(), f"doomface_{sid}.json")
+
+
 def _base(tool):
-    """Strip the mcp__<server>__ prefix so lean-ctx tools match by base name."""
     return tool.split("__")[-1] if tool.startswith("mcp__") else tool
 
 
-def expression(ev):
-    """Map a hook event to a face expression (or None for no reaction)."""
-    name = ev.get("hook_event_name", "")
-    base = _base(ev.get("tool_name", ""))
+def expression(name, tool):
+    """Map an event to a transient face expression (or None)."""
+    base = _base(tool)
     if name in ("PostToolUseFailure", "StopFailure", "PermissionDenied"):
-        return "ouch"                                   # took a hit / blocked
+        return "ouch"
     if name in ("Stop", "TaskCompleted"):
-        return "evl"                                    # success grin (every clean end)
+        return "evl"
     if name == "PostToolUse":
-        if base in READ_TOOLS:                          # scanning -> look around
+        if base in READ_TOOLS:
             return "tl" if int(time.time() * 2) % 2 == 0 else "tr"
-        if base in WRITE_TOOLS:                          # write/edit/bash/shell -> rampage
+        if base in WRITE_TOOLS:
             return "kill"
-    return None                                         # other events: no reaction
+    return None
+
+
+def fold_activity(st, name, ev, now):
+    st.setdefault("tools", [])
+    st.setdefault("agents", [])
+    st.setdefault("tasks", {"created": 0, "completed": 0})
+    st.setdefault("errors", 0)
+
+    if name == "PostToolUse":
+        st["tools"].append(now)
+    elif name in ("PostToolUseFailure", "StopFailure", "PermissionDenied"):
+        st["errors"] += 1
+    elif name == "SubagentStart":
+        st["agents"].append(ev.get("agent_name") or ev.get("agent_type") or "agent")
+    elif name == "SubagentStop":
+        a = ev.get("agent_name") or ev.get("agent_type") or "agent"
+        if a in st["agents"]:
+            st["agents"].remove(a)
+        elif st["agents"]:
+            st["agents"].pop()
+    elif name == "TaskCreated":
+        st["tasks"]["created"] += 1
+    elif name == "TaskCompleted":
+        st["tasks"]["completed"] += 1
+
+    cutoff = now - GEIGER_WINDOW                     # prune the geiger window
+    st["tools"] = [t for t in st["tools"] if t >= cutoff]
 
 
 def main():
@@ -68,10 +93,28 @@ def main():
         ev = json.load(sys.stdin)
     except Exception:
         ev = {}
-    expr = expression(ev)
+    name = ev.get("hook_event_name", "")
+    now = time.time()
+    path = state_path(ev)
+
+    try:
+        with open(path) as fh:
+            st = json.load(fh)
+    except Exception:
+        st = {}
+
+    fold_activity(st, name, ev, now)
+    expr = expression(name, ev.get("tool_name", ""))
     if expr:
-        with open(state_path(), "w") as fh:
-            json.dump({"expr": expr, "ts": time.time()}, fh)
+        st["expr"], st["ts"] = expr, now
+
+    tmp = f"{path}.{os.getpid()}.tmp"               # atomic write
+    try:
+        with open(tmp, "w") as fh:
+            json.dump(st, fh)
+        os.replace(tmp, path)
+    except Exception:
+        pass
     sys.exit(0)
 
 
