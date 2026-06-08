@@ -344,6 +344,107 @@ metrics = [
 
 ---
 
+## Configuration Schema
+
+One TOML file describes the whole bar. It is **layered**: a built-in base, then the user's config, then any **skin** overlays (the WAD idea, #3) — later layers override earlier keys. Everything the mockups show is expressible here; the earlier "Box composition" sketch was a preview of this.
+
+### `[bar]` — global defaults (any box may override)
+
+```toml
+[bar]
+refresh_interval    = 1            # seconds; re-runs the bar while idle so the
+                                   # face can animate (settings.json; min 1)
+border_style        = "vertical"   # frame | vertical | none
+border_color        = "term-bg"    # term-bg | term-fg | "#rrggbb"
+box_background      = "term-bg"    # term-bg | "#rrggbb"
+headers             = true         # show each box's title row
+terminal_background = "term-bg"    # used for the empty-bar-track blend; or "#000000"
+```
+
+### `[mugshot]` — the centre face (independent background)
+
+```toml
+[mugshot]
+background     = "#000000"         # term-bg | "#rrggbb"  (independent of boxes)
+hp_thresholds  = [20, 40, 60, 80]  # context-used % cuts between the 5 HP rows
+idle_cycle     = 2.0               # seconds between idle glances (st0/1/2)
+reaction_decay = 1.5               # seconds a reaction holds before relaxing
+```
+
+The 42-sprite face logic (HP row × expression, god/dead, resolution order) is built in; only these knobs are exposed.
+
+### `[[segment]]` — ordered left → right; the mugshot sits inline
+
+Each segment is a `box` or the `mugshot`. Order in the file is the on-screen order.
+
+```toml
+[[segment]]                        # type "box": a titled group of metrics
+type      = "box"
+title     = "USAGE"                # text title (shown when headers = true)
+min_width = 10                     # responsive floor
+max_width = 22                     # responsive cap (no stretch past this)
+# overrides of [bar] defaults are allowed here: box_background, border_*, headers
+metric = [
+  { id = "context.hp",   render = "bar", icon = "🧠", color = "threshold" },
+  { id = "ratelimit.5h", render = "bar", icon = "🕔", color = "threshold" },
+  { id = "ratelimit.7d", render = "bar", icon = "📅", color = "threshold" },
+]
+
+[[segment]]
+type = "mugshot"                   # the centre face; no title, no border
+
+[[segment]]
+type  = "box"
+title = "GIT"
+metric = [
+  { id = "git.branch", render = "text",   icon = "🌿" },
+  { group = ["git.behind", "git.ahead"], render = "number", sep = " ", icon = "⇅" },
+  { id = "git.status", render = "number", icon = "✎" },
+]
+
+[[segment]]
+type  = "box"
+title = "SYS"
+metric = [
+  { id = "sys.ram",   render = "bar",    icon = "💾", color = "threshold" },
+  { id = "sys.cpu",   render = "number", icon = "🔥" },
+  { id = "sys.clock", render = "text",   icon = "🕓" },
+]
+```
+
+**Metric entry fields:**
+
+| Field | Meaning |
+|-------|---------|
+| `id` | a catalog metric id (e.g. `context.hp`) |
+| `group` | a list of ids rendered side by side (instead of `id`), e.g. ahead/behind |
+| `render` | `text` · `number` · `bar` · `ammo` · `spark` |
+| `icon` | unicode icon label (e.g. `🧠`); or `label = "TXT"` for a text label |
+| `color` | `threshold` (value-driven green→amber→red) · `term-fg` · `"#rrggbb"` · theme name |
+| `unit` / `precision` | for `number` (e.g. `unit = "tok"`) |
+| `sep` | separator string for `group` |
+| `min` / `max` | optional per-metric width bounds (box width = widest metric, within box min/max) |
+
+### `[theme]` — named colours (one place for skins to override)
+
+```toml
+[theme]
+threshold_ok   = "#60c868"   # bar fill < 60 %
+threshold_warn = "#e0b840"   # 60–85 %
+threshold_crit = "#e05440"   # > 85 %
+title          = "#dec880"
+text           = "#b6bac8"
+```
+
+### Behaviour notes
+
+- **Inheritance:** a box inherits `[bar]` defaults; any key set on the box wins.
+- **Availability:** a metric whose catalog *availability* fails (e.g. `ratelimit.*` on an API-key deployment) hides itself; an emptied box collapses. One config stays portable across Claude.ai / API / CI.
+- **Responsive width:** boxes shrink toward `min_width` and never exceed `max_width`; bars fill the box within those bounds (see *Visual Direction*).
+- **Skins (WAD):** a skin is just another TOML layer setting `[theme]`, backgrounds, borders, or icons — no fork needed.
+
+---
+
 ## Ranked Ideas
 
 ### 1. Face-First Architecture
