@@ -16,10 +16,12 @@ neighbour) to the exact pixel height of the block-art image so the two line up.
 import os
 from PIL import Image
 
-ORIG_PNG = r"D:\Smeti\Dev\claude-doom-statusbar\doomguy_faces_orig\STFST01.png"
-OUT_DIR = r"D:\Smeti\Dev\Claude\claude-doom-statusbar\docs\images"
-BLOCKART = os.path.join(OUT_DIR, "mugshot_blockart_08.png")
-OUT_ORIG = os.path.join(OUT_DIR, "mugshot_orig_08.png")
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_MUG = os.path.join(_REPO, "assets", "images", "mugshot")
+ORIG_PNG = os.path.join(_MUG, "wad", "STFST01.png")
+OUT_DIR = _MUG
+BLOCKART = os.path.join(OUT_DIR, "STFST01-blockart-08.png")
+OUT_ORIG = os.path.join(OUT_DIR, "STFST01-orig-08.png")
 
 MAGENTA = (255, 0, 255)
 MAGENTA_TOL = 40

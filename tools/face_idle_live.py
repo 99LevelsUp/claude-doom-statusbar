@@ -26,7 +26,8 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mockup_boxes import load_face_from, face_cell, RESET  # noqa: E402
 
-ART_DIR = r"D:\Smeti\Dev\claude-doom-statusbar\doomguy_faces_orig"
+ART_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                       "assets", "images", "mugshot", "wad")
 IDLE = ["STFST00", "STFST01", "STFST02"]
 MUG_BG = (0, 0, 0)            # native black backdrop
 CYCLE = 2                     # seconds per idle frame

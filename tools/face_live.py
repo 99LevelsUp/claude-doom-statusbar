@@ -28,7 +28,8 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mockup_boxes import load_face_from, face_cell, RESET  # noqa: E402
 
-ART_DIR = r"D:\Smeti\Dev\claude-doom-statusbar\doomguy_faces_orig"
+ART_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                       "assets", "images", "mugshot", "wad")
 MUG_BG = (0, 0, 0)
 DECAY = 1.5          # seconds a reaction holds before relaxing to idle
 CYCLE = 2            # seconds per idle frame

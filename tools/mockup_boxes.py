@@ -42,7 +42,9 @@ TERM_FG = "term-fg"
 TEXT = (170, 170, 170)
 TITLE = (220, 200, 120)
 
-SPRITE = r"D:\Smeti\Dev\claude-doom-statusbar\doomguy_faces_orig\STFST01.png"
+_HERE = os.path.dirname(os.path.abspath(__file__))
+WAD_DIR = os.path.join(os.path.dirname(_HERE), "assets", "images", "mugshot", "wad")
+SPRITE = os.path.join(WAD_DIR, "STFST01.png")
 SYMS = "block+half+quad+sextant+wedge+legacy"
 MAGENTA_TOL = 40
 

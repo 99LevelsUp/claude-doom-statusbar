@@ -76,7 +76,9 @@ def is_face(name):
 
 def main():
     wad = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_WAD
-    out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path.dirname(wad), "wad_faces")
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    default_out = os.path.join(repo, "assets", "images", "mugshot", "wad")
+    out = sys.argv[2] if len(sys.argv) > 2 else default_out
     os.makedirs(out, exist_ok=True)
 
     data = open(wad, "rb").read()

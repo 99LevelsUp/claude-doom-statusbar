@@ -72,8 +72,8 @@ Notes:
 - A discarded "variant D" gave **each box its own background colour**. It is intentionally out of scope: a single terminal cell carries one background colour, so a divider between a blue box and a red box cannot be blue on one side and red on the other without a per-boundary half-block (`▌`) seam — more visual noise than the DOOM palette wants.
 - The `none` style draws no borders at all. On a coloured `box.background` the boxes merge into one continuous panel (grouping comes from content and spacing); on a terminal background they are separated only by a blank gap. Cheapest and most minimal look.
 - **Headers** are optional (configurable): each box may or may not show a title row.
-- The **mugshot is never framed and never headed** — it is the visual centre, always bare, and always spans the full bar height. It absorbs whatever rows the sibling boxes spend on chrome: **+2 rows** in `frame` style (where the others have top and bottom borders) and **+1 row** when headers occupy their own row (`vertical` / `none`). The face is loaded at exactly that height (`doomguy_faces_ansi/<rows>/`).
-- The **mugshot composites onto its own background**, not the box background. The face is baked from a *transparent* sprite (the magenta key turned transparent), so chafa encodes the surround as an unset colour rather than black; the renderer maps only that unset colour to `mugshot.background`, leaving any real black inside the face untouched. On a terminal (transparent) `mugshot.background`, silhouette cells whose transparent part falls in the glyph foreground are drawn with reverse video so the edge stays clean instead of showing a white fringe.
+- The **mugshot is never framed and never headed** — it is the visual centre, always bare, and always spans the full bar height. It absorbs whatever rows the sibling boxes spend on chrome: **+2 rows** in `frame` style (where the others have top and bottom borders) and **+1 row** when headers occupy their own row (`vertical` / `none`). The face is loaded at exactly that height (`assets/images/mugshot/ans/<rows>/`).
+- The **mugshot composites onto its own background**, not the box background. The face is baked from a *transparent* sprite (extracted from the WAD with real alpha), so chafa encodes the surround as an unset colour rather than black; the renderer maps only that unset colour to `mugshot.background`, leaving any real black inside the face untouched. On a terminal (transparent) `mugshot.background`, silhouette cells whose transparent part falls in the glyph foreground are drawn with reverse video so the edge stays clean instead of showing a white fringe.
 - This styling model is a natural fit for the declarative-segment / WAD skin system (Idea #3): a skin is just a chosen set of these colour/style values.
 
 Prototype: `tools/mockup_boxes.py` renders the presets in 24-bit ANSI for side-by-side comparison.
@@ -85,12 +85,12 @@ The face is produced by **chafa** from the original DOOM sprite, using the symbo
 Example at **8 character rows** — original sprite (left) and the actual chafa block-art mugshot (right), both at the same display height. Note how the right image is genuinely built from glyphs: half-blocks, quadrants, sextants/octants, and diagonal wedge cuts along the jaw and cheeks.
 
 <p>
-  <img src="../images/mugshot_orig_08.png" alt="Original DOOM face sprite" height="220">
+  <img src="../../assets/images/mugshot/STFST01-orig-08.png" alt="Original DOOM face sprite" height="220">
   &nbsp;&nbsp;➜&nbsp;&nbsp;
-  <img src="../images/mugshot_blockart_08.png" alt="chafa block-art mugshot at 8 rows" height="220">
+  <img src="../../assets/images/mugshot/STFST01-blockart-08.png" alt="chafa block-art mugshot at 8 rows" height="220">
 </p>
 
-> **Rendering note.** In a terminal, chafa's legacy-computing glyphs are drawn by the terminal's *built-in* glyph rasteriser (e.g. Windows Terminal) — no font required. A static PNG bake cannot reuse that path: no common installed font covers U+1FB00.. / U+1CD00.. (a font bake yields empty boxes/tofu), and a font-free pixel resample loses the glyph texture entirely (it just looks like a shrunken photo). The block-art preview above is therefore a **screenshot of chafa's real terminal output** — the exact glyphs the live HUD uses — with the terminal background keyed transparent. The original sprite (left) is the source DOOM face with its magenta key colour made transparent.
+> **Rendering note.** In a terminal, chafa's legacy-computing glyphs are drawn by the terminal's *built-in* glyph rasteriser (e.g. Windows Terminal) — no font required. A static PNG bake cannot reuse that path: no common installed font covers U+1FB00.. / U+1CD00.. (a font bake yields empty boxes/tofu), and a font-free pixel resample loses the glyph texture entirely (it just looks like a shrunken photo). The block-art preview above is therefore a **screenshot of chafa's real terminal output** — the exact glyphs the live HUD uses — with the terminal background keyed transparent. The original sprite (left) is the source DOOM face extracted from `DOOM1.WAD` (`assets/images/mugshot/wad/`), with real alpha transparency.
 
 ---
 
