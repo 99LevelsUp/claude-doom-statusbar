@@ -93,6 +93,43 @@ Example at **8 character rows** — original sprite (left) and the actual chafa 
 
 ---
 
+## Mugshot — Face States (42)
+
+The face is "Claude as Doomguy" (Idea #1). DOOM's 42 sprites are **8 expressions × 5 health levels + god + dead**. Two independent axes drive the choice: a **health level** (which of 5 rows) and an **expression** (which of 8, plus the two specials).
+
+**Health level** — driven by context headroom (`context_window.used_percentage`); HP = remaining context. Healthier = more context free.
+
+| HP row | context used | look |
+|--------|--------------|------|
+| 0 (best) | 0–20 % | fresh, composed |
+| 1 | 21–40 % | fine |
+| 2 | 41–60 % | working, tense |
+| 3 | 61–80 % | battered |
+| 4 (worst) | 81–99 % | bloodied, near the edge |
+
+**Expression** — a transient reaction chosen by session events; decays back to the idle/look faces. Priority high→low:
+
+| Expr | Meaning | Trigger (provider) |
+|------|---------|--------------------|
+| `ouch` | took a big hit | error (`PostToolUseFailure` / `StopFailure`) or a sudden large jump in context used |
+| `kill` | rampage / focused fire | sustained burst of rapid tool calls (geiger cascade) |
+| `evl` | evil grin / power-up | clean `Stop`, `TaskCompleted`, permission granted, or model upgrade |
+| `tl` / `tr` | looking around | scanning tools (`Read`/`Grep`/`Glob`); alternate L/R for liveliness |
+| `st0`/`st1`/`st2` | forward idle | no recent event; cycles slowly |
+
+**Specials** (override both axes):
+
+| State | Meaning | Trigger |
+|-------|---------|---------|
+| `god` | invulnerable — no gates | `permission_mode == bypassPermissions` (all-access "god mode") |
+| `dead` | out of headroom | context effectively exhausted (used → 100 %) or `SessionEnd` |
+
+**Resolution order:** `dead` > `god` > `ouch` > `kill` > `evl` > `tl`/`tr` > idle. The HP row picks the sprite row; the expression picks the column within it. Transient expressions show briefly (≈1–2 s or until the next event), then relax to look/idle — this needs the event-driven layer (Idea #2) plus a short decay timer.
+
+> Sprite/file names (e.g. `STFST01`) are not yet fixed — naming is deferred. The mapping above is the contract; assets are wired to it later.
+
+---
+
 ## Metrics & Box Composition
 
 There is a large **catalog of metrics**, grouped into **categories**. The user's configuration defines **which boxes exist and which metrics each box shows** — categories only organise the picker; any metric can go in any box. The mugshot is the fixed centre and is not a metric.
@@ -120,6 +157,7 @@ How a metric *looks* is configurable and independent of what it measures. The DO
 - `number` — `78%`, `$1.83`, `1.2k` (optional unit / precision)
 - `bar` — progress bar: `█████▓░ 78%`
 - `ammo` — segmented gauge: `▮▮▮▮▯ 64%`
+- `spark` — sparkline over time: `▁▂▃▅▇▆▃` (for time-varying metrics; needs a rolling history buffer)
 
 **Colour** — each metric has a colour; numeric metrics may use **threshold colours** (e.g. the context bar green → amber → red as it fills). Same colour model as boxes/borders.
 
@@ -128,6 +166,8 @@ How a metric *looks* is configurable and independent of what it measures. The DO
 **Grouping (side by side)** — related metrics can share one line: git `🌿 main  ↓2 ↑3`, edits `+124 -37`, limits `🕔 64%  📅 31%`.
 
 **DOOM flavour, à la carte** — the mugshot is the centrepiece; `ammo` style + a clip icon gives the ammo feel; a threshold `bar` gives the HP feel; permission icons give skull keys. Opt into as much or as little DOOM as you like.
+
+**Time-series & maps (exploratory)** — a metric that varies over time can render as a **`spark`line** (`▁▂▃▅▇`) built from a rolling history buffer (hook-bus). Good candidates: context growth, `rate.cost_min`, `rate.tok_s`, `act.geiger`, edits/min. Going further, a **character mini-map** is feasible (a braille canvas gives ~4× pixel density). Candidate uses — a session **automap** (tool-call chain as corridors, files touched as rooms — ties to Idea #4), a context-depth map, or a task-progress map. The use is still open; parked as a v2 exploration.
 
 > The *DOOM* column in the catalog below is illustrative flavour only — actual presentation is the configurable render style / colour / icon described here.
 
