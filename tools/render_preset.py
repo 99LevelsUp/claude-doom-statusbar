@@ -47,7 +47,10 @@ def f(c):
 
 
 def vlen(s):
-    return sum(2 if ord(ch) >= 0x1F000 else 1 for ch in ANSI_RE.sub("", s))
+    # Width 2 only for the emoji block (U+1F300..U+1FAFF, our icons). Legacy-
+    # computing block glyphs (U+1FB00.. and the U+1CC00.. supplement, used by the
+    # face) and block elements render width 1 — must NOT be counted as 2.
+    return sum(2 if 0x1F300 <= ord(ch) <= 0x1FAFF else 1 for ch in ANSI_RE.sub("", s))
 
 
 def threshold(pct):
@@ -201,8 +204,9 @@ def hp_row(thresholds=HP_THRESHOLDS):
         headroom = min(rem5, rem7)
     else:
         headroom = 100 - VALUES.get("context.hp", 0)      # context fallback
-    row = sum(1 for t in thresholds if headroom < t)
-    return 4 - row                        # higher headroom -> lower row (healthier)
+    # sprite row 0 = healthiest, 4 = most hurt; row = how many thresholds the
+    # headroom falls below (high headroom -> 0 -> healthy).
+    return sum(1 for t in thresholds if headroom < t)
 
 
 def build_bar(cfg, target, sprite_for=None):
@@ -239,21 +243,35 @@ def build_bar(cfg, target, sprite_for=None):
     face = load_face_from(os.path.join(WAD_DIR, sprite_for(hp) + ".png"), total_rows)
     face_w = max(len(r) for r in face)
 
-    def total_width(cells):
-        tot = 2 + (n_cols - 1)
-        for s in segs:
-            tot += (face_w + 2) if s["type"] == "mugshot" else (box_width(s, cells) + 2)
-        return tot
+    def col_widths(cells):
+        ws, mug = [], None
+        for i, s in enumerate(segs):
+            if s["type"] == "mugshot":
+                ws.append(face_w + 2)
+                mug = i
+            else:
+                ws.append(box_width(s, cells) + 2)
+        return ws, mug
+
+    def balanced_width(cells):
+        """Bar width once the narrower side is padded to centre the mugshot."""
+        ws, mug = col_widths(cells)
+        if mug is None:
+            return sum(ws) + (len(ws) - 1)
+        left = sum(ws[:mug]) + mug                          # left cols + seps incl. sep to mug
+        right = sum(ws[mug + 1:]) + (len(ws) - 1 - mug)
+        return 2 * max(left, right) + ws[mug]
 
     cells = 4
     for c in range(14, 3, -1):
-        if total_width(c) <= target:
+        if balanced_width(c) <= target:
             cells = c
             break
 
-    columns = []
+    columns, mug_idx = [], None
     for s in segs:
         if s["type"] == "mugshot":
+            mug_idx = len(columns)
             columns.append([face_cell(face[r], face_w, mug_rgb) for r in range(total_rows)])
             continue
         w = box_width(s, cells)
@@ -271,20 +289,38 @@ def build_bar(cfg, target, sprite_for=None):
                 body = render_value(m, 0, box_rgb)
             body += " " * max(0, w - vlen(body))
             col.append(bgsgr_box(box_rgb) + " " + body + " " + RESET)
-        while len(col) < total_rows:                      # pad to face floor
+        while len(col) < total_rows:                       # pad to face floor
             col.append(bgsgr_box(box_rgb) + " " * (w + 2) + RESET)
         columns.append(col)
 
-    def sep():
-        if style == "none":
-            return (RESET + " ") if box_rgb == TERM_RGB else (bgsgr_box(box_rgb) + " ")
-        if bcol == "term-bg":
-            return RESET + " "
-        return bgsgr_box(box_rgb) + border_fg(bcol) + "│"
+    if style == "none":
+        sepstr = (RESET + " ") if box_rgb == TERM_RGB else (bgsgr_box(box_rgb) + " ")
+    elif bcol == "term-bg":
+        sepstr = RESET + " "
+    else:
+        sepstr = bgsgr_box(box_rgb) + border_fg(bcol) + "│"
 
     lines = []
     for r in range(total_rows):
-        lines.append("".join((sep() if i else "") + c[r] for i, c in enumerate(columns)) + RESET)
+        if mug_idx is None:                                 # no mugshot: centre whole bar
+            body = sepstr.join(c[r] for c in columns)
+            outer = max(0, (target - sum(vlen(c[r]) for c in columns) - (len(columns) - 1)) // 2)
+            lines.append(RESET + " " * outer + body + RESET)
+            continue
+        left_seg = ""
+        for i in range(mug_idx):
+            left_seg += (sepstr if i else "") + columns[i][r]
+        if mug_idx:
+            left_seg += sepstr                              # sep between left group and mugshot
+        right_seg = ""
+        for j in range(mug_idx + 1, len(columns)):
+            right_seg += sepstr + columns[j][r]
+        lw, rw, mw = vlen(left_seg), vlen(right_seg), vlen(columns[mug_idx][r])
+        side = max(lw, rw)
+        left_seg = " " * (side - lw) + left_seg             # pad narrower side -> mugshot centred in bar
+        right_seg = right_seg + " " * (side - rw)
+        outer = max(0, (target - (2 * side + mw)) // 2)     # centre the symmetric bar on screen
+        lines.append(RESET + " " * outer + left_seg + columns[mug_idx][r] + right_seg + RESET)
     return {"lines": lines, "style": style, "headers": headers, "cells": cells, "hp": hp}
 
 
@@ -303,7 +339,7 @@ def main():
     res = build_bar(cfg, target)
     out = ["", f"  preset: {os.path.basename(path)}   style={res['style']}  "
            f"headers={str(res['headers']).lower()}  bar={res['cells']}", ""]
-    out += ["  " + ln for ln in res["lines"]]
+    out += res["lines"]
     out += [""]
     sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
 
