@@ -1,0 +1,19 @@
+# minimal — blends into the terminal, smallest footprint
+[bar]
+border_style   = "none"
+box_background = "term-bg"
+headers        = false
+
+[mugshot]
+background = "term-bg"
+
+[[segment]]
+type = "box"
+metric = [
+  { id = "context.hp",   render = "bar",    icon = "🧠", color = "threshold" },
+  { id = "ratelimit.5h", render = "ammo",   icon = "🕔" },
+  { id = "cost.total",   render = "number", icon = "💰" },
+]
+
+[[segment]]
+type = "mugshot"

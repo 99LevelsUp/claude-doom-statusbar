@@ -1,0 +1,30 @@
+# default — balanced (the live-mockup look)
+[bar]
+border_style   = "vertical"
+border_color   = "term-fg"
+box_background = "term-bg"
+headers        = true
+
+[mugshot]
+background = "#000000"
+
+[[segment]]
+type  = "box"
+title = "USAGE"
+metric = [
+  { id = "context.hp",   render = "bar", icon = "🧠", color = "threshold" },
+  { id = "ratelimit.5h", render = "bar", icon = "🕔", color = "threshold" },
+  { id = "ratelimit.7d", render = "bar", icon = "📅", color = "threshold" },
+]
+
+[[segment]]
+type = "mugshot"
+
+[[segment]]
+type  = "box"
+title = "GIT"
+metric = [
+  { id = "git.branch", render = "text",   icon = "🌿" },
+  { group = ["git.behind", "git.ahead"], render = "number", sep = " ", icon = "⇅" },
+  { id = "cost.total", render = "number", icon = "💰" },
+]
