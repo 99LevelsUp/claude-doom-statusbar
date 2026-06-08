@@ -49,7 +49,7 @@ The status bar attaches **below the prompt line** and is divided into **segment 
 
 Box framing is **chosen by the user at install time** from a single model, not from fixed themes. Two colours and one topology cover every look:
 
-- `box.background` ∈ { terminal background, terminal foreground, specific colour }
+- `box.background` ∈ { terminal background, specific colour }
 - `border.color` ∈ { terminal background, terminal foreground, specific colour }
 - `border.style` ∈ { `frame`, `vertical` }
 - `headers` ∈ { shown, hidden } — whether each box shows a title row

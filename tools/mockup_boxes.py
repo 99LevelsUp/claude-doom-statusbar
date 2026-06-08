@@ -3,7 +3,7 @@
 
 Unified model (what the installer will ask):
 
-    box.background  in { term-bg, term-fg, <rgb> }   # fill behind a box
+    box.background  in { term-bg, <rgb> }            # fill behind a box
     border.color    in { term-bg, term-fg, <rgb> }   # separators / frame lines
     border.style    in { frame, vertical }            # A = frame, B/C = vertical
     headers         in { shown, hidden }              # title row per box
