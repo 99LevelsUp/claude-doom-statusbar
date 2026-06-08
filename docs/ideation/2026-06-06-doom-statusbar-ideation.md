@@ -127,6 +127,10 @@ The face is "Claude as Doomguy" (Idea #1). DOOM's 42 sprites are **8 expressions
 
 **Resolution order:** `dead` > `god` > `ouch` > `kill` > `evl` > `tl`/`tr` > idle. The HP row picks the sprite row; the expression picks the column within it. Transient expressions show briefly (≈1–2 s or until the next event), then relax to look/idle — this needs the event-driven layer (Idea #2) plus a short decay timer.
 
+**Liveness (idle animation).** Even when nothing happens, the idle face glances around — it re-rolls the three forward frames (`st0`/`st1`/`st2`) about every 2 s. This requires the bar to redraw *while idle*, so set `refreshInterval` (min 1 s) in `settings.json`: Claude Code then re-runs the status line on a timer (event-driven updates are otherwise silent during idle). **No daemon is needed** — the frame is chosen **statelessly from the wall clock** (`bucket = floor(epoch / 2)`, pseudo-random pick), so every independent re-invocation lands on the right frame. Repeats are allowed (DOOM holds a frame too). *Demo: `tools/face_idle_live.py`.*
+
+**Reactions need persisted state.** A reactive expression (`ouch`/`evl`/`kill`) can't be derived from the clock — it comes from an event the render pass didn't witness. The event-driven layer (Idea #2) bridges this: a hook writes the event + timestamp to a small state file; each status-line render reads it and shows that expression until it **decays** (age > ~1–2 s), then falls back to the idle/HP face. So idle is stateless (clock), reactions are stateful (event marker + decay).
+
 > Sprite/file names (e.g. `STFST01`) are not yet fixed — naming is deferred. The mapping above is the contract; assets are wired to it later.
 
 ---
