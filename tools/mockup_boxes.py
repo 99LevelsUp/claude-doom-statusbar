@@ -6,12 +6,16 @@ Unified model (what the installer will ask):
     box.background  in { term-bg, term-fg, <rgb> }   # fill behind a box
     border.color    in { term-bg, term-fg, <rgb> }   # separators / frame lines
     border.style    in { frame, vertical }            # A = frame, B/C = vertical
+    headers         in { shown, hidden }              # title row per box
 
 Variants A / B / C are then just presets of that model:
 
     A  frame     : background=term-bg, border=gray  , style=frame
     B  lines     : background=term-bg, border=gray  , style=vertical
     C  panel     : background=dark    , border=term-bg, style=vertical
+
+Headers: when shown as their own row (vertical style), the mugshot box has no
+title of its own, so it gains one extra face row to span the full bar height.
 
 Run directly in a real terminal to see true colours:
 
@@ -27,92 +31,121 @@ BOLD = "\x1b[1m"
 TERM_BG = "term-bg"
 TERM_FG = "term-fg"
 
+TEXT = (170, 170, 170)
+TITLE = (220, 200, 120)
+
+# Data boxes: (title, data lines). The mugshot box is generated separately so
+# its height can follow the bar (and grow by one row when headers are shown).
+DATA_BOXES = [
+    ("CONTEXT", ["HP █████▓░ 78%", "31k / 200k tok", "window OPEN"]),
+    ("USAGE",   ["5h  ▮▮▮▮▯ 64%", "day ▮▮▯▯▯ 31%", "$1.83  BFG"]),
+    ("__FACE__", None),  # placeholder, filled per render
+    ("GIT",     ["br: main", "+124 / -37", "* 3 changed"]),
+    ("AGENTS",  ["> 2 running", "explore,plan", "geiger ▒▒░"]),
+]
+
+# Mugshot placeholder at two heights: with and without the extra header row.
+FACE = {
+    3: ["  ▟█████▙  ", "  ██▀▄▀██  ", "  ▜█████▛  "],
+    4: ["  ▟█████▙  ", "  ███████  ", "  ██▀▄▀██  ", "  ▜█████▛  "],
+}
+
 
 def fg(color):
     if color == TERM_FG:
         return "\x1b[39m"
     if color == TERM_BG:
-        # No portable "default-bg as foreground"; approximate with black.
-        return "\x1b[38;2;0;0;0m"
+        return "\x1b[38;2;0;0;0m"  # no portable default-bg-as-fg; approximate black
     return f"\x1b[38;2;{color[0]};{color[1]};{color[2]}m"
 
 
 def bg(color):
     if color == TERM_BG:
         return "\x1b[49m"
-    if color == TERM_FG:
-        return "\x1b[7m\x1b[27m"  # rarely used; keep simple
     return f"\x1b[48;2;{color[0]};{color[1]};{color[2]}m"
 
 
-# Demo content. All glyphs are width-1 so columns line up.
-TEXT = (170, 170, 170)
-TITLE = (220, 200, 120)
-BOXES = [
-    ("CONTEXT", ["HP █████▓░ 78%", "31k / 200k tok", "window OPEN"]),
-    ("USAGE",   ["5h  ▮▮▮▮▯ 64%", "day ▮▮▯▯▯ 31%", "$1.83  BFG"]),
-    ("",        ["  ▟█████▙  ", "  ██▀▄▀██  ", "  ▜█████▛  "]),
-    ("GIT",     ["br: main", "+124 / -37", "* 3 changed"]),
-    ("AGENTS",  ["> 2 running", "explore,plan", "geiger ▒▒░"]),
-]
-
-
-def box_width(title, lines):
-    return max([len(title) + 2] + [len(ln) for ln in lines])
+def vlen(s):
+    return len(s)  # all demo glyphs are width-1
 
 
 def pad(s, w):
-    return s + " " * (w - len(s))
+    return s + " " * (w - vlen(s))
 
 
-def render(box_background, border_color, style):
-    widths = [box_width(t, l) for t, l in BOXES]
-    sep_is_hole = (border_color == TERM_BG)  # render separator as a true term-bg gap
+def box_width(title, lines):
+    titlen = (len(title) + 2) if not title.startswith("__") else 0
+    return max([titlen] + [vlen(ln) for ln in lines])
+
+
+def render(box_background, border_color, style, show_headers):
+    data_rows = max(len(l) for _, l in DATA_BOXES if l)
+    face_rows = data_rows + (1 if (show_headers and style == "vertical") else 0)
+    face = FACE[face_rows]
+
+    # Build each box's full column of (already styled) cell strings.
+    widths = []
+    columns = []
+    titles = []
+    for title, lines in DATA_BOXES:
+        is_face = title.startswith("__")
+        body = face if is_face else lines
+        w = max([0 if is_face else len(title) + 2] + [vlen(x) for x in body])
+        widths.append(w)
+        titles.append("" if is_face else title)
+
+        col = []
+        if show_headers and style == "vertical":
+            if is_face:
+                # Face fills the header band too (its first row).
+                col.append(bg(box_background) + fg(TEXT) + " " + pad(face[0], w) + " " + RESET)
+            else:
+                col.append(bg(box_background) + BOLD + fg(TITLE) + " " + pad(title, w) + " " + RESET)
+        start = 1 if (show_headers and style == "vertical" and is_face) else 0
+        for r in range(len(body) - start) if is_face else range(data_rows):
+            cell = (face[start + r] if is_face else (lines[r] if r < len(lines) else ""))
+            col.append(bg(box_background) + fg(TEXT) + " " + pad(cell, w) + " " + RESET)
+        columns.append(col)
+
+    nrows = max(len(c) for c in columns)
+    sep_is_hole = (border_color == TERM_BG and style == "vertical")
 
     def sep():
         if sep_is_hole:
-            return RESET + " "  # 1-wide gap in the real terminal background
+            return RESET + " "
         return bg(box_background) + fg(border_color) + "│"
 
     out = []
-    nrows = max(len(l) for _, l in BOXES)
 
     if style == "frame":
-        # Top border with embedded titles.
         top = ""
-        for i, (t, _) in enumerate(BOXES):
+        for i, t in enumerate(titles):
             w = widths[i]
-            label = f" {t} " if t else "─" * (w)
-            bar = ("─" + label + "─" * (w - len(label) + 1))[:w + 2]
+            if show_headers and t:
+                label = f" {t} "
+                bar = ("─" + label + "─" * (w + 1 - len(label)))[:w + 2]
+            else:
+                bar = "─" * (w + 2)
             top += bg(box_background) + fg(border_color) + "┌" + bar + "┐"
         out.append(top + RESET)
 
-    # Title row (only when NOT in frame mode; frame puts titles in the border).
-    if style != "frame":
-        line = ""
-        for i, (t, _) in enumerate(BOXES):
-            if i:
-                line += sep()
-            line += bg(box_background) + BOLD + fg(TITLE) + " " + pad(t, widths[i]) + " " + RESET
-        out.append(line + RESET)
-
-    # Data rows.
     for r in range(nrows):
         line = ""
-        for i, (_, lines) in enumerate(BOXES):
-            if i:
-                line += sep()
-            cell = lines[r] if r < len(lines) else ""
-            wall = (bg(box_background) + fg(border_color) + "│") if style == "frame" else bg(box_background)
-            endwall = (bg(box_background) + fg(border_color) + "│") if style == "frame" else ""
-            line += wall + bg(box_background) + fg(TEXT) + " " + pad(cell, widths[i]) + " " + endwall + RESET
+        for i, col in enumerate(columns):
+            cell = col[r] if r < len(col) else (bg(box_background) + " " * (widths[i] + 2) + RESET)
+            if style == "frame":
+                wall = bg(box_background) + fg(border_color) + "│"
+                line += wall + cell + wall
+            else:
+                if i:
+                    line += sep()
+                line += cell
         out.append(line + RESET)
 
     if style == "frame":
         bottom = ""
-        for i in range(len(BOXES)):
-            w = widths[i]
-            bottom += bg(box_background) + fg(border_color) + "└" + "─" * (w + 2) + "┘"
+        for i in range(len(columns)):
+            bottom += bg(box_background) + fg(border_color) + "└" + "─" * (widths[i] + 2) + "┘"
         out.append(bottom + RESET)
 
     return out
@@ -130,15 +163,23 @@ PRESETS = [
 ]
 
 
+def emit(buf, label, cfg, show_headers):
+    buf.append("")
+    buf.append(f"  {label}   headers={'on' if show_headers else 'off'}")
+    buf.append("")
+    for row in render(show_headers=show_headers, **cfg):
+        buf.append("  " + row)
+    buf.append("")
+
+
 def main():
     buf = []
+    buf.append("=== headers ON (mugshot gains a row in vertical styles) ===")
     for label, cfg in PRESETS:
-        buf.append("")
-        buf.append(f"  {label}")
-        buf.append("")
-        for row in render(**cfg):
-            buf.append("  " + row)
-        buf.append("")
+        emit(buf, label, cfg, show_headers=True)
+    buf.append("=== headers OFF (compact; mugshot back to base height) ===")
+    for label, cfg in (PRESETS[1], PRESETS[2]):  # B and C for comparison
+        emit(buf, label, cfg, show_headers=False)
     sys.stdout.buffer.write(("\n".join(buf) + "\n").encode("utf-8"))
 
 

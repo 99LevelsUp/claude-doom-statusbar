@@ -52,6 +52,7 @@ Box framing is **chosen by the user at install time** from a single model, not f
 - `box.background` ∈ { terminal background, terminal foreground, specific colour }
 - `border.color` ∈ { terminal background, terminal foreground, specific colour }
 - `border.style` ∈ { `frame`, `vertical` }
+- `headers` ∈ { shown, hidden } — whether each box shows a title row
 
 The "variants" are just presets of this model:
 
@@ -65,6 +66,7 @@ The "variants" are just presets of this model:
 Notes:
 - A separator coloured as *terminal background* renders as a true gap — a hole punched through the panel to the terminal behind it — which is why preset **C**'s cuts are seamless against any colour scheme.
 - A discarded "variant D" gave **each box its own background colour**. It is intentionally out of scope: a single terminal cell carries one background colour, so a divider between a blue box and a red box cannot be blue on one side and red on the other without a per-boundary half-block (`▌`) seam — more visual noise than the DOOM palette wants.
+- **Headers** are optional (configurable). When shown as their own row (`vertical` style), the **mugshot box gains one extra row** so the face spans the full bar height — it has no header of its own to fill that band. In `frame` style the title sits inside the top border, so no extra row is added.
 - This styling model is a natural fit for the declarative-segment / WAD skin system (Idea #3): a skin is just a chosen set of these colour/style values.
 
 Prototype: `tools/mockup_boxes.py` renders the presets in 24-bit ANSI for side-by-side comparison.
