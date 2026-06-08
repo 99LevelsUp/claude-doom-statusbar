@@ -82,21 +82,20 @@ def pad(s, w):
 # --- real chafa face loading ------------------------------------------------
 
 _face_cache = {}
-_alpha_sprite = None
+_alpha_sprite = {}
 
 
-def alpha_sprite():
-    """Return a path to the sprite with its magenta key colour made transparent.
+def alpha_sprite(src=SPRITE):
+    """Return a path to `src` with its magenta key colour made transparent.
 
     Feeding chafa a transparent sprite makes it encode the surround as an unset
     (default) colour, never black -- which is what keeps transparency
     distinguishable from genuine black inside the face.
     """
-    global _alpha_sprite
-    if _alpha_sprite:
-        return _alpha_sprite
+    if src in _alpha_sprite:
+        return _alpha_sprite[src]
     from PIL import Image
-    im = Image.open(SPRITE).convert("RGBA")
+    im = Image.open(src).convert("RGBA")
     px = im.load()
     w, h = im.size
     for y in range(h):
@@ -104,20 +103,22 @@ def alpha_sprite():
             r, g, b, a = px[x, y]
             if abs(r - 255) <= MAGENTA_TOL and g <= MAGENTA_TOL and abs(b - 255) <= MAGENTA_TOL:
                 px[x, y] = (r, g, b, 0)
-    path = os.path.join(tempfile.gettempdir(), "doomguy_STFST01_alpha.png")
+    base = os.path.splitext(os.path.basename(src))[0]
+    path = os.path.join(tempfile.gettempdir(), f"doomguy_{base}_alpha.png")
     im.save(path)
-    _alpha_sprite = path
+    _alpha_sprite[src] = path
     return path
 
 
-def load_face(rows):
-    """Bake the face at the given character height via chafa on the transparent
-    sprite. Returns rows of (char, fg, bg) where fg/bg are an (r,g,b) tuple or
+def load_face_from(src, rows):
+    """Bake `src` at the given character height via chafa on its transparent
+    version. Returns rows of (char, fg, bg) where fg/bg are an (r,g,b) tuple or
     None when chafa left that colour unset (i.e. transparent)."""
-    if rows in _face_cache:
-        return _face_cache[rows]
+    key = (src, rows)
+    if key in _face_cache:
+        return _face_cache[key]
     cmd = ["chafa", "-f", "symbols", "--polite", "on", "--colors", "full",
-           "--symbols", SYMS, "--size", f"9999x{rows}", alpha_sprite()]
+           "--symbols", SYMS, "--size", f"9999x{rows}", alpha_sprite(src)]
     text = subprocess.run(cmd, capture_output=True).stdout.decode("utf-8", "replace")
 
     ESC = "\x1b"
@@ -166,8 +167,13 @@ def load_face(rows):
             i += 1
     if row:
         out.append(row)
-    _face_cache[rows] = out
+    _face_cache[key] = out
     return out
+
+
+def load_face(rows):
+    """Bake the default face (STFST01) at the given character height."""
+    return load_face_from(SPRITE, rows)
 
 
 def _truecolor(code, c):
