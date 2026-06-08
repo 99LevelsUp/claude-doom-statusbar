@@ -45,6 +45,7 @@ The status bar attaches **below the prompt line** and is divided into **segment 
 - Bar height is driven by the **tallest box** (number of parameters in its busiest segment).
 - The mugshot **scales continuously** with that height — roughly **4 to 16 character rows** tall, with intermediate sizes in between (not a fixed set of steps).
 - Boxes appear/disappear and grow/shrink with available metrics; the face re-sizes to match.
+- **Width is responsive.** Each box (and each metric) has a **minimum and maximum width**. As the terminal narrows, boxes shrink toward their min (bars contract — e.g. 14 → 4 cells); on ultra-wide screens they never grow past their max, so information stays compact and readable instead of stretched. A box takes the width of its widest metric; bars fill the box width within those bounds.
 
 ### Box styling (configurable)
 

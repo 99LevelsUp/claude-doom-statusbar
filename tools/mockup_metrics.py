@@ -36,8 +36,8 @@ GREEN = (96, 200, 104)
 AMBER = (224, 184, 64)
 RED = (224, 84, 64)
 
-BAR_WANT = 14             # preferred bar cells
-BAR_MIN = 4               # minimum bar cells
+BAR_MAX = 14              # max bar cells — cap on wide screens so boxes don't stretch
+BAR_MIN = 4               # min bar cells — floor on narrow screens
 EIGHTHS = " ▏▎▍▌▋▊▉"      # 0..7 eighths; '█' is a full cell
 
 
@@ -127,7 +127,7 @@ def header_cell(title, w, box_bg):
 def choose_cells(face_w, target):
     """Largest bar width that fits the target terminal width (down to BAR_MIN)."""
     cols = len(BOXES)            # boxes + face column
-    for cells in range(BAR_WANT, BAR_MIN - 1, -1):
+    for cells in range(BAR_MAX, BAR_MIN - 1, -1):
         total = 2 + (cols - 1)   # leading indent + separators
         for title, metrics in BOXES:
             total += (face_w + 2) if title == "__FACE__" else (box_width(metrics, cells) + 2)
@@ -162,12 +162,14 @@ def render_bar(target):
 
 def main():
     buf = []
-    for label, target in [("WIDE terminal", 110), ("NARROW terminal", 60)]:
+    for label, target in [("ULTRA-WIDE terminal (capped at max)", 200),
+                          ("WIDE terminal", 110),
+                          ("NARROW terminal", 60)]:
         rows, cells = render_bar(target)
         buf += ["", f"  {label}  (~{target} cols, bar={cells} cells)", ""]
         buf += rows
         buf += [""]
-    buf += ["  empty track = 50% blend(box bg, terminal bg) · fine eighth-block fill · responsive width", ""]
+    buf += ["  bar width clamped to [min 4, max 14] cells · empty track = 50% blend(box, terminal) · responsive", ""]
     sys.stdout.buffer.write(("\n".join(buf) + "\n").encode("utf-8"))
 
 
