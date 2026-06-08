@@ -64,10 +64,19 @@ def r_number(s, color=TEXT):
     return f(color) + s
 
 
-def r_bar(pct, width=7):
-    filled = round(pct / 100 * width)
+def r_bar(pct, cells=8):
+    """Fine progress bar: 8 sub-steps per cell via left eighth-blocks."""
+    eighths = round(pct / 100 * cells * 8)
+    full = eighths // 8
+    rem = eighths % 8
+    parts = " ▏▎▍▌▋▊▉"  # 0..7 eighths; '█' is the full cell
     c = threshold(pct)
-    return f(c) + "█" * filled + f(DIM) + "░" * (width - filled) + f(c) + f" {pct}%"
+    s = f(c) + "█" * full
+    if rem:
+        s += f(c) + parts[rem]
+    empty = cells - full - (1 if rem else 0)
+    s += f(DIM) + "░" * empty
+    return s + f(c) + f" {pct}%"
 
 
 def r_ammo(pct, segs=5, color=AMBER):
@@ -91,27 +100,23 @@ def r_group(*parts):
 
 # --- boxes ------------------------------------------------------------------
 
+# Box titles are TEXT; each metric line is prefixed by its own unicode icon.
 BOXES = [
-    ("🧠", [
-        r_bar(78),
-        r_number("31k/200k", DIM),
-        r_spark([3, 5, 8, 12, 18, 24, 31]),
-    ]),
-    ("🕔", [
-        r_text("5h ", DIM) + r_ammo(64),
-        r_text("7d ", DIM) + r_ammo(31),
-        r_number("$1.83", TEXT),
+    ("USAGE", [
+        "🧠 " + r_bar(78),                       # context
+        "🕔 " + r_bar(64),                       # 5-hour usage
+        "📅 " + r_bar(31),                       # weekly usage
     ]),
     ("__FACE__", None),
-    ("🌿", [
-        r_text("main"),
-        r_group(f(AMBER) + "↓2", f(GREEN) + "↑3") + "   " + f(GREEN) + "+124 " + f(RED) + "-37",
-        r_spark([1, 0, 2, 5, 3, 7, 4], color=(150, 150, 170)),
+    ("GIT", [
+        "🌿 " + r_text("main"),
+        "⇅ " + r_group(f(AMBER) + "↓2", f(GREEN) + "↑3"),
+        "✎ " + f(GREEN) + "+124 " + f(RED) + "-37",
     ]),
-    ("💻", [
-        r_text("RAM ", DIM) + r_bar(47),
-        r_text("CPU ", DIM) + r_number("12%", GREEN),
-        r_number("14:23", TEXT),
+    ("SYS", [
+        "💾 " + r_bar(47),                       # RAM
+        "🔥 " + r_number("12%", GREEN),          # CPU
+        "🕓 " + r_number("14:23"),               # clock
     ]),
 ]
 
@@ -155,9 +160,9 @@ def main():
             line += c[r]
         out.append("  " + line + RESET)
 
-    buf = ["", "  Metric render styles — panel + icon headers + real mugshot", ""]
+    buf = ["", "  Metric render — text box titles, per-metric icon labels, fine bars (eighths)", ""]
     buf += out
-    buf += ["", "  legend: 🧠 bar(threshold)  🕔 ammo  spark  $ number  🌿 text+group  💻 bar/number", ""]
+    buf += ["", "  USAGE: 🧠 context · 🕔 5h · 📅 weekly (threshold-coloured fine bars)   GIT: text + group   SYS: bar/number", ""]
     sys.stdout.buffer.write(("\n".join(buf) + "\n").encode("utf-8"))
 
 
