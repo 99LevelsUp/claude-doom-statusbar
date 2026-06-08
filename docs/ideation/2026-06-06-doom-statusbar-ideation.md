@@ -139,6 +139,11 @@ HP = min(remaining_5h, remaining_7d) / total_5h
 
 **Reactions need persisted state.** A reactive expression (`ouch`/`evl`/`kill`) can't be derived from the clock — it comes from an event the render pass didn't witness. The event-driven layer (Idea #2) bridges this: a hook writes the event + timestamp to a small state file; each status-line render reads it and shows that expression until it **decays** (age > ~1–2 s), then falls back to the idle/HP face. So idle is stateless (clock), reactions are stateful (event marker + decay).
 
+Concrete protocol (prototype: `hooks/doomface_hook.py` + `tools/face_hook_demo.py`):
+- **State file** (`$DOOMFACE_STATE`, default `<temp>/doomface_state.json`): `{"expr": "ouch", "ts": <epoch>}`.
+- **Hook mapping:** `PostToolUseFailure`/`StopFailure` → `ouch`; `Stop`/`TaskCompleted` → `evl`; `PostToolUse` → `kill` (or `tl`/`tr` for `Read`/`Grep`/`Glob`). Other events write nothing. The hook always exits 0 (never blocks).
+- **Wiring:** map those events to the hook in `settings.json`; the render reads the file with a `reaction_decay` window (default 1.5 s). The hook process and the render process are fully decoupled.
+
 > Sprite/file names (e.g. `STFST01`) are not yet fixed — naming is deferred. The mapping above is the contract; assets are wired to it later.
 
 ---
