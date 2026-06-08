@@ -45,6 +45,30 @@ The status bar attaches **below the prompt line** and is divided into **segment 
 - The mugshot **scales continuously** with that height — roughly **4 to 16 character rows** tall, with intermediate sizes in between (not a fixed set of steps).
 - Boxes appear/disappear and grow/shrink with available metrics; the face re-sizes to match.
 
+### Box styling (configurable)
+
+Box framing is **chosen by the user at install time** from a single model, not from fixed themes. Two colours and one topology cover every look:
+
+- `box.background` ∈ { terminal background, terminal foreground, specific colour }
+- `border.color` ∈ { terminal background, terminal foreground, specific colour }
+- `border.style` ∈ { `frame`, `vertical` }
+
+The "variants" are just presets of this model:
+
+| Preset | `box.background` | `border.color` | `border.style` | Cost |
+|--------|------------------|----------------|----------------|------|
+| **A** frame | terminal bg | gray | `frame` (title breaks the top line) | +2 rows |
+| **B** lines | terminal bg | gray | `vertical` (separators only) | 0 rows |
+| **C** panel | dark colour | terminal bg | `vertical` (solid panel, seamless cuts) | 0 rows |
+| **C′** panel | dark colour | black | `vertical` (solid panel, black dividers) | 0 rows |
+
+Notes:
+- A separator coloured as *terminal background* renders as a true gap — a hole punched through the panel to the terminal behind it — which is why preset **C**'s cuts are seamless against any colour scheme.
+- A discarded "variant D" gave **each box its own background colour**. It is intentionally out of scope: a single terminal cell carries one background colour, so a divider between a blue box and a red box cannot be blue on one side and red on the other without a per-boundary half-block (`▌`) seam — more visual noise than the DOOM palette wants.
+- This styling model is a natural fit for the declarative-segment / WAD skin system (Idea #3): a skin is just a chosen set of these colour/style values.
+
+Prototype: `tools/mockup_boxes.py` renders the presets in 24-bit ANSI for side-by-side comparison.
+
 ### Mugshot rendering
 
 The face is produced by **chafa** from the original DOOM sprite, using the symbol set **`block + half + quad + sextant + wedge + legacy`**. The `legacy` class (Unicode "Symbols for Legacy Computing" U+1FB00.. and its Supplement U+1CD00..) adds the most sub-cell detail, so the face stays readable even at small sizes.
