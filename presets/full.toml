@@ -34,8 +34,9 @@ type = "mugshot"
 
 [[segment]]
 type  = "box"
-title = "GIT"
+title = "PROJECT"
 metric = [
+  { id = "loc.cwd",    render = "text",   icon = "📁" },
   { id = "git.branch", render = "text",   icon = "🌿" },
   { group = ["git.behind", "git.ahead"], render = "number", sep = " ", icon = "⇅" },
   { id = "git.status", render = "number", icon = "✎" },

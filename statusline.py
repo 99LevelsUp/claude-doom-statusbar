@@ -61,6 +61,7 @@ def build_values(data):
 
     cwd = data.get("cwd") or (data.get("workspace") or {}).get("current_dir")
     if cwd:
+        v["loc.cwd"] = os.path.basename(cwd.rstrip("/\\")) or cwd
         br = git(cwd, "branch", "--show-current")
         if br:
             v["git.branch"] = br
