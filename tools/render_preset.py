@@ -84,7 +84,7 @@ def border_fg(spec):
 
 # --- render styles ----------------------------------------------------------
 
-def r_bar(pct, cells, box_rgb, color_spec):
+def r_bar(pct, cells, box_rgb, color_spec, show_pct=True):
     empty = tuple((box_rgb[i] + TERM_RGB[i]) // 2 for i in range(3))
     eighths = round(pct / 100 * cells * 8)
     full = min(cells, eighths // 8)
@@ -94,7 +94,10 @@ def r_bar(pct, cells, box_rgb, color_spec):
     if rem:
         s += EIGHTHS[rem]
     s += " " * max(0, cells - full - (1 if rem else 0))
-    return s + bgsgr_box(box_rgb) + f(c) + f" {pct:>3}%"   # fixed-width % (aligned)
+    s += bgsgr_box(box_rgb)
+    if show_pct:
+        s += f(c) + f" {pct:>3}%"                          # fixed-width % (aligned)
+    return s
 
 
 def bgsgr_box(box_rgb):
@@ -180,7 +183,7 @@ def render_value(entry, cells, box_rgb):
         return label + f(TEXT) + sep.join(parts)
     val = VALUES.get(entry["id"], "?")
     if render == "bar":
-        s = label + r_bar(val, cells, box_rgb, color or "threshold")
+        s = label + r_bar(val, cells, box_rgb, color or "threshold", entry.get("show_pct", True))
         sid = entry.get("suffix")                       # text appended after the % (e.g. "1M")
         if sid and sid in VALUES:
             s += f(TEXT) + " " + str(VALUES[sid])
@@ -206,7 +209,7 @@ def bar_meta(entry):
     icon = entry.get("icon", "")
     lw = vlen((icon + " ") if icon else "")
     if entry.get("render") in ("bar", "ammo"):
-        sw = 5                                          # fixed " NNN%" suffix
+        sw = 0 if entry.get("show_pct") is False else 5   # fixed " NNN%" suffix
         sid = entry.get("suffix")
         if sid and sid in VALUES:
             sw += 1 + vlen(str(VALUES[sid]))            # + " <suffix>"

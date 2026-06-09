@@ -22,11 +22,11 @@ metric = [
 type  = "box"
 title = "USAGE"
 metric = [
-  { id = "context.hp",    render = "bar",    icon = "🧠", color = "threshold" },
-  { id = "usage.reset5h", render = "text",   icon = "🕔" },
-  { id = "usage.reset7d", render = "text",   icon = "📅" },
-  { id = "sys.ram",       render = "bar",    icon = "💾", color = "threshold" },
-  { id = "cost.total",    render = "number", icon = "💰" },
+  { id = "context.hp",   render = "bar",    icon = "🧠", color = "threshold" },
+  { id = "ratelimit.5h", render = "bar",    icon = "🕔", color = "threshold", show_pct = false, suffix = "usage.reset5h" },
+  { id = "ratelimit.7d", render = "bar",    icon = "📅", color = "threshold", show_pct = false, suffix = "usage.reset7d" },
+  { id = "sys.ram",      render = "bar",    icon = "💾", color = "threshold" },
+  { id = "cost.total",   render = "number", icon = "💰" },
 ]
 
 [[segment]]
