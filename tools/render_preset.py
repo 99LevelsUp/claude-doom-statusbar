@@ -38,7 +38,7 @@ SAMPLE = {
     "context.hp": 78, "ratelimit.5h": 64, "ratelimit.7d": 31, "cost.total": "$1.83",
     "git.branch": "main", "git.behind": "↓2", "git.ahead": "↑3", "git.status": "3",
     "pr.state": "#1234",
-    "act.subagents": ["hook events  2m13s", "find configs  12s"],
+    "act.subagents": [["hook events", "2m13s"], ["find configs", "12s"]],
     "act.geiger": [0, .25, .5, 1, .75, 1, .5, .6, .3, .1, .4, 1, .8, .4],  # duty 0..1
     "act.tasks": "2/5", "act.errors": "0", "sys.ram": 47, "sys.cpu": "12%",
     "sys.disk": 63, "sys.clock": "14:23",
@@ -195,7 +195,9 @@ def render_value(entry, cells, box_rgb):
         return label + r_spark(val, entry.get("spark_style", "block"), box_rgb,
                                entry.get("spark_max"))
     if render == "list":                                # box assembly expands rows; this is a fallback
-        return label + f(TEXT) + "  ".join(str(x) for x in VALUES.get(entry["id"], []))
+        return label + f(TEXT) + "  ".join(
+            f"{x[0]} {x[1]}" if isinstance(x, (list, tuple)) else str(x)
+            for x in VALUES.get(entry["id"], []))
     # number / text
     if color == "threshold":
         try:
@@ -236,8 +238,14 @@ def metric_fixed_width(entry):
         return lw + (len(VALUES.get(entry["id"], [])) + 1) // 2   # 2 bins per cell
     if r == "ammo":
         return lw + 5 + vlen(f" {VALUES.get(entry['id'], 0)}%")
-    if r == "list":                       # widest row of the list
-        return max((lw + vlen(str(it)) for it in VALUES.get(entry["id"], [])), default=lw)
+    if r == "list":                       # widest row ([name, right] pairs or plain strings)
+        ws = []
+        for it in VALUES.get(entry["id"], []):
+            if isinstance(it, (list, tuple)) and len(it) == 2:
+                ws.append(lw + vlen(str(it[0])) + 1 + vlen(str(it[1])))
+            else:
+                ws.append(lw + vlen(str(it)))
+        return max(ws, default=lw)
     if r == "bar":
         return None                       # flexible
     return lw + vlen(str(VALUES.get(entry["id"], "?"))) + rextra
@@ -248,7 +256,7 @@ def available(entry):
     if "group" in entry:
         return any(i in VALUES for i in entry["group"])
     if entry.get("render") == "list":
-        return bool(VALUES.get(entry["id"]))   # present and non-empty
+        return True                        # always shown (empty when no items)
     return entry["id"] in VALUES
 
 
@@ -362,8 +370,13 @@ def build_bar(cfg, target, sprite_for=None):
                 icon = m.get("icon", "")
                 lbl = (icon + " ") if icon else ""
                 for item in VALUES.get(m["id"], []):
-                    body = lbl + f(TEXT) + str(item)
-                    body += " " * max(0, w - vlen(body))
+                    if isinstance(item, (list, tuple)) and len(item) == 2:
+                        left = lbl + f(TEXT) + str(item[0])     # name left, runtime right
+                        right = f(TEXT) + str(item[1])
+                        body = left + " " * max(0, w - vlen(left) - vlen(right)) + right
+                    else:
+                        body = lbl + f(TEXT) + str(item)
+                        body += " " * max(0, w - vlen(body))
                     col.append(bgsgr_box(box_rgb) + " " + body + " " + RESET)
                 continue
             # bars render at the global `cells` width so every bar (any box)

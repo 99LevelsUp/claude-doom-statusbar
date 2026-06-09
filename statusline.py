@@ -293,9 +293,9 @@ def activity_values(st, now):
             label = a.get("desc") or a.get("type") or "agent"
             if len(label) > 20:
                 label = label[:19] + "…"
-            rows.append(f"{label}  {_dur(now - a['start'])}")
+            rows.append([label, _dur(now - a["start"])])   # [name, right-aligned runtime]
         if len(agents) > CAP:
-            rows.append(f"+{len(agents) - CAP} more")
+            rows.append([f"+{len(agents) - CAP} more", ""])
         v["act.subagents"] = rows
     if "tasks" in st:
         v["act.tasks"] = f"{st['tasks'].get('completed', 0)}/{st['tasks'].get('created', 0)}"
