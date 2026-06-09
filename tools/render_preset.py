@@ -32,7 +32,7 @@ TERM_RGB = (0, 0, 0)            # assumed terminal background (for blends/look)
 
 # Simulated metric values + availability (no live Claude Code data here).
 SAMPLE = {
-    "model.name": "Opus 4.8", "model.effort": "🌔 high", "advisor.state": "consulting…",
+    "model.name": "Opus 4.8", "model.effort": "🌔", "advisor.state": "sleeping",
     "context.hp": 78, "ratelimit.5h": 64, "ratelimit.7d": 31, "cost.total": "$1.83",
     "git.branch": "main", "git.behind": "↓2", "git.ahead": "↑3", "git.status": "3",
     "pr.state": "#1234", "act.agents": "2",
@@ -211,16 +211,18 @@ def metric_fixed_width(entry):
     icon = entry.get("icon", "")
     lw = vlen((icon + " ") if icon else "")
     r = entry.get("render", "text")
+    rid = entry.get("right")
+    rextra = (1 + vlen(str(VALUES[rid]))) if rid and rid in VALUES else 0  # gap + right value
     if "group" in entry:
         sep = entry.get("sep", " ")
-        return lw + vlen(sep.join(str(VALUES[i]) for i in entry["group"] if i in VALUES))
+        return lw + vlen(sep.join(str(VALUES[i]) for i in entry["group"] if i in VALUES)) + rextra
     if r == "spark":
         return lw + (len(VALUES.get(entry["id"], [])) + 1) // 2   # 2 bins per cell
     if r == "ammo":
         return lw + 5 + vlen(f" {VALUES.get(entry['id'], 0)}%")
     if r == "bar":
         return None                       # flexible
-    return lw + vlen(str(VALUES.get(entry["id"], "?")))
+    return lw + vlen(str(VALUES.get(entry["id"], "?"))) + rextra
 
 
 def available(entry):
@@ -335,7 +337,9 @@ def build_bar(cfg, target, sprite_for=None):
             # bars render at the global `cells` width so every bar (any box)
             # shrinks together; the box pads around them.
             body = render_value(m, cells if m.get("render") == "bar" else 0, box_rgb)
-            body += " " * max(0, w - vlen(body))
+            rid = m.get("right")                            # value flushed to the box's right edge
+            rhs = f(TEXT) + str(VALUES[rid]) if rid and rid in VALUES else ""
+            body += " " * max(0, w - vlen(body) - vlen(rhs)) + rhs
             col.append(bgsgr_box(box_rgb) + " " + body + " " + RESET)
         while len(col) < total_rows:                       # pad to face floor
             col.append(bgsgr_box(box_rgb) + " " * (w + 2) + RESET)

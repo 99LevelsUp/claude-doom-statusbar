@@ -12,7 +12,7 @@ background = "#000000"
 type  = "box"
 title = "MODEL"
 metric = [
-  { group = ["model.name", "model.effort"], render = "text", sep = "  ", icon = "🤖" },
+  { id = "model.name",    render = "text", icon = "🤖", right = "model.effort" },
   { id = "advisor.state", render = "text", icon = "🧙" },
 ]
 

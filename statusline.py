@@ -63,9 +63,9 @@ def build_values(data):
     if m.get("display_name"):
         v["model.name"] = m["display_name"].split(" (")[0]    # drop "(1M context)" tail
     eff = (data.get("effort") or {}).get("level")
-    if eff:                                                   # waxing moon -> sun
+    if eff:                                                   # waxing moon -> sun, icon only
         icon = {"low": "🌒", "medium": "🌓", "high": "🌔", "xhigh": "🌕", "max": "🌞"}
-        v["model.effort"] = f"{icon.get(eff, '🌓')} {eff}"
+        v["model.effort"] = icon.get(eff, "🌓")
 
     cwd = data.get("cwd") or (data.get("workspace") or {}).get("current_dir")
     if cwd:
@@ -216,8 +216,8 @@ def main():
     values = build_values(data)
     values.update(activity_values(st, now))             # act.* from the hook-bus
     values.update(sys_values(cwd))                      # sys.* from the OS
-    if st.get("god_since") and now - st["god_since"] < GOD_TTL:
-        values["advisor.state"] = "consulting…"         # advisor running (model not exposed)
+    awake = bool(st.get("god_since")) and now - st.get("god_since", 0) < GOD_TTL
+    values["advisor.state"] = "awake" if awake else "sleeping"   # always shown
     rp.VALUES = values                                  # engine reads real data now
 
     exhausted = values.get("context.hp", 0) >= 99
