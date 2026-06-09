@@ -169,16 +169,21 @@ def sys_values(cwd):
 def activity_values(st, now):
     """Derive act.* metrics from the hook-bus state (absent keys -> hidden)."""
     v = {}
-    if "tools" in st:
+    if "spans" in st:
         binw = GEIGER_WINDOW / GEIGER_BINS
-        series = [0] * GEIGER_BINS
-        for t in st["tools"]:
-            age = now - t
-            if 0 <= age < GEIGER_WINDOW:
-                idx = GEIGER_BINS - 1 - int(age / binw)
-                if 0 <= idx < GEIGER_BINS:
-                    series[idx] += 1
-        v["act.geiger"] = series
+        start0 = now - GEIGER_WINDOW                  # left edge = oldest, right = now
+        series = [0.0] * GEIGER_BINS
+        for s, e in st["spans"]:
+            e = now if e is None else e               # open span runs until now
+            s, e = max(s, start0), min(e, now)
+            if e <= s:
+                continue
+            i0 = max(0, int((s - start0) / binw))
+            i1 = min(GEIGER_BINS - 1, int((e - start0) / binw - 1e-9))
+            for i in range(i0, i1 + 1):
+                bs = start0 + i * binw
+                series[i] += min(e, bs + binw) - max(s, bs)   # seconds covered in bin
+        v["act.geiger"] = [min(1.0, c / binw) for c in series]  # duty cycle 0..1
     if "agents" in st:
         v["act.agents"] = str(len(st["agents"]))
     if "tasks" in st:

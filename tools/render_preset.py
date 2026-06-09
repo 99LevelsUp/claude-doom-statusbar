@@ -35,7 +35,7 @@ SAMPLE = {
     "context.hp": 78, "ratelimit.5h": 64, "ratelimit.7d": 31, "cost.total": "$1.83",
     "git.branch": "main", "git.behind": "↓2", "git.ahead": "↑3", "git.status": "3",
     "pr.state": "#1234", "act.agents": "2",
-    "act.geiger": [1, 0, 2, 4, 3, 6, 4, 5, 2, 1, 3, 7, 4, 2],
+    "act.geiger": [0, .25, .5, 1, .75, 1, .5, .6, .3, .1, .4, 1, .8, .4],  # duty 0..1
     "act.tasks": "2/5", "act.errors": "0", "sys.ram": 47, "sys.cpu": "12%",
     "sys.disk": 63, "sys.clock": "14:23",
 }
@@ -127,26 +127,35 @@ SPARK_BRAILLE = (
 )
 
 
-def r_spark(values, style="block", box_rgb=TERM_RGB):
+def r_spark(values, style="block", box_rgb=TERM_RGB, vmax=None):
     """Sparkline. block: 7-level ramp, one cell per bin. octant / braille: two
     sub-bars per cell (4 levels each) -> double the time resolution, same width
     (block pair-downsamples to match). The track sits on the same 50% box/term
-    blend as r_bar's empty region, then resets to the box background."""
+    blend as r_bar's empty region, then resets to the box background.
+
+    vmax: absolute full-scale value -> heights are v/vmax (clamped 0..1), so a
+    steady reading stays at a fixed bar height. Without it, scale is relative to
+    the series min..max."""
     empty = tuple((box_rgb[i] + TERM_RGB[i]) // 2 for i in range(3))
     bg = f"\x1b[48;2;{empty[0]};{empty[1]};{empty[2]}m"
     if not values:
         return f(SPARK)
-    lo, hi = min(values), max(values)
-    span = hi - lo
+    if vmax:
+        def nrm(v):
+            return max(0.0, min(1.0, v / vmax))
+    else:
+        lo, span = min(values), max(values) - min(values)
+        def nrm(v):
+            return 0.0 if span == 0 else (v - lo) / span
     if style in ("octant", "braille"):
         tbl = SPARK_OCTANT if style == "octant" else SPARK_BRAILLE
         def h(v):
-            return 0 if span == 0 else round((v - lo) / span * 4)
+            return round(nrm(v) * 4)
         body = "".join(tbl[h(values[i])][h(values[i + 1]) if i + 1 < len(values) else 0]
                        for i in range(0, len(values), 2))
     else:
         g = "▁▂▃▄▅▆▇"                                    # block: pair-max downsample
-        body = "".join(g[0 if span == 0 else round((max(values[i:i + 2]) - lo) / span * 6)]
+        body = "".join(g[round(nrm(max(values[i:i + 2])) * 6)]
                        for i in range(0, len(values), 2))
     return bg + f(SPARK) + body + bgsgr_box(box_rgb)
 
@@ -172,7 +181,8 @@ def render_value(entry, cells, box_rgb):
     if render == "ammo":
         return label + r_ammo(val, color or "threshold")
     if render == "spark":
-        return label + r_spark(val, entry.get("spark_style", "block"), box_rgb)
+        return label + r_spark(val, entry.get("spark_style", "block"), box_rgb,
+                               entry.get("spark_max"))
     # number / text
     if color == "threshold":
         try:

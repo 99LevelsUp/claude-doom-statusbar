@@ -5,8 +5,9 @@ Each invocation reads the shared state file, folds in the lifecycle event, and
 writes it back atomically. The state carries two things the status line reads:
 
   - face reaction: {"expr": <expr>, "ts": <epoch>}  (decays on the render side)
-  - activity:      tools[] timestamps (geiger), agents[] (running subagents),
-                   tasks{created,completed}, errors  (lights the FIGHT box)
+  - activity:      spans[] [start, end] tool run intervals (geiger duty cycle),
+                   agents[] (running subagents), tasks{created,completed},
+                   errors  (lights the FIGHT box)
 
 Idle is stateless (wall clock); reactions and activity are stateful (here).
 The hook always exits 0 so it never blocks the tool/turn.
@@ -25,7 +26,8 @@ import sys
 import tempfile
 import time
 
-GEIGER_WINDOW = 30.0          # seconds of tool-call history kept for the sparkline
+GEIGER_WINDOW = 30.0          # seconds of tool-run history kept for the sparkline
+MAX_RUN = 300.0               # drop an unclosed span after this (assume the Post was lost)
 
 READ_TOOLS = {"Read", "Grep", "Glob",
               "ctx_read", "ctx_multi_read", "ctx_search", "ctx_semantic_search",
@@ -62,14 +64,20 @@ def expression(name, tool):
 
 
 def fold_activity(st, name, ev, now):
-    st.setdefault("tools", [])
+    st.setdefault("spans", [])
     st.setdefault("agents", [])
     st.setdefault("tasks", {"created": 0, "completed": 0})
     st.setdefault("errors", 0)
 
-    if name == "PostToolUse":
-        st["tools"].append(now)
-    elif name in ("PostToolUseFailure", "StopFailure", "PermissionDenied"):
+    if name == "PreToolUse":
+        st["spans"].append([now, None])              # open a run interval
+    elif name in ("PostToolUse", "PostToolUseFailure", "PermissionDenied"):
+        for s in reversed(st["spans"]):              # close the most recent open one
+            if s[1] is None:
+                s[1] = now
+                break
+
+    if name in ("PostToolUseFailure", "StopFailure", "PermissionDenied"):
         st["errors"] += 1
     elif name == "SubagentStart":
         st["agents"].append(ev.get("agent_name") or ev.get("agent_type") or "agent")
@@ -84,8 +92,15 @@ def fold_activity(st, name, ev, now):
     elif name == "TaskCompleted":
         st["tasks"]["completed"] += 1
 
-    cutoff = now - GEIGER_WINDOW                     # prune the geiger window
-    st["tools"] = [t for t in st["tools"] if t >= cutoff]
+    win = now - GEIGER_WINDOW                         # prune: closed spans out of the
+    kept = []                                         # window, orphaned open spans
+    for s in st["spans"]:
+        if s[1] is None:
+            if s[0] >= now - MAX_RUN:
+                kept.append(s)
+        elif s[1] >= win:
+            kept.append(s)
+    st["spans"] = kept
 
 
 def main():
