@@ -379,9 +379,12 @@ def build_bar(cfg, target, sprite_for=None):
             right_seg += sepstr + columns[j][r]
         lw, rw, mw = vlen(left_seg), vlen(right_seg), vlen(columns[mug_idx][r])
         side = max(lw, rw)
-        left_seg = " " * (side - lw) + left_seg             # pad narrower side -> mugshot centred in bar
-        right_seg = right_seg + " " * (side - rw)
-        outer = max(0, (target - (2 * side + mw)) // 2)     # centre the symmetric bar on screen
+        if 2 * side + mw <= target:                         # centre the mugshot on screen...
+            left_seg = " " * (side - lw) + left_seg         # pad the narrower side to match
+            right_seg = right_seg + " " * (side - rw)
+            outer = (target - (2 * side + mw)) // 2
+        else:                                               # ...unless that overflows: pack
+            outer = max(0, (target - (lw + mw + rw)) // 2)  # compact, whole bar centred instead
         lines.append(RESET + " " * outer + left_seg + columns[mug_idx][r] + right_seg + RESET)
     return {"lines": lines, "style": style, "headers": headers, "cells": cells, "hp": hp}
 
