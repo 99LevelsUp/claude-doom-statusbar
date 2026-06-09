@@ -33,6 +33,8 @@ TERM_RGB = (0, 0, 0)            # assumed terminal background (for blends/look)
 # Simulated metric values + availability (no live Claude Code data here).
 SAMPLE = {
     "model.name": "Opus 4.8", "model.effort": "🌔", "advisor.state": "sleeping",
+    "model.window": "1M", "model.thinking": "on", "model.fast": "off", "model.style": "default",
+    "usage.resets": "5h 2h13m · 7d 3d4h", "sys.session": "5h 55m", "loc.churn": "+185 / -62",
     "context.hp": 78, "ratelimit.5h": 64, "ratelimit.7d": 31, "cost.total": "$1.83",
     "git.branch": "main", "git.behind": "↓2", "git.ahead": "↑3", "git.status": "3",
     "pr.state": "#1234", "act.agents": "2",

@@ -44,6 +44,19 @@ def git(cwd, *args):
         return None
 
 
+def _dur(secs):
+    """Humanise a duration in seconds: 3d4h / 2h13m / 7m."""
+    secs = max(0, int(secs))
+    d, r = divmod(secs, 86400)
+    h, r = divmod(r, 3600)
+    m = r // 60
+    if d:
+        return f"{d}d{h}h"
+    if h:
+        return f"{h}h{m:02d}m"
+    return f"{m}m"
+
+
 def build_values(data):
     """Map the statusline JSON (+ git shell) to catalog metric ids."""
     v = {}
@@ -55,9 +68,20 @@ def build_values(data):
         v["ratelimit.5h"] = round(rl["five_hour"]["used_percentage"])
     if rl.get("seven_day"):
         v["ratelimit.7d"] = round(rl["seven_day"]["used_percentage"])
+    resets = []
+    if rl.get("five_hour", {}).get("resets_at"):
+        resets.append(f"5h {_dur(rl['five_hour']['resets_at'] - time.time())}")
+    if rl.get("seven_day", {}).get("resets_at"):
+        resets.append(f"7d {_dur(rl['seven_day']['resets_at'] - time.time())}")
+    if resets:
+        v["usage.resets"] = " · ".join(resets)
     cost = data.get("cost") or {}
     if "total_cost_usd" in cost:
         v["cost.total"] = f"${cost['total_cost_usd']:.2f}"
+    if "total_duration_ms" in cost:
+        v["sys.session"] = _dur(cost["total_duration_ms"] / 1000)
+    if "total_lines_added" in cost or "total_lines_removed" in cost:
+        v["loc.churn"] = f"+{cost.get('total_lines_added', 0)} / -{cost.get('total_lines_removed', 0)}"
 
     m = data.get("model") or {}
     if m.get("display_name"):
@@ -66,6 +90,17 @@ def build_values(data):
     if eff:                                                   # waxing moon -> sun, icon only
         icon = {"low": "🌒", "medium": "🌓", "high": "🌔", "xhigh": "🌕", "max": "🌞"}
         v["model.effort"] = icon.get(eff, "🌓")
+    cwm = (data.get("context_window") or {}).get("context_window_size")
+    if cwm:
+        v["model.window"] = f"{cwm // 1000000}M" if cwm >= 1000000 else f"{cwm // 1000}K"
+    th = data.get("thinking") or {}
+    if "enabled" in th:
+        v["model.thinking"] = "on" if th["enabled"] else "off"
+    if "fast_mode" in data:
+        v["model.fast"] = "on" if data["fast_mode"] else "off"
+    style = (data.get("output_style") or {}).get("name")
+    if style:
+        v["model.style"] = style
 
     cwd = data.get("cwd") or (data.get("workspace") or {}).get("current_dir")
     if cwd:

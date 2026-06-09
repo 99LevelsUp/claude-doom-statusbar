@@ -12,8 +12,12 @@ background = "#000000"
 type  = "box"
 title = "MODEL"
 metric = [
-  { id = "model.name",    render = "text", icon = "🤖", right = "model.effort" },
-  { id = "advisor.state", render = "text", icon = "🧙" },
+  { id = "model.name",     render = "text", icon = "🤖", right = "model.effort" },
+  { id = "model.window",   render = "text", icon = "🪟" },
+  { id = "model.thinking", render = "text", icon = "💭" },
+  { id = "model.fast",     render = "text", icon = "🚀" },
+  { id = "model.style",    render = "text", icon = "🎨" },
+  { id = "advisor.state",  render = "text", icon = "🧙" },
 ]
 
 [[segment]]
@@ -23,6 +27,7 @@ metric = [
   { id = "context.hp",   render = "bar",    icon = "🧠", color = "threshold" },
   { id = "ratelimit.5h", render = "bar",    icon = "🕔", color = "threshold" },
   { id = "ratelimit.7d", render = "bar",    icon = "📅", color = "threshold" },
+  { id = "usage.resets", render = "text",   icon = "🔄" },
   { id = "sys.ram",      render = "bar",    icon = "💾", color = "threshold" },
   { id = "cost.total",   render = "number", icon = "💰" },
 ]
@@ -46,16 +51,18 @@ title = "PROJECT"
 metric = [
   { id = "loc.cwd",    render = "text",   icon = "📁" },
   { id = "git.branch", render = "text",   icon = "🌿" },
-  { group = ["git.behind", "git.ahead"], render = "number", sep = " ", icon = "⇅" },
-  { id = "git.status", render = "number", icon = "✎" },
-  { id = "pr.state",   render = "text",   icon = "⇧" },
+  { group = ["git.behind", "git.ahead"], render = "number", sep = " ", icon = "⇅ " },
+  { id = "git.status", render = "number", icon = "✎ " },
+  { id = "loc.churn",  render = "text",   icon = "📝" },
+  { id = "pr.state",   render = "text",   icon = "⇧ " },
 ]
 
 [[segment]]
 type  = "box"
 title = "SYS"
 metric = [
-  { id = "sys.cpu",   render = "number", icon = "🔥" },
-  { id = "sys.disk",  render = "bar",    icon = "💿", color = "threshold" },
-  { id = "sys.clock", render = "text",   icon = "🕓" },
+  { id = "sys.cpu",     render = "number", icon = "🔥" },
+  { id = "sys.disk",    render = "bar",    icon = "💿", color = "threshold" },
+  { id = "sys.session", render = "text",   icon = "🕰" },
+  { id = "sys.clock",   render = "text",   icon = "🕓" },
 ]
