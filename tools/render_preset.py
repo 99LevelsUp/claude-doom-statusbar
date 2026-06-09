@@ -127,10 +127,13 @@ SPARK_BRAILLE = (
 )
 
 
-def r_spark(values, style="block"):
+def r_spark(values, style="block", box_rgb=TERM_RGB):
     """Sparkline. block: 7-level ramp, one cell per bin. octant / braille: two
     sub-bars per cell (4 levels each) -> double the time resolution, same width
-    (block pair-downsamples to match)."""
+    (block pair-downsamples to match). The track sits on the same 50% box/term
+    blend as r_bar's empty region, then resets to the box background."""
+    empty = tuple((box_rgb[i] + TERM_RGB[i]) // 2 for i in range(3))
+    bg = f"\x1b[48;2;{empty[0]};{empty[1]};{empty[2]}m"
     if not values:
         return f(SPARK)
     lo, hi = min(values), max(values)
@@ -139,13 +142,13 @@ def r_spark(values, style="block"):
         tbl = SPARK_OCTANT if style == "octant" else SPARK_BRAILLE
         def h(v):
             return 0 if span == 0 else round((v - lo) / span * 4)
-        cells = [tbl[h(values[i])][h(values[i + 1]) if i + 1 < len(values) else 0]
-                 for i in range(0, len(values), 2)]
-        return f(SPARK) + "".join(cells)
-    g = "▁▂▃▄▅▆▇"                                        # block: pair-max downsample
-    out = [g[0 if span == 0 else round((max(values[i:i + 2]) - lo) / span * 6)]
-           for i in range(0, len(values), 2)]
-    return f(SPARK) + "".join(out)
+        body = "".join(tbl[h(values[i])][h(values[i + 1]) if i + 1 < len(values) else 0]
+                       for i in range(0, len(values), 2))
+    else:
+        g = "▁▂▃▄▅▆▇"                                    # block: pair-max downsample
+        body = "".join(g[0 if span == 0 else round((max(values[i:i + 2]) - lo) / span * 6)]
+                       for i in range(0, len(values), 2))
+    return bg + f(SPARK) + body + bgsgr_box(box_rgb)
 
 
 # The engine reads metric values from VALUES (statusline.py swaps in real data).
@@ -169,7 +172,7 @@ def render_value(entry, cells, box_rgb):
     if render == "ammo":
         return label + r_ammo(val, color or "threshold")
     if render == "spark":
-        return label + r_spark(val, entry.get("spark_style", "block"))
+        return label + r_spark(val, entry.get("spark_style", "block"), box_rgb)
     # number / text
     if color == "threshold":
         try:
