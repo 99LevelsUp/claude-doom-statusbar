@@ -33,8 +33,8 @@ TERM_RGB = (0, 0, 0)            # assumed terminal background (for blends/look)
 # Simulated metric values + availability (no live Claude Code data here).
 SAMPLE = {
     "model.name": "Opus 4.8", "model.effort": "🌔", "advisor.state": "sleeping",
-    "model.window": "1M", "model.thinking": "on", "model.fast": "off", "model.style": "default",
-    "usage.resets": "5h 2h13m · 7d 3d4h", "sys.session": "5h 55m", "loc.churn": "+185 / -62",
+    "model.window": "1M", "model.mode": "💭 on  🚀 off", "model.style": "default",
+    "usage.reset5h": "2h13m", "usage.reset7d": "3d4h", "sys.session": "5h55m", "loc.churn": "+185 / -62",
     "context.hp": 78, "ratelimit.5h": 64, "ratelimit.7d": 31, "cost.total": "$1.83",
     "git.branch": "main", "git.behind": "↓2", "git.ahead": "↑3", "git.status": "3",
     "pr.state": "#1234", "act.agents": "2",
@@ -180,7 +180,11 @@ def render_value(entry, cells, box_rgb):
         return label + f(TEXT) + sep.join(parts)
     val = VALUES.get(entry["id"], "?")
     if render == "bar":
-        return label + r_bar(val, cells, box_rgb, color or "threshold")
+        s = label + r_bar(val, cells, box_rgb, color or "threshold")
+        sid = entry.get("suffix")                       # text appended after the % (e.g. "1M")
+        if sid and sid in VALUES:
+            s += f(TEXT) + " " + str(VALUES[sid])
+        return s
     if render == "ammo":
         return label + r_ammo(val, color or "threshold")
     if render == "spark":
@@ -202,7 +206,11 @@ def bar_meta(entry):
     icon = entry.get("icon", "")
     lw = vlen((icon + " ") if icon else "")
     if entry.get("render") in ("bar", "ammo"):
-        return lw, 5, entry.get("render")               # fixed " NNN%" suffix
+        sw = 5                                          # fixed " NNN%" suffix
+        sid = entry.get("suffix")
+        if sid and sid in VALUES:
+            sw += 1 + vlen(str(VALUES[sid]))            # + " <suffix>"
+        return lw, sw, entry.get("render")
     return lw, 0, entry.get("render", "text")
 
 

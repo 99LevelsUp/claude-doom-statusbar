@@ -68,20 +68,18 @@ def build_values(data):
         v["ratelimit.5h"] = round(rl["five_hour"]["used_percentage"])
     if rl.get("seven_day"):
         v["ratelimit.7d"] = round(rl["seven_day"]["used_percentage"])
-    resets = []
-    if rl.get("five_hour", {}).get("resets_at"):
-        resets.append(f"5h {_dur(rl['five_hour']['resets_at'] - time.time())}")
+    if rl.get("five_hour", {}).get("resets_at"):            # reset countdown -> bar suffix
+        v["usage.reset5h"] = _dur(rl["five_hour"]["resets_at"] - time.time())
     if rl.get("seven_day", {}).get("resets_at"):
-        resets.append(f"7d {_dur(rl['seven_day']['resets_at'] - time.time())}")
-    if resets:
-        v["usage.resets"] = " · ".join(resets)
+        v["usage.reset7d"] = _dur(rl["seven_day"]["resets_at"] - time.time())
     cost = data.get("cost") or {}
     if "total_cost_usd" in cost:
         v["cost.total"] = f"${cost['total_cost_usd']:.2f}"
     if "total_duration_ms" in cost:
         v["sys.session"] = _dur(cost["total_duration_ms"] / 1000)
     if "total_lines_added" in cost or "total_lines_removed" in cost:
-        v["loc.churn"] = f"+{cost.get('total_lines_added', 0)} / -{cost.get('total_lines_removed', 0)}"
+        a, r = cost.get("total_lines_added", 0), cost.get("total_lines_removed", 0)
+        v["loc.churn"] = f"{rp.f(rp.OK)}+{a}{rp.f(rp.TEXT)} / {rp.f(rp.CRIT)}-{r}"  # +green -red
 
     m = data.get("model") or {}
     if m.get("display_name"):
@@ -91,13 +89,16 @@ def build_values(data):
         icon = {"low": "🌒", "medium": "🌓", "high": "🌔", "xhigh": "🌕", "max": "🌞"}
         v["model.effort"] = icon.get(eff, "🌓")
     cwm = (data.get("context_window") or {}).get("context_window_size")
-    if cwm:
+    if cwm:                                                   # context window -> 🧠 bar suffix
         v["model.window"] = f"{cwm // 1000000}M" if cwm >= 1000000 else f"{cwm // 1000}K"
     th = data.get("thinking") or {}
+    mode = []
     if "enabled" in th:
-        v["model.thinking"] = "on" if th["enabled"] else "off"
+        mode.append(f"💭 {'on' if th['enabled'] else 'off'}")
     if "fast_mode" in data:
-        v["model.fast"] = "on" if data["fast_mode"] else "off"
+        mode.append(f"🚀 {'on' if data['fast_mode'] else 'off'}")
+    if mode:
+        v["model.mode"] = "  ".join(mode)                     # thinking + fast on one row
     style = (data.get("output_style") or {}).get("name")
     if style:
         v["model.style"] = style
