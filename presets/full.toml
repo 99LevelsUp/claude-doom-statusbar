@@ -14,8 +14,8 @@ title = "MODEL"
 metric = [
   { id = "model.name",    render = "text", icon = "🤖", right = "model.effort" },
   { id = "model.mode",    render = "text" },                 # 💭 thinking  🚀 fast
-  { id = "model.style",   render = "text", icon = "🎨" },
-  { id = "advisor.state", render = "text", icon = "🧙" },
+  { id = "model.style",    render = "text", icon = "🎨" },
+  { id = "advisor.model",  render = "text", icon = "🧙" },
 ]
 
 [[segment]]
@@ -31,19 +31,6 @@ metric = [
 
 [[segment]]
 type  = "box"
-title = "ACTIVITY"
-metric = [
-  { id = "act.geiger", render = "spark",  icon = "📟", spark_style = "octant", spark_max = 1 },
-  { id = "act.agents", render = "number", icon = "👹" },
-  { id = "act.tasks",  render = "number", icon = "🎯" },
-  { id = "act.errors", render = "number", icon = "💢", color = "threshold" },
-]
-
-[[segment]]
-type = "mugshot"
-
-[[segment]]
-type  = "box"
 title = "PROJECT"
 metric = [
   { id = "loc.cwd",    render = "text",   icon = "📁" },
@@ -52,6 +39,25 @@ metric = [
   { id = "git.status", render = "number", icon = "✎ " },
   { id = "loc.churn",  render = "text",   icon = "📝" },
   { id = "pr.state",   render = "text",   icon = "⇧ " },
+]
+
+[[segment]]
+type = "mugshot"
+
+[[segment]]
+type  = "box"
+title = "ACTIVITY"
+metric = [
+  { id = "act.geiger", render = "spark",  icon = "📟", spark_style = "octant", spark_max = 1 },
+  { id = "act.tasks",  render = "number", icon = "🎯" },
+  { id = "act.errors", render = "number", icon = "💢", color = "threshold" },
+]
+
+[[segment]]
+type  = "box"
+title = "SUBAGENTS"
+metric = [
+  { id = "act.subagents", render = "list", icon = "👹" },
 ]
 
 [[segment]]

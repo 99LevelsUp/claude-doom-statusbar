@@ -32,12 +32,13 @@ TERM_RGB = (0, 0, 0)            # assumed terminal background (for blends/look)
 
 # Simulated metric values + availability (no live Claude Code data here).
 SAMPLE = {
-    "model.name": "Opus 4.8", "model.effort": "🌔", "advisor.state": "sleeping",
+    "model.name": "Opus 4.8", "model.effort": "🌔", "advisor.model": "Opus 4.8",
     "model.window": "1M", "model.mode": "💭 on  🚀 off", "model.style": "default",
     "usage.reset5h": "2h13m", "usage.reset7d": "3d4h", "sys.session": "5h55m", "loc.churn": "+185 / -62",
     "context.hp": 78, "ratelimit.5h": 64, "ratelimit.7d": 31, "cost.total": "$1.83",
     "git.branch": "main", "git.behind": "↓2", "git.ahead": "↑3", "git.status": "3",
-    "pr.state": "#1234", "act.agents": "2",
+    "pr.state": "#1234",
+    "act.subagents": ["hook events  2m13s", "find configs  12s"],
     "act.geiger": [0, .25, .5, 1, .75, 1, .5, .6, .3, .1, .4, 1, .8, .4],  # duty 0..1
     "act.tasks": "2/5", "act.errors": "0", "sys.ram": 47, "sys.cpu": "12%",
     "sys.disk": 63, "sys.clock": "14:23",
@@ -193,6 +194,8 @@ def render_value(entry, cells, box_rgb):
     if render == "spark":
         return label + r_spark(val, entry.get("spark_style", "block"), box_rgb,
                                entry.get("spark_max"))
+    if render == "list":                                # box assembly expands rows; this is a fallback
+        return label + f(TEXT) + "  ".join(str(x) for x in VALUES.get(entry["id"], []))
     # number / text
     if color == "threshold":
         try:
@@ -233,6 +236,8 @@ def metric_fixed_width(entry):
         return lw + (len(VALUES.get(entry["id"], [])) + 1) // 2   # 2 bins per cell
     if r == "ammo":
         return lw + 5 + vlen(f" {VALUES.get(entry['id'], 0)}%")
+    if r == "list":                       # widest row of the list
+        return max((lw + vlen(str(it)) for it in VALUES.get(entry["id"], [])), default=lw)
     if r == "bar":
         return None                       # flexible
     return lw + vlen(str(VALUES.get(entry["id"], "?"))) + rextra
@@ -242,6 +247,8 @@ def available(entry):
     """A metric is shown only if its value(s) are present in VALUES."""
     if "group" in entry:
         return any(i in VALUES for i in entry["group"])
+    if entry.get("render") == "list":
+        return bool(VALUES.get(entry["id"]))   # present and non-empty
     return entry["id"] in VALUES
 
 
@@ -299,7 +306,11 @@ def build_bar(cfg, target, sprite_for=None):
             segs.append({**s, "metric": mets})
 
     boxes = [s for s in segs if s["type"] == "box"]
-    data_rows = max((len(b["metric"]) for b in boxes), default=0)
+
+    def _rowcount(b):                                     # a list metric spans len(list) rows
+        return sum(len(VALUES.get(m["id"], [])) if m.get("render") == "list" else 1
+                   for m in b["metric"])
+    data_rows = max((_rowcount(b) for b in boxes), default=0)
     headers_extra = 1 if headers else 0
     total_rows = max(data_rows + headers_extra, 4)        # 4 = mugshot floor
     n_cols = len(segs)
@@ -347,6 +358,14 @@ def build_bar(cfg, target, sprite_for=None):
             left = pad // 2
             col.append(bgsgr_box(box_rgb) + BOLD + f(TITLE) + " " + " " * left + t + " " * (pad - left) + " " + RESET)
         for m in s["metric"]:
+            if m.get("render") == "list":               # one row per list item
+                icon = m.get("icon", "")
+                lbl = (icon + " ") if icon else ""
+                for item in VALUES.get(m["id"], []):
+                    body = lbl + f(TEXT) + str(item)
+                    body += " " * max(0, w - vlen(body))
+                    col.append(bgsgr_box(box_rgb) + " " + body + " " + RESET)
+                continue
             # bars render at the global `cells` width so every bar (any box)
             # shrinks together; the box pads around them.
             body = render_value(m, cells if m.get("render") == "bar" else 0, box_rgb)

@@ -65,12 +65,19 @@ def expression(name, tool):
 
 def fold_activity(st, name, ev, now):
     st.setdefault("spans", [])
-    st.setdefault("agents", [])
+    st.setdefault("squad", {})
+    st.setdefault("pending", [])
     st.setdefault("tasks", {"created": 0, "completed": 0})
     st.setdefault("errors", 0)
 
+    tool = _base(ev.get("tool_name", ""))
     if name == "PreToolUse":
         st["spans"].append([now, None])              # open a run interval
+        if tool == "Agent":                          # stash the launch label (no shared id
+            ti = ev.get("tool_input") or {}          # with SubagentStart, so match by type)
+            st["pending"].append({"type": ti.get("subagent_type", ""),
+                                  "desc": ti.get("description", ""), "ts": now})
+            st["pending"] = [p for p in st["pending"] if now - p["ts"] < 60][-16:]
     elif name in ("PostToolUse", "PostToolUseFailure", "PermissionDenied"):
         for s in reversed(st["spans"]):              # close the most recent open one
             if s[1] is None:
@@ -80,13 +87,17 @@ def fold_activity(st, name, ev, now):
     if name in ("PostToolUseFailure", "StopFailure", "PermissionDenied"):
         st["errors"] += 1
     elif name == "SubagentStart":
-        st["agents"].append(ev.get("agent_name") or ev.get("agent_type") or "agent")
+        aid = str(ev.get("agent_id") or now)
+        atype = ev.get("agent_type") or "agent"
+        desc = ""
+        for i, p in enumerate(st["pending"]):        # FIFO match the launch by agent type
+            if p["type"] == atype:
+                desc = p["desc"]
+                st["pending"].pop(i)
+                break
+        st["squad"][aid] = {"type": atype, "start": now, "desc": desc}
     elif name == "SubagentStop":
-        a = ev.get("agent_name") or ev.get("agent_type") or "agent"
-        if a in st["agents"]:
-            st["agents"].remove(a)
-        elif st["agents"]:
-            st["agents"].pop()
+        st["squad"].pop(str(ev.get("agent_id") or ""), None)
     elif name == "TaskCreated":
         st["tasks"]["created"] += 1
     elif name == "TaskCompleted":
@@ -101,6 +112,8 @@ def fold_activity(st, name, ev, now):
         elif s[1] >= win:
             kept.append(s)
     st["spans"] = kept
+    st["squad"] = {k: v for k, v in st["squad"].items()  # drop orphaned subagents
+                   if now - v["start"] < MAX_RUN}
 
 
 def main():
@@ -122,14 +135,6 @@ def main():
     expr = expression(name, ev.get("tool_name", ""))
     if expr:
         st["expr"], st["ts"] = expr, now
-
-    # God mode while the advisor tool is running: set on PreToolUse(advisor),
-    # cleared when it returns (PostToolUse / failure). Safety TTL on the read side.
-    if _base(ev.get("tool_name", "")) == "advisor":
-        if name == "PreToolUse":
-            st["god_since"] = now
-        elif name in ("PostToolUse", "PostToolUseFailure"):
-            st.pop("god_since", None)
 
     tmp = f"{path}.{os.getpid()}.tmp"               # atomic write
     try:

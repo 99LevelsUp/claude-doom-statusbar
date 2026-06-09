@@ -31,7 +31,7 @@ import render_preset as rp  # noqa: E402
 
 DECAY = 1.5            # seconds a reaction holds before relaxing to idle
 IDLE_CYCLE = 2         # seconds per idle glance
-GOD_TTL = 180.0        # safety cap on god mode if the advisor never returns
+GOD_FLASH = 3.0        # seconds the mugshot stays god after an advisor consult lands
 GEIGER_WINDOW = 30.0  # must match the hook's window
 GEIGER_BINS = 14      # sparkline buckets (octant/braille pack 2 per cell)
 
@@ -49,12 +49,68 @@ def _dur(secs):
     secs = max(0, int(secs))
     d, r = divmod(secs, 86400)
     h, r = divmod(r, 3600)
-    m = r // 60
+    m, s = divmod(r, 60)
     if d:
         return f"{d}d{h}h"
     if h:
         return f"{h}h{m:02d}m"
-    return f"{m}m"
+    if m:
+        return f"{m}m"
+    return f"{s}s"
+
+
+def _pretty_model(mid):
+    """claude-opus-4-8 -> Opus 4.8 (best-effort from a model id)."""
+    mid = re.sub(r"\[.*?\]$", "", mid).replace("claude-", "")
+    parts = mid.split("-")
+    return f"{parts[0].capitalize()} {'.'.join(parts[1:])}".strip() if parts else mid
+
+
+def _advisor_info(path):
+    """(configured /advisor model, last advisor_tool_result timestamp) from the transcript
+    tail. The model is stamped on ~every record; the result ts only appears at turn end
+    (so it's a 'just consulted' signal, not a live one). Tail-read — the file is large."""
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 65536))
+            chunk = f.read().decode("utf-8", "ignore")
+    except Exception:
+        return None, None
+    model = res_ts = None
+    for ln in chunk.splitlines():
+        if "advisorModel" not in ln and "advisor_tool_result" not in ln:
+            continue
+        try:
+            o = json.loads(ln)
+        except Exception:
+            continue
+        if o.get("advisorModel"):
+            model = o["advisorModel"]                    # last wins (most recent record)
+        c = (o.get("message") or {}).get("content")
+        if isinstance(c, list) and any(b.get("type") == "advisor_tool_result" for b in c):
+            res_ts = o.get("timestamp") or res_ts
+    return (_pretty_model(model) if model else None), res_ts
+
+
+def _god_flash(data, adv_ts, now):
+    """STFGOD0 window opened when a *new* advisor result first appears (flushed at the
+    turn boundary). Discovery-based — keyed on the result timestamp, not its (older) value."""
+    sid = re.sub(r"[^A-Za-z0-9_-]", "_", str(data.get("session_id") or "default"))[:48]
+    cache = os.path.join(tempfile.gettempdir(), f"mugshot_adv_{sid}.json")
+    try:
+        c = json.load(open(cache))
+    except Exception:
+        c = {}
+    if adv_ts and adv_ts != c.get("seen"):
+        if "seen" in c:                                  # not the first scan -> a fresh consult
+            c["god_until"] = now + GOD_FLASH
+        c["seen"] = adv_ts
+        try:
+            json.dump(c, open(cache, "w"))
+        except Exception:
+            pass
+    return c.get("god_until", 0)
 
 
 def build_values(data):
@@ -228,8 +284,19 @@ def activity_values(st, now):
                 bs = start0 + i * binw
                 series[i] += min(e, bs + binw) - max(s, bs)   # seconds covered in bin
         v["act.geiger"] = [min(1.0, c / binw) for c in series]  # duty cycle 0..1
-    if "agents" in st:
-        v["act.agents"] = str(len(st["agents"]))
+    squad = st.get("squad") or {}
+    if squad:                                         # live list of running subagents
+        CAP = 4
+        agents = sorted(squad.values(), key=lambda a: a["start"])
+        rows = []
+        for a in agents[:CAP]:
+            label = a.get("desc") or a.get("type") or "agent"
+            if len(label) > 20:
+                label = label[:19] + "…"
+            rows.append(f"{label}  {_dur(now - a['start'])}")
+        if len(agents) > CAP:
+            rows.append(f"+{len(agents) - CAP} more")
+        v["act.subagents"] = rows
     if "tasks" in st:
         v["act.tasks"] = f"{st['tasks'].get('completed', 0)}/{st['tasks'].get('created', 0)}"
     if "errors" in st:
@@ -252,10 +319,10 @@ def main():
     values = build_values(data)
     values.update(activity_values(st, now))             # act.* from the hook-bus
     values.update(sys_values(cwd))                      # sys.* from the OS
-    awake = bool(st.get("god_since")) and now - st.get("god_since", 0) < GOD_TTL
-    box_rgb = rp.rgb_of((cfg.get("bar") or {}).get("box_background", "term-bg"))
-    acol = rp.TEXT if awake else tuple((rp.TEXT[i] + box_rgb[i]) // 2 for i in range(3))
-    values["advisor.state"] = rp.f(acol) + ("awake" if awake else "sleeping")  # dim when idle
+    adv_model, adv_ts = _advisor_info(data.get("transcript_path") or "")
+    if adv_model:
+        values["advisor.model"] = adv_model             # 🧙 configured /advisor model
+    god_until = _god_flash(data, adv_ts, now)           # brief god face after a consult lands
     rp.VALUES = values                                  # engine reads real data now
 
     # Death follows the same source as hp_row: usage headroom when rate limits
@@ -271,8 +338,8 @@ def main():
     def sprite_for(hp):
         if exhausted:
             return "STFDEAD0"
-        if st.get("god_since") and now - st["god_since"] < GOD_TTL:
-            return "STFGOD0"                             # invulnerable while the advisor thinks
+        if now < god_until:
+            return "STFGOD0"                             # just consulted the advisor
         if st.get("expr") and now - st.get("ts", 0) < DECAY:
             return {
                 "ouch": f"STFOUCH{hp}", "kill": f"STFKILL{hp}", "evl": f"STFEVL{hp}",

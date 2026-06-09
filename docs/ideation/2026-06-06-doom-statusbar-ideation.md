@@ -620,6 +620,20 @@ The live HUD is two pieces: a `statusLine` command (renders from the stdin JSON)
 
 ---
 
+## TODO — live detection of advising / review / server tools
+
+The `advisor` consult (and likely future `review` / `code-review`-style server tools) is **invisible while it runs**, confirmed across all three channels:
+
+- **Hooks:** the advisor emits *no* `PreToolUse`/`PostToolUse` (a 165 s consult produced zero hook events). It is not in the tool-hook path.
+- **Statusline payload:** nothing flags an in-flight advisor.
+- **Transcript:** the call *is* recorded — `server_tool_use:advisor` (start) + `advisor_tool_result` (end), each with its own event timestamp — but both rows are **flushed to the JSONL only at turn end, together**. A 2 min poll during a live consult never saw a lone start. So there is no "start written, end pending" window to detect "running now".
+
+**What we can do today:** read `advisorModel` (stamped on ~every assistant record) → show the configured advisor model (`🧙 Opus 4.8`); and flash god-mode briefly when a *new* `advisor_tool_result` first appears (i.e. just *after* the consult, at the turn boundary), via a discovery cache + short TTL.
+
+**TODO if the platform changes:** wire true live "advising / reviewing now" (god-mode *during*, not after) the moment any of these lands — a `ServerToolStart`/`ServerToolStop` hook, an in-flight flag in the statusline payload, or incremental (mid-turn) transcript flushing. The same applies to `/review`, `/code-review`, and other consult tools. Until then, treat them as post-hoc signals only.
+
+---
+
 ## Ranked Ideas
 
 ### 1. Face-First Architecture
