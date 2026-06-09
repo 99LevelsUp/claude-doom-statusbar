@@ -90,7 +90,7 @@ def r_bar(pct, cells, box_rgb, color_spec):
     if rem:
         s += EIGHTHS[rem]
     s += " " * max(0, cells - full - (1 if rem else 0))
-    return s + bgsgr_box(box_rgb) + f(c) + f" {pct}%"
+    return s + bgsgr_box(box_rgb) + f(c) + f" {pct:>3}%"   # fixed-width % (aligned)
 
 
 def bgsgr_box(box_rgb):
@@ -102,7 +102,7 @@ def bgsgr_box(box_rgb):
 def r_ammo(pct, color_spec, segs=5):
     c = threshold(pct) if color_spec == "threshold" else WARN
     filled = round(pct / 100 * segs)
-    return f(c) + "▮" * filled + f((90, 95, 120)) + "▯" * (segs - filled) + f(c) + f" {pct}%"
+    return f(c) + "▮" * filled + f((90, 95, 120)) + "▯" * (segs - filled) + f(c) + f" {pct:>3}%"
 
 
 def r_spark(values):
@@ -149,8 +149,7 @@ def bar_meta(entry):
     icon = entry.get("icon", "")
     lw = vlen((icon + " ") if icon else "")
     if entry.get("render") in ("bar", "ammo"):
-        pct = VALUES.get(entry["id"], 0)
-        return lw, vlen(f" {pct}%"), entry.get("render")
+        return lw, 5, entry.get("render")               # fixed " NNN%" suffix
     return lw, 0, entry.get("render", "text")
 
 
@@ -282,11 +281,9 @@ def build_bar(cfg, target, sprite_for=None):
             left = pad // 2
             col.append(bgsgr_box(box_rgb) + BOLD + f(TITLE) + " " + " " * left + t + " " * (pad - left) + " " + RESET)
         for m in s["metric"]:
-            if m.get("render") == "bar":
-                lw, sw, _ = bar_meta(m)
-                body = render_value(m, max(1, w - lw - sw), box_rgb)
-            else:
-                body = render_value(m, 0, box_rgb)
+            # bars render at the global `cells` width so every bar (any box)
+            # shrinks together; the box pads around them.
+            body = render_value(m, cells if m.get("render") == "bar" else 0, box_rgb)
             body += " " * max(0, w - vlen(body))
             col.append(bgsgr_box(box_rgb) + " " + body + " " + RESET)
         while len(col) < total_rows:                       # pad to face floor
