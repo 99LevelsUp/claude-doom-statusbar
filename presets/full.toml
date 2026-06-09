@@ -23,7 +23,7 @@ metric = [
 type  = "box"
 title = "FIGHT"
 metric = [
-  { id = "act.geiger", render = "spark",  icon = "📟" },
+  { id = "act.geiger", render = "spark",  icon = "📟", spark_style = "octant" },
   { id = "act.agents", render = "number", icon = "👹" },
   { id = "act.tasks",  render = "number", icon = "🎯" },
   { id = "act.errors", render = "number", icon = "💢", color = "threshold" },

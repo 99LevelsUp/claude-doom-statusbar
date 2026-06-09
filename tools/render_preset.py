@@ -34,7 +34,8 @@ TERM_RGB = (0, 0, 0)            # assumed terminal background (for blends/look)
 SAMPLE = {
     "context.hp": 78, "ratelimit.5h": 64, "ratelimit.7d": 31, "cost.total": "$1.83",
     "git.branch": "main", "git.behind": "↓2", "git.ahead": "↑3", "git.status": "3",
-    "pr.state": "#1234", "act.geiger": [1, 0, 2, 4, 3, 6, 4], "act.agents": "2",
+    "pr.state": "#1234", "act.agents": "2",
+    "act.geiger": [1, 0, 2, 4, 3, 6, 4, 5, 2, 1, 3, 7, 4, 2],
     "act.tasks": "2/5", "act.errors": "0", "sys.ram": 47, "sys.cpu": "12%",
     "sys.disk": 63, "sys.clock": "14:23",
 }
@@ -105,10 +106,46 @@ def r_ammo(pct, color_spec, segs=5):
     return f(c) + "▮" * filled + f((90, 95, 120)) + "▯" * (segs - filled) + f(c) + f" {pct:>3}%"
 
 
-def r_spark(values):
+# Sparkline glyph tables: rows = left sub-bar height 0..4, cols = right height 0..4.
+# Two sub-columns per cell double the time resolution vs. the single-column block
+# ramp. Octant is solid bars (U+1CD.., Unicode 16); braille is dots (U+2800..,
+# universal). Holes in the octant block fall back to half/quadrant/eighth chars;
+# a lone lowest sub-bar rounds up to its quadrant (reads ~half a cell hotter).
+SPARK_OCTANT = (
+    " ▗▗\U0001cd96▐",
+    "▖▂\U0001cdcb\U0001cdd3\U0001cdd5",
+    "▖\U0001cdbb▄\U0001cde1▟",
+    "\U0001cd48\U0001cdbf\U0001cdde▆\U0001cde5",
+    "▌\U0001cdc0▙\U0001cde4█",
+)
+SPARK_BRAILLE = (
+    "⠀⢀⢠⢰⢸",
+    "⡀⣀⣠⣰⣸",
+    "⡄⣄⣤⣴⣼",
+    "⡆⣆⣦⣶⣾",
+    "⡇⣇⣧⣷⣿",
+)
+
+
+def r_spark(values, style="block"):
+    """Sparkline. block: 7-level ramp, one cell per bin. octant / braille: two
+    sub-bars per cell (4 levels each) -> double the time resolution, same width
+    (block pair-downsamples to match)."""
+    if not values:
+        return f(SPARK)
     lo, hi = min(values), max(values)
-    g = "▁▂▃▄▅▆▇"
-    return f(SPARK) + "".join(g[0 if hi == lo else round((v - lo) / (hi - lo) * 6)] for v in values)
+    span = hi - lo
+    if style in ("octant", "braille"):
+        tbl = SPARK_OCTANT if style == "octant" else SPARK_BRAILLE
+        def h(v):
+            return 0 if span == 0 else round((v - lo) / span * 4)
+        cells = [tbl[h(values[i])][h(values[i + 1]) if i + 1 < len(values) else 0]
+                 for i in range(0, len(values), 2)]
+        return f(SPARK) + "".join(cells)
+    g = "▁▂▃▄▅▆▇"                                        # block: pair-max downsample
+    out = [g[0 if span == 0 else round((max(values[i:i + 2]) - lo) / span * 6)]
+           for i in range(0, len(values), 2)]
+    return f(SPARK) + "".join(out)
 
 
 # The engine reads metric values from VALUES (statusline.py swaps in real data).
@@ -132,7 +169,7 @@ def render_value(entry, cells, box_rgb):
     if render == "ammo":
         return label + r_ammo(val, color or "threshold")
     if render == "spark":
-        return label + r_spark(val)
+        return label + r_spark(val, entry.get("spark_style", "block"))
     # number / text
     if color == "threshold":
         try:
@@ -164,7 +201,7 @@ def metric_fixed_width(entry):
         sep = entry.get("sep", " ")
         return lw + vlen(sep.join(str(VALUES[i]) for i in entry["group"] if i in VALUES))
     if r == "spark":
-        return lw + len(VALUES.get(entry["id"], []))
+        return lw + (len(VALUES.get(entry["id"], [])) + 1) // 2   # 2 bins per cell
     if r == "ammo":
         return lw + 5 + vlen(f" {VALUES.get(entry['id'], 0)}%")
     if r == "bar":

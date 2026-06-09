@@ -33,7 +33,7 @@ DECAY = 1.5            # seconds a reaction holds before relaxing to idle
 IDLE_CYCLE = 2         # seconds per idle glance
 GOD_TTL = 180.0        # safety cap on god mode if the advisor never returns
 GEIGER_WINDOW = 30.0  # must match the hook's window
-GEIGER_BINS = 7       # sparkline buckets
+GEIGER_BINS = 14      # sparkline buckets (octant/braille pack 2 per cell)
 
 
 def git(cwd, *args):
