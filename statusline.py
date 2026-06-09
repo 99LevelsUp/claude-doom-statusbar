@@ -217,7 +217,9 @@ def main():
     values.update(activity_values(st, now))             # act.* from the hook-bus
     values.update(sys_values(cwd))                      # sys.* from the OS
     awake = bool(st.get("god_since")) and now - st.get("god_since", 0) < GOD_TTL
-    values["advisor.state"] = "awake" if awake else "sleeping"   # always shown
+    box_rgb = rp.rgb_of((cfg.get("bar") or {}).get("box_background", "term-bg"))
+    acol = rp.TEXT if awake else tuple((rp.TEXT[i] + box_rgb[i]) // 2 for i in range(3))
+    values["advisor.state"] = rp.f(acol) + ("awake" if awake else "sleeping")  # dim when idle
     rp.VALUES = values                                  # engine reads real data now
 
     exhausted = values.get("context.hp", 0) >= 99
