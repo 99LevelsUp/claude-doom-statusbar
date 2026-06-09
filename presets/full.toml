@@ -10,6 +10,14 @@ background = "#000000"
 
 [[segment]]
 type  = "box"
+title = "MODEL"
+metric = [
+  { group = ["model.name", "model.effort"], render = "text", sep = "  ", icon = "🤖" },
+  { id = "advisor.state", render = "text", icon = "🧙" },
+]
+
+[[segment]]
+type  = "box"
 title = "USAGE"
 metric = [
   { id = "context.hp",   render = "bar",    icon = "🧠", color = "threshold" },
