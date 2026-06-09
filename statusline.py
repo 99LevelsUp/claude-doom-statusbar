@@ -222,11 +222,15 @@ def main():
     values["advisor.state"] = rp.f(acol) + ("awake" if awake else "sleeping")  # dim when idle
     rp.VALUES = values                                  # engine reads real data now
 
-    exhausted = values.get("context.hp", 0) >= 99
+    # Death follows the same source as hp_row: usage headroom when rate limits
+    # exist, context only as a fallback (so shrinking the context window by
+    # switching models can't kill an otherwise-healthy face).
     if "ratelimit.5h" in values or "ratelimit.7d" in values:
         rem = min(100 - values.get("ratelimit.5h", 0),
                   100 - values.get("ratelimit.7d", 0) if "ratelimit.7d" in values else 100)
-        exhausted = exhausted or rem <= 0
+        exhausted = rem <= 0
+    else:
+        exhausted = values.get("context.hp", 0) >= 99
 
     def sprite_for(hp):
         if exhausted:
