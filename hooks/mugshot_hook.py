@@ -7,7 +7,7 @@ writes it back atomically. The state carries two things the status line reads:
   - face reaction: {"expr": <expr>, "ts": <epoch>}  (decays on the render side)
   - activity:      spans[] [start, end] tool run intervals (geiger duty cycle),
                    agents[] (running subagents), tasks{created,completed},
-                   errors  (lights the FIGHT box)
+                   errors  (lights the ACTIVITY box)
 
 Idle is stateless (wall clock); reactions and activity are stateful (here).
 The hook always exits 0 so it never blocks the tool/turn.

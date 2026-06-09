@@ -31,7 +31,7 @@ metric = [
 
 [[segment]]
 type  = "box"
-title = "FIGHT"
+title = "ACTIVITY"
 metric = [
   { id = "act.geiger", render = "spark",  icon = "📟", spark_style = "octant", spark_max = 1 },
   { id = "act.agents", render = "number", icon = "👹" },

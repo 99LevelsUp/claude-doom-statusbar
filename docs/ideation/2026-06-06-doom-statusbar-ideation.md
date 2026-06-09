@@ -148,7 +148,7 @@ Concrete protocol (`hooks/mugshot_hook.py` is an event-bus; `statusline.py` read
     "tools": [<epochs>], "agents": ["explore"], "tasks": {"created": 2, "completed": 1}, "errors": 1 }
   ```
 - **Face mapping:** `PostToolUseFailure`/`StopFailure`/`PermissionDenied` → `ouch`; `Stop`/`TaskCompleted` → `evl`; `PostToolUse` → `kill` (write-class) or `tl`/`tr` (read-class). Read with a `reaction_decay` window (default 1.5 s).
-- **Activity (hook-bus) → `act.*`:** `PostToolUse` appends a timestamp to `tools` (pruned to a 30 s window) → `act.geiger` sparkline; `SubagentStart/Stop` maintain `agents` → `act.agents`; `TaskCreated/Completed` → `act.tasks`; failures increment `errors` → `act.errors`. Absent keys hide their metric, so the FIGHT box lights up only once events have flowed.
+- **Activity (hook-bus) → `act.*`:** `PostToolUse` appends a timestamp to `tools` (pruned to a 30 s window) → `act.geiger` sparkline; `SubagentStart/Stop` maintain `agents` → `act.agents`; `TaskCreated/Completed` → `act.tasks`; failures increment `errors` → `act.errors`. Absent keys hide their metric, so the ACTIVITY box lights up only once events have flowed.
 - **Wiring:** map face events + `SubagentStart/Stop`, `TaskCreated/Completed` to the hook. The hook always exits 0; the hook process and the render process are fully decoupled via the file.
 
 > Sprite/file names (e.g. `STFST01`) are not yet fixed — naming is deferred. The mapping above is the contract; assets are wired to it later.
@@ -556,7 +556,7 @@ metric = [
 
 [[segment]]
 type  = "box"
-title = "FIGHT"
+title = "ACTIVITY"
 metric = [
   { id = "act.geiger", render = "spark",  icon = "📟" },
   { id = "act.agents", render = "number", icon = "👹" },
