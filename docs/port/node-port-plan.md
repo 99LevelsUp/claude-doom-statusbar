@@ -33,14 +33,14 @@ Port **bottom-up, one module at a time**, keeping the Python files as the refere
 
 ## Work order
 
-1. [ ] scaffold: `package.json` (ESM, bin, smol-toml dep), `src/`, `.gitignore` node_modules
-2. [ ] `src/render.js` + parity test vs `render_preset.py` (SAMPLE)
-3. [ ] pre-bake transparent sprites (one-time) → commit; `src/face.js` + parity test
-4. [ ] `src/statusline.js` + parity test (sample stdin JSON, both produce same HUD)
-5. [ ] `src/hook.js` + parity test (events → same state file)
-6. [ ] `bin/cli.js` installer + test against a temp settings.json
-7. [ ] README + docs: Node/npx install & update instructions
-8. [ ] delete Python (`*.py`, tomllib usage, PIL build tool) once parity holds end-to-end
+1. [x] scaffold: `package.json` (ESM, bin, smol-toml dep), `src/`, `.gitignore` node_modules
+2. [x] `src/render.js` + parity test vs `render_preset.py` (SAMPLE)
+3. [x] pre-bake transparent sprites (one-time) → commit; `src/face.js` + parity test
+4. [x] `src/statusline.js` + parity test (sample stdin JSON, both produce same HUD)
+5. [x] `src/hook.js` + parity test (events → same state file)
+6. [x] `bin/cli.js` installer + behavioral round-trip test (`test/installer.test.mjs`) + e2e smoke test (`test/smoke.test.mjs`, runs the wired command through a shell)
+7. [x] README + docs: Node/npx install & update instructions
+8. [x] delete Python (`*.py`, the PIL build tool) — parity held end-to-end; the dev's own `.claude/settings.local.json` was re-wired from `python *.py` to `node src/*.js` first
 9. [ ] (maintainer) publish to npm
 
 ## Parity-test harness
