@@ -106,8 +106,10 @@ Glyph/color legend:
 
 ## Visibility / lifecycle
 
-- **AGENTS:** visible while `squad` is non-empty; agents drop out as they stop (current behavior, now height-capped).
-- **TASKS:** visible while any task is **open** (`pending`/`in_progress`) OR `now − tasks_ts < TASK_LINGER`. Once everything is settled, the box lingers `TASK_LINGER` (proposed **10 s**) showing the all-checked state, then empties. The hook prune (above) clears the map at the same threshold.
+**Revised (user request, 2026-06-10): AGENTS and TASKS boxes are ALWAYS shown, even empty.** The statusline always emits `act.subagents`, `act.tasklist`, `act.agents`, `act.tasks` — so the box frames and the ACTIVITY counts (`👹 0`, `🎯 0/0`) are always visible. There is no statusline-side hide/linger gate.
+
+- **AGENTS:** always shown; agents drop out of the list as they stop (height-capped), box frame stays even at zero.
+- **TASKS:** always shown. The hook still prunes the task map `TASK_LINGER` (**10 s**) after everything settles — so completed/deleted work clears the *list content* (back to an empty box) while the *box frame* remains. Within the linger the all-checked state is visible; after it the list empties but the box stays.
 
 ## Testing
 
@@ -127,6 +129,16 @@ Run in the live session (hook = `node src/hook.js`, counter version). Created 10
 - **`PostToolUse(TaskUpdate)` for `in_progress`/`deleted`: NOT yet verified.** A bulletproof capture hook added to `settings.local.json` mid-session **never fired** — newly-added hook entries are not activated without a session restart (existing entries are read from disk live; the *set* of entries is fixed at session start). So the capture couldn't observe the `TaskUpdate` payload.
 - **Decision: proceed Path B.** Implement the `PostToolUse(TaskUpdate)` branch defensively (unit-tested with mock events). Live-verify `in_progress`/`deleted` in **Task 9** after the new hook is active (a restart happens naturally when the new code lands), reading the resulting task map from the state file. If it turns out `PostToolUse(TaskUpdate)` does not fire, the box degrades gracefully to 2-state (`pending`/`completed`); record that here if confirmed.
 - **Path A (stdin task-list snapshot): not pursued.** Path B is sufficient and proven; per YAGNI we don't build the snapshot reader speculatively.
+
+### Live confirmation (post-merge, 2026-06-10) — Path B fully validated
+
+Verified in the live session after the new hook went active (hook command is read from disk live, so no restart was needed — the merge alone activated the new code):
+
+- **`in_progress` CONFIRMED:** `TaskUpdate`→in_progress arrives via `PostToolUse(TaskUpdate).tool_input.status`; the state file showed `status:"in_progress"`. ✓
+- **`deleted` CONFIRMED:** likewise `status:"deleted"` recorded. ✓ → **no stuck-box risk**: a deleted task leaves the open set, so the box clears on schedule.
+- **Subject key:** the dedicated `TaskCreated` event's `task_title` is empty; the subject resolves through a defensive chain (`taskTitle(ev)` tries `task_title`/`task_subject`/`subject`/`title`/`tool_input.subject`). Live test rendered the real subject. ✓
+
+The 4-state list (`✓`/`✗`/`▶`/`🎯`) and the delete path work against real Claude Code events, not just mocks.
 
 ## Risks / open items
 
