@@ -14,7 +14,8 @@
   ],
   "scripts": {
     "statusline": "node src/statusline.js",
-    "hook": "node src/hook.js"
+    "hook": "node src/hook.js",
+    "test": "node test/installer.test.mjs && node test/smoke.test.mjs"
   },
   "engines": {
     "node": ">=18"
