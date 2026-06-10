@@ -73,7 +73,9 @@ If you'd rather edit `~/.claude/settings.json` by hand, point it at the package'
     "Stop":               [{ "hooks": [{ "type": "command", "command": "node \"/abs/path/claude-doom-statusbar/src/hook.js\"" }] }],
     "PermissionDenied":   [{ "hooks": [{ "type": "command", "command": "node \"/abs/path/claude-doom-statusbar/src/hook.js\"" }] }],
     "SubagentStart":      [{ "hooks": [{ "type": "command", "command": "node \"/abs/path/claude-doom-statusbar/src/hook.js\"" }] }],
-    "SubagentStop":       [{ "hooks": [{ "type": "command", "command": "node \"/abs/path/claude-doom-statusbar/src/hook.js\"" }] }]
+    "SubagentStop":       [{ "hooks": [{ "type": "command", "command": "node \"/abs/path/claude-doom-statusbar/src/hook.js\"" }] }],
+    "TaskCreated":        [{ "hooks": [{ "type": "command", "command": "node \"/abs/path/claude-doom-statusbar/src/hook.js\"" }] }],
+    "TaskCompleted":      [{ "hooks": [{ "type": "command", "command": "node \"/abs/path/claude-doom-statusbar/src/hook.js\"" }] }]
   }
 }
 ```
