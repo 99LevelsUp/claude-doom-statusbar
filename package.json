@@ -15,7 +15,7 @@
   "scripts": {
     "statusline": "node src/statusline.js",
     "hook": "node src/hook.js",
-    "test": "node test/installer.test.mjs && node test/smoke.test.mjs"
+    "test": "node test/installer.test.mjs && node test/smoke.test.mjs && node test/hook-tasks.test.mjs && node test/statusline-tasks.test.mjs && node test/render-scroll.test.mjs && node test/e2e-tasks.test.mjs"
   },
   "engines": {
     "node": ">=18"
