@@ -212,6 +212,16 @@ export function metricFixedWidth(entry) {
         ? lw + vlen(String(it[0])) + 1 + vlen(String(it[1]))
         : lw + vlen(String(it))));
   }
+  if (r === "scroll") {
+    const items = VALUES[entry.id] || [];
+    if (items.length === 0) return lw;
+    return Math.max(...items.map((it) => {
+      if (Array.isArray(it) && it.length === 2)
+        return lw + vlen(String(it[0])) + 1 + vlen(String(it[1]));
+      // object {mark, text}
+      return lw + vlen(String(it.mark || "")) + 1 + vlen(String(it.text || ""));
+    }));
+  }
   if (r === "bar") return null;
   return lw + vlen(String(entry.id in VALUES ? VALUES[entry.id] : "?")) + rextra;
 }
@@ -268,7 +278,8 @@ export function buildBar(cfg, target, spriteFor) {
     if (mets.length) segs.push({ ...s, metric: mets });
   }
   const boxes = segs.filter((s) => s.type === "box");
-  const rowcount = (b) => b.metric.reduce((n, m) => n + (m.render === "list" ? (VALUES[m.id] || []).length : 1), 0);
+  const rowcount = (b) => b.metric.reduce((n, m) =>
+    n + (m.render === "list" ? (VALUES[m.id] || []).length : (m.render === "scroll" ? 0 : 1)), 0);
   const dataRows = boxes.length ? Math.max(...boxes.map(rowcount)) : 0;
   const headersExtra = headers ? 1 : 0;
   const totalRows = Math.max(dataRows + headersExtra, 4); // 4 = mugshot floor
