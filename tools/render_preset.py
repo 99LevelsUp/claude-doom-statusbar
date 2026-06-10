@@ -22,7 +22,7 @@ import tomllib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mockup_boxes import load_face_from, face_cell, bg, RESET, BOLD, WAD_DIR  # noqa: E402
 
-ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+ANSI_RE = re.compile(r"\x1b\[[0-9;]*m|\x1b\]8;[^\x07\x1b]*(?:\x1b\\|\x07)")  # SGR + OSC 8 hyperlinks
 
 TITLE = (222, 202, 128)
 TEXT = (182, 186, 200)

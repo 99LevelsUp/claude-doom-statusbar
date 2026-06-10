@@ -17,6 +17,7 @@ State:   $MUGSHOT_STATE  (default: <temp>/mugshot_state.json)
 
 import json
 import os
+import pathlib
 import re
 import shutil
 import subprocess
@@ -57,6 +58,11 @@ def _dur(secs):
     if m:
         return f"{m}m"
     return f"{s}s"
+
+
+def _link(text, url):
+    """Wrap text in an OSC 8 terminal hyperlink (Ctrl/Cmd-click). vlen strips it."""
+    return f"\x1b]8;;{url}\x1b\\{text}\x1b]8;;\x1b\\" if url else text
 
 
 def _pretty_model(mid):
@@ -159,12 +165,21 @@ def build_values(data):
     if style:
         v["model.style"] = style
 
+    repo = (data.get("workspace") or {}).get("repo") or {}
+    repo_url = ""
+    if repo.get("host") and repo.get("owner") and repo.get("name"):
+        repo_url = f"https://{repo['host']}/{repo['owner']}/{repo['name']}"
+
     cwd = data.get("cwd") or (data.get("workspace") or {}).get("current_dir")
     if cwd:
-        v["loc.cwd"] = os.path.basename(cwd.rstrip("/\\")) or cwd
+        name = os.path.basename(cwd.rstrip("/\\")) or cwd
+        try:                                              # clickable -> opens the folder
+            v["loc.cwd"] = _link(name, pathlib.Path(cwd).as_uri())
+        except Exception:
+            v["loc.cwd"] = name
         br = git(cwd, "branch", "--show-current")
-        if br:
-            v["git.branch"] = br
+        if br:                                            # clickable -> the branch on the host
+            v["git.branch"] = _link(br, f"{repo_url}/tree/{br}") if repo_url else br
         lr = git(cwd, "rev-list", "--count", "--left-right", "@{u}...HEAD")
         if lr and "\t" in lr:
             behind, ahead = lr.split("\t")
@@ -172,6 +187,11 @@ def build_values(data):
         st = git(cwd, "status", "--porcelain")
         if st is not None:
             v["git.status"] = str(len([ln for ln in st.splitlines() if ln.strip()]))
+
+    pr = data.get("pr") or {}
+    if pr.get("number") or pr.get("url"):                 # clickable -> the pull request
+        label = f"#{pr['number']}" if pr.get("number") else (pr.get("review_state") or "PR")
+        v["pr.state"] = _link(label, pr.get("url"))
     return v
 
 
