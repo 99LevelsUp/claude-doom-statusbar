@@ -226,6 +226,15 @@ export function metricFixedWidth(entry) {
   return lw + vlen(String(entry.id in VALUES ? VALUES[entry.id] : "?")) + rextra;
 }
 
+export function scrollWindow(n, h, anchor, boundary) {
+  if (n <= h) return { start: 0, up: 0, down: 0 };       // all fit: top-aligned
+  let start;
+  if (anchor === "boundary") start = boundary - Math.floor(h / 2);
+  else start = 0;                                         // top anchor
+  start = Math.max(0, Math.min(start, n - h));            // clamp: never blank rows
+  return { start, up: start, down: n - start - h };
+}
+
 function available(entry) {
   if ("group" in entry) return entry.group.some((i) => i in VALUES);
   if (entry.render === "list") return true;
@@ -343,6 +352,37 @@ export function buildBar(cfg, target, spriteFor) {
           }
           col.push(bgsgrBox(boxRgb) + " " + body + " " + RESET);
         }
+        continue;
+      }
+      if (m.render === "scroll") {
+        const icon = m.icon || "";
+        const lbl = icon ? icon + " " : "";
+        const items = VALUES[m.id] || [];
+        const H = totalRows - (headers ? 1 : 0);
+        const boundary = items.filter((it) => !Array.isArray(it) &&
+          (it.mark === "✓" || it.mark === "✗")).length; // settled count (ignored for top anchor)
+        const win = scrollWindow(items.length, H, m.anchor || "top", boundary);
+        const shown = items.slice(win.start, win.start + H);
+        shown.forEach((item, k) => {
+          const first = k === 0, last = k === shown.length - 1;
+          const over = first && win.up > 0 ? `↑${win.up} ` : last && win.down > 0 ? `↓${win.down} ` : "";
+          let body;
+          if (Array.isArray(item)) {                       // [left, right] (agents)
+            const left = over + lbl + f(TEXT) + String(item[0]);
+            const right = f(TEXT) + String(item[1]);
+            const room = Math.max(0, w - vlen(left) - vlen(right));
+            body = left + " ".repeat(room) + right;
+          } else {                                         // {mark, markRgb, text} (tasks)
+            const markCol = item.markRgb ? f(item.markRgb) : f(TEXT);
+            let text = String(item.text);
+            const head = over + markCol + String(item.mark) + " " + f(TEXT);
+            const max = w - vlen(over) - vlen(String(item.mark)) - 1;
+            if (vlen(text) > max) text = [...text].slice(0, Math.max(0, max - 1)).join("") + "…";
+            body = head + text;
+            body += " ".repeat(Math.max(0, w - vlen(body)));
+          }
+          col.push(bgsgrBox(boxRgb) + " " + body + " " + RESET);
+        });
         continue;
       }
       let body = renderValue(m, m.render === "bar" ? cells : 0, boxRgb);
