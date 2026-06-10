@@ -24,40 +24,59 @@ Anything the session can't supply is hidden automatically, so the same config de
 
 ## Requirements
 
-- **Python 3.11+** (uses the stdlib `tomllib`).
+- **Node.js 18+**. One runtime dependency (`smol-toml`, a TOML parser); everything else is Node built-ins.
 - **[chafa](https://hpjansson.org/chafa/)** — *optional*. With it, the mugshot rasterises at any height. Without it, the HUD falls back to pre-rendered ANSI faces (heights 4–16, clamped to the nearest), so the mugshot still draws.
 - A terminal with **truecolor** and **legacy-computing glyph** support (the mugshot and fine bars use Unicode block/sextant/octant glyphs). Windows Terminal, WezTerm, kitty, foot all work.
-- Optional: **[psutil](https://pypi.org/project/psutil/)** for the SYS box. Falls back to stdlib (`shutil.disk_usage`, Windows ctypes RAM, cached-delta CPU) when absent.
 
 ## Install
 
 ```bash
-git clone https://github.com/99LevelsUp/claude-doom-statusbar.git
+npx claude-doom-statusbar install
 ```
 
-Then point Claude Code at it in `~/.claude/settings.json` (use the absolute path to your clone):
+That writes the `statusLine`, the lifecycle hooks, and the preset into `~/.claude/settings.json` for you (merging into whatever's already there, with a one-level `.bak`). Restart Claude Code and the HUD is live.
+
+```bash
+npx claude-doom-statusbar install --preset full   # full | default | minimal (default: full)
+npx claude-doom-statusbar install --project       # write ./.claude/settings.json instead of ~/.claude
+npx claude-doom-statusbar uninstall                # remove everything the installer added
+```
+
+Prefer a global binary? `npm i -g claude-doom-statusbar` then run `claude-doom-statusbar install`.
+
+The `statusLine` alone gives you the boxes and the HP/idle face. The hooks add the live reactions, the geiger, and the subagent list. The installer is idempotent and merge-safe: re-running won't double-add, and an existing `statusLine` of your own is backed up to `settings.json.bak`.
+
+### Updating
+
+```bash
+npm i -g claude-doom-statusbar@latest    # global install
+# or just run the latest on demand:
+npx claude-doom-statusbar@latest install
+```
+
+### Manual wiring
+
+If you'd rather edit `~/.claude/settings.json` by hand, point it at the package's `src/` (use the absolute install path; on Windows use forward slashes):
 
 ```json
 {
-  "env": { "DOOMBAR_PRESET": "/abs/path/claude-doom-statusbar/presets/full.toml" },
+  "env": { "DOOMBAR_PRESET": "/abs/path/claude-doom-statusbar/presets/full.toml", "FORCE_HYPERLINK": "1" },
   "statusLine": {
     "type": "command",
-    "command": "python /abs/path/claude-doom-statusbar/statusline.py",
+    "command": "node \"/abs/path/claude-doom-statusbar/src/statusline.js\"",
     "refreshInterval": 1
   },
   "hooks": {
-    "PreToolUse":         [{ "hooks": [{ "type": "command", "command": "python /abs/path/claude-doom-statusbar/hooks/mugshot_hook.py" }] }],
-    "PostToolUse":        [{ "hooks": [{ "type": "command", "command": "python /abs/path/claude-doom-statusbar/hooks/mugshot_hook.py" }] }],
-    "PostToolUseFailure": [{ "hooks": [{ "type": "command", "command": "python /abs/path/claude-doom-statusbar/hooks/mugshot_hook.py" }] }],
-    "Stop":               [{ "hooks": [{ "type": "command", "command": "python /abs/path/claude-doom-statusbar/hooks/mugshot_hook.py" }] }],
-    "PermissionDenied":   [{ "hooks": [{ "type": "command", "command": "python /abs/path/claude-doom-statusbar/hooks/mugshot_hook.py" }] }],
-    "SubagentStart":      [{ "hooks": [{ "type": "command", "command": "python /abs/path/claude-doom-statusbar/hooks/mugshot_hook.py" }] }],
-    "SubagentStop":       [{ "hooks": [{ "type": "command", "command": "python /abs/path/claude-doom-statusbar/hooks/mugshot_hook.py" }] }]
+    "PreToolUse":         [{ "hooks": [{ "type": "command", "command": "node \"/abs/path/claude-doom-statusbar/src/hook.js\"" }] }],
+    "PostToolUse":        [{ "hooks": [{ "type": "command", "command": "node \"/abs/path/claude-doom-statusbar/src/hook.js\"" }] }],
+    "PostToolUseFailure": [{ "hooks": [{ "type": "command", "command": "node \"/abs/path/claude-doom-statusbar/src/hook.js\"" }] }],
+    "Stop":               [{ "hooks": [{ "type": "command", "command": "node \"/abs/path/claude-doom-statusbar/src/hook.js\"" }] }],
+    "PermissionDenied":   [{ "hooks": [{ "type": "command", "command": "node \"/abs/path/claude-doom-statusbar/src/hook.js\"" }] }],
+    "SubagentStart":      [{ "hooks": [{ "type": "command", "command": "node \"/abs/path/claude-doom-statusbar/src/hook.js\"" }] }],
+    "SubagentStop":       [{ "hooks": [{ "type": "command", "command": "node \"/abs/path/claude-doom-statusbar/src/hook.js\"" }] }]
   }
 }
 ```
-
-The `statusLine` alone gives you the boxes and the HP/idle face. The hooks add the live reactions, the geiger, and the subagent list — drop them if you only want the static HUD.
 
 ### Clickable links
 
@@ -79,9 +98,9 @@ A preset is TOML: a `[bar]` style block, a `[mugshot]` block, and a list of `[[s
 
 ## How it works
 
-- **`statusline.py`** is the statusLine command. Claude Code pipes session JSON on stdin; it maps that (plus git via shell, system metrics, and the hook state file) to metric values, picks the mugshot sprite, and renders the preset.
-- **`hooks/mugshot_hook.py`** is an event bus. Lifecycle hooks write a small state file (face reaction with decay, tool-run intervals for the geiger, the running-subagent squad). The status line reads it on each refresh — the two never block each other.
-- **`tools/render_preset.py`** is the rendering engine; **`tools/mockup_boxes.py`** bakes the mugshot via chafa.
+- **`src/statusline.js`** is the statusLine command. Claude Code pipes session JSON on stdin; it maps that (plus git via shell, system metrics from Node built-ins, and the hook state file) to metric values, picks the mugshot sprite, and renders the preset.
+- **`src/hook.js`** is an event bus. Lifecycle hooks write a small state file (face reaction with decay, tool-run intervals for the geiger, the running-subagent squad). The status line reads it on each refresh — the two never block each other.
+- **`src/render.js`** is the rendering engine; **`src/face.js`** rasterises the mugshot via chafa (with pre-baked transparent sprites as the fallback). **`bin/cli.js`** is the installer.
 
 See [`docs/ideation/`](docs/ideation/) for the full design write-up.
 
