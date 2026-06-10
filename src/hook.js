@@ -4,8 +4,8 @@
 // writes it back atomically. The status line reads that state.
 //
 // State carries: face reaction {expr, ts}; activity spans[] [start,end] (geiger),
-// squad{} (running subagents), pending[] (Agent launch labels), tasks{created,
-// completed}, errors, mode (permission mode). Always exits 0.
+// squad{} (running subagents), pending[] (Agent launch labels), tasks{} (id ->
+// {title,status,ts}), tasks_ts (last tasks mutation), errors, mode (permission mode). Always exits 0.
 //
 // State file: $MUGSHOT_STATE, else <temp>/mugshot_<session_id>.json.
 
@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 
 const GEIGER_WINDOW = 30.0; // seconds of tool-run history kept for the sparkline
 const MAX_RUN = 300.0; // drop an unclosed span after this (assume the Post was lost)
+const TASK_LINGER = 10.0; // seconds the TASKS box lingers after all tasks settle
 
 const READ_TOOLS = new Set(["Read", "Grep", "Glob",
   "ctx_read", "ctx_multi_read", "ctx_search", "ctx_semantic_search", "ctx_tree", "ctx_overview"]);
@@ -46,7 +47,7 @@ export function foldActivity(st, name, ev, now) {
   st.spans ??= [];
   st.squad ??= {};
   st.pending ??= [];
-  st.tasks ??= { created: 0, completed: 0 };
+  st.tasks ??= {};   // keyed map: id -> { title, status, ts }
   st.errors ??= 0;
 
   const tool = base(ev.tool_name || "");
@@ -76,37 +77,51 @@ export function foldActivity(st, name, ev, now) {
   } else if (name === "SubagentStop") {
     delete st.squad[String(ev.agent_id || "")];
   } else if (name === "TaskCreated") {
-    st.tasks.created += 1;
+    const id = String(ev.task_id ?? now);
+    st.tasks[id] = { title: ev.task_title || "task", status: "pending", ts: now };
+    st.tasks_ts = now;
   } else if (name === "TaskCompleted") {
-    st.tasks.completed += 1;
+    const id = String(ev.task_id ?? "");
+    if (st.tasks[id]) st.tasks[id].status = "completed";
+    else st.tasks[id] = { title: ev.task_title || "task", status: "completed", ts: now };
+    st.tasks_ts = now;
+  } else if (name === "PostToolUse" && (ev.tool_name === "TaskUpdate") && ev.tool_input) {
+    const id = String(ev.tool_input.taskId ?? "");
+    const s = ev.tool_input.status;
+    if (id && st.tasks[id] && ["pending", "in_progress", "completed", "deleted"].includes(s)) {
+      st.tasks[id].status = s;
+      st.tasks_ts = now;
+    }
   }
 
   const win = now - GEIGER_WINDOW; // prune: closed spans out of window, orphaned open spans
   st.spans = st.spans.filter((s) => (s[1] === null ? s[0] >= now - MAX_RUN : s[1] >= win));
   st.squad = Object.fromEntries(Object.entries(st.squad).filter(([, v]) => now - v.start < MAX_RUN));
+
+  const taskVals = Object.values(st.tasks || {});
+  const anyOpen = taskVals.some((t) => t.status === "pending" || t.status === "in_progress");
+  if (taskVals.length && !anyOpen && now - (st.tasks_ts || 0) > TASK_LINGER) st.tasks = {};
 }
 
 function main() {
-  let ev = {};
-  try { ev = JSON.parse(readFileSync(0, "utf8")); } catch { ev = {}; }
-  const name = ev.hook_event_name || "";
-  const now = Date.now() / 1000;
-  const p = statePath(ev);
-
-  let st = {};
-  try { st = JSON.parse(readFileSync(p, "utf8")); } catch { st = {}; }
-
-  foldActivity(st, name, ev, now);
-  const expr = expression(name, ev.tool_name || "");
-  if (expr) { st.expr = expr; st.ts = now; }
-
-  if (ev.permission_mode) st.mode = ev.permission_mode; // not in the statusline payload, only here
-
-  const tmp = `${p}.${process.pid}.tmp`; // atomic write
   try {
-    writeFileSync(tmp, JSON.stringify(st));
-    renameSync(tmp, p);
-  } catch { /* never block the tool */ }
+    let ev = {};
+    try { ev = JSON.parse(readFileSync(0, "utf8")); } catch { ev = {}; }
+    const name = ev.hook_event_name || "";
+    const now = Date.now() / 1000;
+    const p = statePath(ev);
+
+    let st = {};
+    try { st = JSON.parse(readFileSync(p, "utf8")); } catch { st = {}; }
+
+    foldActivity(st, name, ev, now);
+    const expr = expression(name, ev.tool_name || "");
+    if (expr) { st.expr = expr; st.ts = now; }
+    if (ev.permission_mode) st.mode = ev.permission_mode;
+
+    const tmp = `${p}.${process.pid}.tmp`;
+    try { writeFileSync(tmp, JSON.stringify(st)); renameSync(tmp, p); } catch { /* never block */ }
+  } catch { /* swallow everything: a hook must never block a tool */ }
   process.exit(0);
 }
 

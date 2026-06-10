@@ -118,6 +118,16 @@ Glyph/color legend:
   - **neither box increases `totalRows`** (the core height-decoupling assertion).
 - **smoke:** full HUD renders with a populated task map.
 
+## Spike findings (Task 1, 2026-06-10)
+
+Run in the live session (hook = `node src/hook.js`, counter version). Created 10 tasks, set one `in_progress`, deleted one (`TaskUpdate status:"deleted"`), via the session's own Task tools.
+
+- **`TaskCreated` fires** — main hook state showed `tasks.created: 10` (9 tracking + 1 dummy). Path B accumulation is viable; `pending`→`completed` is the **confirmed, reliable** signal.
+- **`TaskUpdate` (`status` enum) confirmed** as a tool: `pending | in_progress | completed | deleted` (from the tool schema).
+- **`PostToolUse(TaskUpdate)` for `in_progress`/`deleted`: NOT yet verified.** A bulletproof capture hook added to `settings.local.json` mid-session **never fired** — newly-added hook entries are not activated without a session restart (existing entries are read from disk live; the *set* of entries is fixed at session start). So the capture couldn't observe the `TaskUpdate` payload.
+- **Decision: proceed Path B.** Implement the `PostToolUse(TaskUpdate)` branch defensively (unit-tested with mock events). Live-verify `in_progress`/`deleted` in **Task 9** after the new hook is active (a restart happens naturally when the new code lands), reading the resulting task map from the state file. If it turns out `PostToolUse(TaskUpdate)` does not fire, the box degrades gracefully to 2-state (`pending`/`completed`); record that here if confirmed.
+- **Path A (stdin task-list snapshot): not pursued.** Path B is sufficient and proven; per YAGNI we don't build the snapshot reader speculatively.
+
 ## Risks / open items
 
 - **Stale tasks if the spike fails both ways** (no `PostToolUse(TaskUpdate)` payload and no stdin snapshot): a `deleted` task can't be detected, so it lingers as `pending` and keeps the box open. Mitigation deferred to the Step 0 result; if we land here, the chosen fallback (snapshot vs. accept-staleness) gets recorded back here before coding the delete path.

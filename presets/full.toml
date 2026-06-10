@@ -57,9 +57,16 @@ metric = [
 
 [[segment]]
 type  = "box"
-title = "SUBAGENTS"
+title = "AGENTS"
 metric = [
-  { id = "act.subagents", render = "list", icon = "👹" },
+  { id = "act.subagents", render = "scroll", anchor = "top", icon = "👹" },
+]
+
+[[segment]]
+type  = "box"
+title = "TASKS"
+metric = [
+  { id = "act.tasklist", render = "scroll", anchor = "boundary" },
 ]
 
 [[segment]]
