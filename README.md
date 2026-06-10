@@ -15,7 +15,7 @@ The HUD is a row of boxes centred on the mugshot. Each box is configurable; the 
 - **mugshot** — the Doomguy face. Its HP (how bloodied it looks) follows your *usage headroom* — `min(5h, 7d) rate-limit room`, context as a fallback. It glances around when idle, winces on errors, snarls on writes, grins on a clean finish, dies when you're tapped out, and flashes invulnerable just after an advisor consult.
 - **MODEL** — model name + reasoning effort (a waxing-moon→sun icon), thinking/fast toggles, output style, and the configured `/advisor` model.
 - **USAGE** — context window (HP bar), the 5h / 7d rate-limit bars (with reset countdowns), RAM, session cost.
-- **PROJECT** — cwd, git branch, ahead/behind, dirty count, lines added/removed, PR state.
+- **PROJECT** — cwd, git branch, ahead/behind, dirty count, lines added/removed, PR state. The cwd, branch and PR are **clickable** (OSC 8 hyperlinks): Ctrl/Cmd-click to open the folder, the branch on the host, or the pull request.
 - **ACTIVITY** — a tool-activity "geiger" sparkline (duty-cycle over the last 30 s), running-subagent count, task progress, error count.
 - **SUBAGENTS** — a live list of running subagents (type/description + ticking runtime), always visible, widening to fit.
 - **SYS** — CPU, disk, session length, wall clock.
@@ -58,6 +58,14 @@ Then point Claude Code at it in `~/.claude/settings.json` (use the absolute path
 ```
 
 The `statusLine` alone gives you the boxes and the HP/idle face. The hooks add the live reactions, the geiger, and the subagent list — drop them if you only want the static HUD.
+
+### Clickable links
+
+The cwd / branch / PR are emitted as OSC 8 hyperlinks. They render in any terminal but only click in ones Claude Code detects as hyperlink-capable (iTerm2, kitty, WezTerm, …). **Windows Terminal isn't auto-detected** — launch with `FORCE_HYPERLINK=1` to enable them:
+
+```powershell
+$env:FORCE_HYPERLINK = "1"; claude
+```
 
 ## Presets
 
