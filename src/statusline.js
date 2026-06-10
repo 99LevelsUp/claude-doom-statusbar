@@ -216,7 +216,6 @@ function sysValues(cwd) {
 }
 
 const PERM = { plan: "📋 plan", auto: "⏩ auto", acceptEdits: "⏩ auto", bypassPermissions: "⏩ bypass" };
-const TASK_LINGER = 10.0;
 const OK_RGB = [96, 200, 104];   // matches render.js OK (done, green)
 const CRIT_RGB = [224, 84, 64];  // matches render.js CRIT (deleted, red)
 const TASK_MARK = { completed: ["✓", OK_RGB], deleted: ["✗", CRIT_RGB], in_progress: ["▶", null], pending: ["🎯", null] };
@@ -243,34 +242,28 @@ export function activityValues(st, now) {
     }
     v["act.geiger"] = series.map((c) => Math.min(1.0, c / binw));
   }
-  if ("squad" in st) v["act.agents"] = String(Object.keys(st.squad).length);
+  // AGENTS + TASKS boxes (and their ACTIVITY counts) are always shown, even empty.
   const squad = st.squad || {};
-  if (Object.keys(squad).length) {
-    const agents = Object.values(squad).sort((a, b) => a.start - b.start);
-    v["act.subagents"] = agents.map((a) => {
-      let label = a.desc || a.type || "agent";
-      if ([...label].length > 20) label = [...label].slice(0, 19).join("") + "…";
-      return [label, _dur(now - a.start)];
-    });
-  }
-  const tasks = st.tasks && typeof st.tasks === "object" ? Object.values(st.tasks) : [];
-  if (tasks.length) {
-    const live = tasks.filter((t) => t.status !== "deleted");
-    const done = live.filter((t) => t.status === "completed").length;
-    v["act.tasks"] = `${done}/${live.length}`;
+  v["act.agents"] = String(Object.keys(squad).length);
+  const agents = Object.values(squad).sort((a, b) => a.start - b.start);
+  v["act.subagents"] = agents.map((a) => {
+    let label = a.desc || a.type || "agent";
+    if ([...label].length > 20) label = [...label].slice(0, 19).join("") + "…";
+    return [label, _dur(now - a.start)];
+  });
 
-    const anyOpen = tasks.some((t) => t.status === "pending" || t.status === "in_progress");
-    const visible = anyOpen || (now - (st.tasks_ts || 0) < TASK_LINGER);
-    if (visible) {
-      const ordered = tasks
-        .map((t) => ({ ...t }))
-        .sort((a, b) => (TASK_ORDER[a.status] - TASK_ORDER[b.status]) || (a.ts - b.ts));
-      v["act.tasklist"] = ordered.map((t) => {
-        const [mark, markRgb] = TASK_MARK[t.status] || ["🎯", null];
-        return { mark, markRgb, text: t.title };
-      });
-    }
-  }
+  const tasks = st.tasks && typeof st.tasks === "object" ? Object.values(st.tasks) : [];
+  const live = tasks.filter((t) => t.status !== "deleted");
+  const done = live.filter((t) => t.status === "completed").length;
+  v["act.tasks"] = `${done}/${live.length}`;
+  const ordered = tasks
+    .map((t) => ({ ...t }))
+    .sort((a, b) => (TASK_ORDER[a.status] - TASK_ORDER[b.status]) || (a.ts - b.ts));
+  v["act.tasklist"] = ordered.map((t) => {
+    const [mark, markRgb] = TASK_MARK[t.status] || ["🎯", null];
+    return { mark, markRgb, text: t.title };
+  });
+
   if ("errors" in st) v["act.errors"] = String(st.errors);
   return v;
 }

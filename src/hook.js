@@ -32,6 +32,12 @@ function base(tool) {
   return tool.startsWith("mcp__") ? tool.split("__").pop() : tool;
 }
 
+// Task event subject: the exact key isn't documented, so try the likely ones.
+function taskTitle(ev) {
+  return ev.task_title || ev.task_subject || ev.subject || ev.title ||
+    (ev.tool_input && ev.tool_input.subject) || "task";
+}
+
 export function expression(name, tool) {
   const b = base(tool);
   if (["PostToolUseFailure", "StopFailure", "PermissionDenied"].includes(name)) return "ouch";
@@ -78,12 +84,12 @@ export function foldActivity(st, name, ev, now) {
     delete st.squad[String(ev.agent_id || "")];
   } else if (name === "TaskCreated") {
     const id = String(ev.task_id ?? now);
-    st.tasks[id] = { title: ev.task_title || "task", status: "pending", ts: now };
+    st.tasks[id] = { title: taskTitle(ev), status: "pending", ts: now };
     st.tasks_ts = now;
   } else if (name === "TaskCompleted") {
     const id = String(ev.task_id ?? "");
     if (st.tasks[id]) st.tasks[id].status = "completed";
-    else st.tasks[id] = { title: ev.task_title || "task", status: "completed", ts: now };
+    else st.tasks[id] = { title: taskTitle(ev), status: "completed", ts: now };
     st.tasks_ts = now;
   } else if (name === "PostToolUse" && (ev.tool_name === "TaskUpdate") && ev.tool_input) {
     const id = String(ev.tool_input.taskId ?? "");

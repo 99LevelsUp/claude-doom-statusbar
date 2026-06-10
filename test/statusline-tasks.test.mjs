@@ -23,10 +23,16 @@ ok(list[0].mark === "✓" && list[1].mark === "✗", "settled on top: ✓ then �
 ok(list[2].mark === "▶" && list[3].mark === "🎯", "open below: ▶ then 🎯");
 ok(Array.isArray(list[0].markRgb) && list[1].markRgb[0] === 224, "done green, deleted red");
 
-// Visibility: hidden once all settled AND past linger (statusline-side, event-independent).
+// Boxes are always shown — tasklist key emitted regardless of state/linger.
 const settled = { tasks: { a:{title:"x",status:"completed",ts:1} }, tasks_ts: 5 };
-ok(!("act.tasklist" in activityValues(settled, 5 + 11)), "all-settled past linger -> key omitted");
-ok("act.tasklist" in activityValues(settled, 5 + 3), "all-settled within linger -> still shown");
+ok("act.tasklist" in activityValues(settled, 5 + 999), "tasklist always emitted (box always visible)");
+
+// Empty state: keys still present, with empty list / zero counts (AGENTS+TASKS+ACTIVITY shown at 0).
+const empty = activityValues({}, now);
+ok(Array.isArray(empty["act.tasklist"]) && empty["act.tasklist"].length === 0, "no tasks -> act.tasklist []");
+ok(empty["act.tasks"] === "0/0", `no tasks -> act.tasks 0/0 (got ${empty["act.tasks"]})`);
+ok(Array.isArray(empty["act.subagents"]) && empty["act.subagents"].length === 0, "no agents -> act.subagents []");
+ok(empty["act.agents"] === "0", `no agents -> act.agents 0 (got ${empty["act.agents"]})`);
 
 // Full agent list (no CAP collapse to '+k more').
 const sq = {}; for (let i=0;i<7;i++) sq["g"+i]={type:"explore",start:i,desc:"agent "+i};
