@@ -2,5 +2,8 @@
 __pycache__/
 *.py[cod]
 
+# Node
+node_modules/
+
 # Local machine-specific Claude Code settings (absolute paths)
 .claude/settings.local.json

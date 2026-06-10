@@ -634,6 +634,14 @@ The `advisor` consult (and likely future `review` / `code-review`-style server t
 
 ---
 
+## TODO — a TASKS box (live list, like SUBAGENTS)
+
+Right now tasks are a count only (`🎯 act.tasks` = completed/created). We already have a `list` render that expands a box to one row per item (used by SUBAGENTS). A **TASKS box could list individual tasks the same way** — one row per task: subject + status (e.g. `🎯 port render engine  ▶`, `✓ scaffold project`), sitting next to SUBAGENTS.
+
+What's needed: the `TaskCreated` / `TaskCompleted` hook events currently only bump counters. To list tasks, the hook should also capture each task's **subject/title** (if the event payload carries it) into a `tasks[]` list keyed by id, mark them done on `TaskCompleted`, and the status line renders them through the existing `list` mechanism (cap + "+k more", same as the subagent list). Verify the `TaskCreated` payload includes the subject before relying on it.
+
+---
+
 ## Ranked Ideas
 
 ### 1. Face-First Architecture

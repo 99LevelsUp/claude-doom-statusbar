@@ -1,0 +1,38 @@
+{
+  "name": "claude-doom-statusbar",
+  "version": "0.1.0",
+  "description": "DOOM-inspired status bar for the Claude Code CLI — a mugshot that tracks session health, plus usage, model, project, system, and a live subagent list.",
+  "type": "module",
+  "bin": {
+    "claude-doom-statusbar": "bin/cli.js"
+  },
+  "files": [
+    "src",
+    "bin",
+    "presets",
+    "assets"
+  ],
+  "scripts": {
+    "statusline": "node src/statusline.js",
+    "hook": "node src/hook.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "smol-toml": "^1.6.1"
+  },
+  "keywords": [
+    "claude-code",
+    "statusline",
+    "doom",
+    "terminal",
+    "hud",
+    "tui"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/99LevelsUp/claude-doom-statusbar.git"
+  },
+  "license": "MIT"
+}
