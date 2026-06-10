@@ -20,6 +20,7 @@ The active task system in current Claude Code is the **Task\*** family (TodoWrit
 - The full status enum is `pending` | `in_progress` | `completed` | `deleted`. There is **no** `skipped`/`cancelled` status.
 - Tasks are added incrementally (`TaskCreate` per item). Removal is `TaskUpdate` with `status: "deleted"` — no `TaskDelete` tool.
 - `in_progress` and `deleted` transitions fire **no dedicated hook event**. The only possible granular signal is a generic `PostToolUse` with `tool_name == "TaskUpdate"` carrying `{ taskId, status }` — **undocumented, must be verified empirically**.
+- **No hard limit of one `in_progress` at a time.** The Task\* system is multi-owner by design and the docs document no "exactly one in_progress" constraint (that was a soft TodoWrite convention, never tool-enforced). So we must handle **multiple concurrent `in_progress`** defensively: we anchor the window on the settled/open boundary, not on a single "current" task. In the common single-in_progress case it still lands mid-window because `in_progress` items sort first in the open group (just below the boundary).
 
 ### Step 0 — verification spike (blocks the 3-state / delete features)
 
@@ -69,8 +70,13 @@ Two anchor behaviors:
 - **`anchor: "top"` (AGENTS):** show items from the top, up to `H`. No reordering, no boundary. As agents finish they drop out and the list shortens. Overflow shown compactly as `↓k` on the last visible row.
 - **`anchor: "boundary"` (TASKS):** reorder into two groups, then center the boundary:
   - **Settled (top half) — "won't touch again":** `completed` (`✓`, green) and `deleted` (`✗`, red), in creation order.
-  - **Open (bottom half) — "to do":** `in_progress` (`▶`) and `pending` (`🎯`), in creation order.
-  - Boundary index `B = |settled|`. Window `start = clamp(B − floor(H/2), 0, N − H)`, so the settled→open transition sits mid-window.
+  - **Open (bottom half) — "to do":** `in_progress` (`▶`) first, then `pending` (`🎯`); creation order within each status.
+  - Boundary index `B = |settled|` (count of completed + deleted). Window `start = clamp(B − floor(H/2), 0, N − H)`, so the settled→open transition sits mid-window. `in_progress` items sort first in the open group, so they sit just below the boundary ≈ center.
+  - The clamp encodes the full intended behavior (no separate cases needed):
+    - `N ≤ H` (all fit) → `N − H ≤ 0` → `start = 0`: items **top-aligned**, no centering, trailing blank rows below.
+    - `N > H` → window always full, **never blank rows inside**.
+    - few settled (`B < H/2`) → `start = 0`: boundary/in_progress in the **upper half** (first task may sit on row 1).
+    - few open (`open < H/2`) → `start = N − H`: boundary/in_progress in the **lower half** (last task on the last row).
   - Overflow shown compactly as `↑k` / `↓k` prefixed on the edge visible rows (no dedicated separator line — boundary is implicit in the glyph transition).
 
 Shared `scroll` details:
@@ -108,7 +114,7 @@ Glyph/color legend:
 - **hook:** `TaskCreated`/`TaskCompleted`/`TaskUpdate(status)` fold into the correct map; `act.tasks` count derived correctly; prune clears only when all-terminal past linger.
 - **render (`scroll`):**
   - `anchor:"top"` — caps at `H`, shortens as items leave, `↓k` overflow.
-  - `anchor:"boundary"` — settled-on-top reorder; boundary centered; clamp at edges (all settled / none settled); `↑k`/`↓k` overflow; truncation; empty → hidden.
+  - `anchor:"boundary"` — settled-on-top reorder; boundary centered; clamp at edges (all settled / none settled); `N ≤ H` top-aligned with no centering; `N > H` no blank interior rows; **multiple concurrent `in_progress`** grouped first in the open half; `↑k`/`↓k` overflow; truncation; empty → hidden.
   - **neither box increases `totalRows`** (the core height-decoupling assertion).
 - **smoke:** full HUD renders with a populated task map.
 
@@ -116,4 +122,4 @@ Glyph/color legend:
 
 - **Stale tasks if the spike fails both ways** (no `PostToolUse(TaskUpdate)` payload and no stdin snapshot): a `deleted` task can't be detected, so it lingers as `pending` and keeps the box open. Mitigation deferred to the Step 0 result; if we land here, the chosen fallback (snapshot vs. accept-staleness) gets recorded back here before coding the delete path.
 - `TASK_LINGER = 10 s` is a proposed default, easy to tune.
-- Group-internal ordering is creation order; `in_progress` is distinguished by glyph, not by position.
+- Ordering: settled group in creation order; open group sorts `in_progress` before `pending` (so the current work sits right under the boundary ≈ center), each in creation order within its status. `in_progress` is distinguished by glyph, not by a single fixed slot — there may be more than one.
