@@ -87,26 +87,24 @@ export function foldActivity(st, name, ev, now) {
 }
 
 function main() {
-  let ev = {};
-  try { ev = JSON.parse(readFileSync(0, "utf8")); } catch { ev = {}; }
-  const name = ev.hook_event_name || "";
-  const now = Date.now() / 1000;
-  const p = statePath(ev);
-
-  let st = {};
-  try { st = JSON.parse(readFileSync(p, "utf8")); } catch { st = {}; }
-
-  foldActivity(st, name, ev, now);
-  const expr = expression(name, ev.tool_name || "");
-  if (expr) { st.expr = expr; st.ts = now; }
-
-  if (ev.permission_mode) st.mode = ev.permission_mode; // not in the statusline payload, only here
-
-  const tmp = `${p}.${process.pid}.tmp`; // atomic write
   try {
-    writeFileSync(tmp, JSON.stringify(st));
-    renameSync(tmp, p);
-  } catch { /* never block the tool */ }
+    let ev = {};
+    try { ev = JSON.parse(readFileSync(0, "utf8")); } catch { ev = {}; }
+    const name = ev.hook_event_name || "";
+    const now = Date.now() / 1000;
+    const p = statePath(ev);
+
+    let st = {};
+    try { st = JSON.parse(readFileSync(p, "utf8")); } catch { st = {}; }
+
+    foldActivity(st, name, ev, now);
+    const expr = expression(name, ev.tool_name || "");
+    if (expr) { st.expr = expr; st.ts = now; }
+    if (ev.permission_mode) st.mode = ev.permission_mode;
+
+    const tmp = `${p}.${process.pid}.tmp`;
+    try { writeFileSync(tmp, JSON.stringify(st)); renameSync(tmp, p); } catch { /* never block */ }
+  } catch { /* swallow everything: a hook must never block a tool */ }
   process.exit(0);
 }
 
