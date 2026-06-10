@@ -376,8 +376,12 @@ export function buildBar(cfg, target, spriteFor) {
           const over = first && win.up > 0 ? `↑${win.up} ` : last && win.down > 0 ? `↓${win.down} ` : "";
           let body;
           if (Array.isArray(item)) {                       // [left, right] (agents)
-            const left = over + lbl + f(TEXT) + String(item[0]);
             const right = f(TEXT) + String(item[1]);
+            const prefix = over + lbl;                     // ↑k/↓k marker + icon
+            const labelMax = Math.max(0, w - vlen(prefix) - vlen(String(item[1])) - 1); // 1 = min gap
+            let label = String(item[0]);
+            if (vlen(label) > labelMax) label = [...label].slice(0, Math.max(0, labelMax - 1)).join("") + "…";
+            const left = prefix + f(TEXT) + label;
             const room = Math.max(0, w - vlen(left) - vlen(right));
             body = left + " ".repeat(room) + right;
           } else {                                         // {mark, markRgb, text} (tasks)

@@ -4,8 +4,8 @@
 // writes it back atomically. The status line reads that state.
 //
 // State carries: face reaction {expr, ts}; activity spans[] [start,end] (geiger),
-// squad{} (running subagents), pending[] (Agent launch labels), tasks{created,
-// completed}, errors, mode (permission mode). Always exits 0.
+// squad{} (running subagents), pending[] (Agent launch labels), tasks{} (id ->
+// {title,status,ts}), tasks_ts (last tasks mutation), errors, mode (permission mode). Always exits 0.
 //
 // State file: $MUGSHOT_STATE, else <temp>/mugshot_<session_id>.json.
 
