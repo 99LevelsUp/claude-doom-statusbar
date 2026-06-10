@@ -17,10 +17,10 @@ const REPO = path.dirname(HERE);
 const ANSI_RE = /\x1b\[[0-9;]*m|\x1b\]8;[^\x07\x1b]*(?:\x1b\\|\x07)/g;
 
 const TITLE = [222, 202, 128];
-const TEXT = [182, 186, 200];
-const OK = [96, 200, 104];
+export const TEXT = [182, 186, 200];
+export const OK = [96, 200, 104];
 const WARN = [224, 184, 64];
-const CRIT = [224, 84, 64];
+export const CRIT = [224, 84, 64];
 const SPARK = [120, 184, 232];
 
 const EIGHTHS = [..." ▏▎▍▌▋▊▉"];
