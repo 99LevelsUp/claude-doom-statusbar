@@ -49,6 +49,7 @@ type  = "box"
 title = "ACTIVITY"
 metric = [
   { id = "act.geiger", render = "spark",  icon = "📟", spark_style = "octant", spark_max = 1 },
+  { id = "act.agents", render = "number", icon = "👹" },
   { id = "act.tasks",  render = "number", icon = "🎯" },
   { id = "act.errors", render = "number", icon = "💢", color = "threshold" },
 ]

@@ -38,7 +38,7 @@ SAMPLE = {
     "context.hp": 78, "ratelimit.5h": 64, "ratelimit.7d": 31, "cost.total": "$1.83",
     "git.branch": "main", "git.behind": "↓2", "git.ahead": "↑3", "git.status": "3",
     "pr.state": "#1234",
-    "act.subagents": [["hook events", "2m13s"], ["find configs", "12s"]],
+    "act.subagents": [["hook events", "2m13s"], ["find configs", "12s"]], "act.agents": "2",
     "act.geiger": [0, .25, .5, 1, .75, 1, .5, .6, .3, .1, .4, 1, .8, .4],  # duty 0..1
     "act.tasks": "2/5", "act.errors": "0", "sys.ram": 47, "sys.cpu": "12%",
     "sys.disk": 63, "sys.clock": "14:23",

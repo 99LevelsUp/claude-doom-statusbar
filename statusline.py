@@ -284,6 +284,8 @@ def activity_values(st, now):
                 bs = start0 + i * binw
                 series[i] += min(e, bs + binw) - max(s, bs)   # seconds covered in bin
         v["act.geiger"] = [min(1.0, c / binw) for c in series]  # duty cycle 0..1
+    if "squad" in st:                                 # running-subagent count (also in SUBAGENTS)
+        v["act.agents"] = str(len(st["squad"]))
     squad = st.get("squad") or {}
     if squad:                                         # live list of running subagents
         CAP = 4
