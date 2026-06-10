@@ -3,16 +3,8 @@
 A DOOM-inspired status bar for the [Claude Code](https://docs.claude.com/en/docs/claude-code) CLI. Your session, read off the Doomguy HUD: a mugshot whose face tracks your health, boxes for usage, model, project and system, and a live list of running subagents.
 
 <p align="center">
-  <img src="assets/images/mugshot/STFST01-blockart-08.png" alt="DOOM mugshot rendered in the terminal" height="160">
+  <img src="assets/images/hud.png" alt="claude-doom-statusbar HUD: MODEL, USAGE, PROJECT, the DOOM mugshot, ACTIVITY, SUBAGENTS and SYS boxes">
 </p>
-
-```
-     MODEL                USAGE                PROJECT                          ACTIVITY        SUBAGENTS                  SYS
- 🤖 Opus 4.8 🌓   🧠 ██▌            19%   📁 claude-doom-statusbar   ▟▀▄▖    📟 ▗▟𜷥▄▖▟    👹 map render types  4s   🔥 12%
- 💭 on  🚀 off    🕔 █▉           2h13m   🌿 master                  ▀█▀▌    👹 2          👹 audit metrics    2s   💿 ████████▉  63%
- 🎨 default       📅 ███▉         3d4h    ⇅  ↓2 ↑3                  (face)   🎯 2/5                                  🕙 5h55m
- 🧙 Opus 4.8      💾 ██████▋        47%   ✎  3                               💢 0                                    🕓 14:23
-```
 
 The mugshot is the real DOOM (1993) status-face sprite, rasterised into the terminal at runtime — not ASCII art of it.
 
