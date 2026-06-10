@@ -286,9 +286,15 @@ def sys_values(cwd):
     return v
 
 
+_PERM = {"plan": "📋 plan", "auto": "⏩ auto",
+         "acceptEdits": "⏩ auto", "bypassPermissions": "⏩ bypass"}
+
+
 def activity_values(st, now):
     """Derive act.* metrics from the hook-bus state (absent keys -> hidden)."""
     v = {}
+    if st.get("mode") in _PERM:                       # permission mode (default -> hidden)
+        v["model.permission"] = _PERM[st["mode"]]
     if "spans" in st:
         binw = GEIGER_WINDOW / GEIGER_BINS
         start0 = now - GEIGER_WINDOW                  # left edge = oldest, right = now

@@ -33,7 +33,7 @@ TERM_RGB = (0, 0, 0)            # assumed terminal background (for blends/look)
 # Simulated metric values + availability (no live Claude Code data here).
 SAMPLE = {
     "model.name": "Opus 4.8", "model.effort": "🌔", "advisor.model": "Opus 4.8",
-    "model.window": "1M", "model.mode": "💭 on  🚀 off", "model.style": "default",
+    "model.window": "1M", "model.mode": "💭 on  🚀 off", "model.permission": "⏩ auto", "model.style": "default",
     "usage.reset5h": "2h13m", "usage.reset7d": "3d4h", "sys.session": "5h55m", "loc.churn": "+185 / -62",
     "context.hp": 78, "ratelimit.5h": 64, "ratelimit.7d": 31, "cost.total": "$1.83",
     "git.branch": "main", "git.behind": "↓2", "git.ahead": "↑3", "git.status": "3",
@@ -52,10 +52,13 @@ def f(c):
 
 
 def vlen(s):
-    # Width 2 only for the emoji block (U+1F300..U+1FAFF, our icons). Legacy-
-    # computing block glyphs (U+1FB00.. and the U+1CC00.. supplement, used by the
-    # face) and block elements render width 1 — must NOT be counted as 2.
-    return sum(2 if 0x1F300 <= ord(ch) <= 0x1FAFF else 1 for ch in ANSI_RE.sub("", s))
+    # Width 2 for the emoji block (U+1F300..U+1FAFF, our icons) and the media-
+    # control double-triangles (U+23E9..U+23EC, e.g. ⏩), which are emoji-presentation
+    # and render double-wide. Legacy-computing block glyphs (U+1FB00.. and the
+    # U+1CC00.. supplement, used by the face) and block elements render width 1.
+    def w(cp):
+        return 2 if (0x1F300 <= cp <= 0x1FAFF or 0x23E9 <= cp <= 0x23EC) else 1
+    return sum(w(ord(ch)) for ch in ANSI_RE.sub("", s))
 
 
 def threshold(pct):

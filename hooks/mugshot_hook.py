@@ -136,6 +136,9 @@ def main():
     if expr:
         st["expr"], st["ts"] = expr, now
 
+    if ev.get("permission_mode"):                  # not in the statusline payload, only here
+        st["mode"] = ev["permission_mode"]
+
     tmp = f"{path}.{os.getpid()}.tmp"               # atomic write
     try:
         with open(tmp, "w") as fh:

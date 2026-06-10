@@ -12,10 +12,11 @@ background = "#000000"
 type  = "box"
 title = "MODEL"
 metric = [
-  { id = "model.name",    render = "text", icon = "🤖", right = "model.effort" },
-  { id = "model.mode",    render = "text" },                 # 💭 thinking  🚀 fast
-  { id = "model.style",    render = "text", icon = "🎨" },
-  { id = "advisor.model",  render = "text", icon = "🧙" },
+  { id = "model.name",       render = "text", icon = "🤖", right = "model.effort" },
+  { id = "model.mode",       render = "text" },                 # 💭 thinking  🚀 fast
+  { id = "model.permission", render = "text" },                 # 📋 plan / ⏩ auto (hidden on default)
+  { id = "model.style",      render = "text", icon = "🎨" },
+  { id = "advisor.model",    render = "text", icon = "🧙" },
 ]
 
 [[segment]]
