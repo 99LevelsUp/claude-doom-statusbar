@@ -44,6 +44,8 @@ TITLE = (220, 200, 120)
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 WAD_DIR = os.path.join(os.path.dirname(_HERE), "assets", "images", "mugshot", "wad")
+ANS_DIR = os.path.join(os.path.dirname(_HERE), "assets", "images", "mugshot", "ans")
+ANS_SIZES = (4, 16)        # pre-rendered ANSI fallback covers these heights
 SPRITE = os.path.join(WAD_DIR, "STFST01.png")
 SYMS = "block+half+quad+sextant+wedge+legacy"
 MAGENTA_TOL = 40
@@ -112,16 +114,40 @@ def alpha_sprite(src=SPRITE):
     return path
 
 
+def _chafa_face(src, rows):
+    """chafa block-art at the given height, or None if chafa is missing/failed."""
+    cmd = ["chafa", "-f", "symbols", "--polite", "on", "--colors", "full",
+           "--symbols", SYMS, "--size", f"9999x{rows}", alpha_sprite(src)]
+    try:
+        r = subprocess.run(cmd, capture_output=True)
+    except OSError:                                     # chafa not on PATH
+        return None
+    return r.stdout.decode("utf-8", "replace") if r.returncode == 0 and r.stdout else None
+
+
+def _ansi_face(src, rows):
+    """Pre-rendered ANSI fallback for hosts without chafa. Sizes 4..16 only, so
+    the height is clamped to the nearest available render."""
+    name = os.path.splitext(os.path.basename(src))[0]
+    r = max(ANS_SIZES[0], min(ANS_SIZES[1], rows))
+    try:
+        with open(os.path.join(ANS_DIR, str(r), name + ".ans"), encoding="utf-8") as fh:
+            return fh.read()
+    except OSError:
+        return ""
+
+
 def load_face_from(src, rows):
-    """Bake `src` at the given character height via chafa on its transparent
-    version. Returns rows of (char, fg, bg) where fg/bg are an (r,g,b) tuple or
-    None when chafa left that colour unset (i.e. transparent)."""
+    """Bake `src` at the given character height. Uses chafa when present (any
+    height); otherwise the pre-rendered ANSI fallback (heights 4..16). Returns
+    rows of (char, fg, bg) where fg/bg are an (r,g,b) tuple or None when the
+    colour was left unset (i.e. transparent)."""
     key = (src, rows)
     if key in _face_cache:
         return _face_cache[key]
-    cmd = ["chafa", "-f", "symbols", "--polite", "on", "--colors", "full",
-           "--symbols", SYMS, "--size", f"9999x{rows}", alpha_sprite(src)]
-    text = subprocess.run(cmd, capture_output=True).stdout.decode("utf-8", "replace")
+    text = _chafa_face(src, rows)
+    if not text:                                        # no chafa -> pre-rendered ANSI
+        text = _ansi_face(src, rows)
 
     ESC = "\x1b"
     fgc, bgc, rev = None, None, False
@@ -169,6 +195,7 @@ def load_face_from(src, rows):
             i += 1
     if row:
         out.append(row)
+    out = out[:rows] + [[]] * max(0, rows - len(out))   # exactly `rows` lines (fallback clamps)
     _face_cache[key] = out
     return out
 

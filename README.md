@@ -33,7 +33,7 @@ Anything the session can't supply is hidden automatically, so the same config de
 ## Requirements
 
 - **Python 3.11+** (uses the stdlib `tomllib`).
-- **[chafa](https://hpjansson.org/chafa/)** — renders the mugshot sprite into terminal block-art. Without it the mugshot won't draw (the rest of the HUD still works).
+- **[chafa](https://hpjansson.org/chafa/)** — *optional*. With it, the mugshot rasterises at any height. Without it, the HUD falls back to pre-rendered ANSI faces (heights 4–16, clamped to the nearest), so the mugshot still draws.
 - A terminal with **truecolor** and **legacy-computing glyph** support (the mugshot and fine bars use Unicode block/sextant/octant glyphs). Windows Terminal, WezTerm, kitty, foot all work.
 - Optional: **[psutil](https://pypi.org/project/psutil/)** for the SYS box. Falls back to stdlib (`shutil.disk_usage`, Windows ctypes RAM, cached-delta CPU) when absent.
 
