@@ -41,6 +41,10 @@ function git(cwd, ...args) {
   }
 }
 
+// Clip a display label to at most `n` code points, ending with … when truncated,
+// so an oversized repo or branch name can't blow up the PROJECT box width.
+const clip = (s, n) => ([...String(s)].length > n ? [...String(s)].slice(0, n - 1).join("") + "…" : String(s));
+
 function _dur(secsF) {
   let secs = Math.max(0, Math.trunc(secsF));
   const d = Math.floor(secs / 86400); secs %= 86400;
@@ -143,10 +147,10 @@ export function buildValues(data) {
 
   const cwd = data.cwd || (data.workspace || {}).current_dir;
   if (cwd) {
-    const name = path.basename(cwd.replace(/[/\\]+$/, "")) || cwd;
+    const name = clip(path.basename(cwd.replace(/[/\\]+$/, "")) || cwd, 24);
     try { v["loc.cwd"] = _link(name, pathToFileURL(cwd).href); } catch { v["loc.cwd"] = name; }
     const br = git(cwd, "branch", "--show-current");
-    if (br) v["git.branch"] = repoUrl ? _link(br, `${repoUrl}/tree/${br}`) : br;
+    if (br) { const brLbl = clip(br, 24); v["git.branch"] = repoUrl ? _link(brLbl, `${repoUrl}/tree/${br}`) : brLbl; }
     const lr = git(cwd, "rev-list", "--count", "--left-right", "@{u}...HEAD");
     if (lr && lr.includes("\t")) {
       const [behind, ahead] = lr.split("\t");
