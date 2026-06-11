@@ -219,7 +219,7 @@ const PERM = { plan: "📋 plan", auto: "⏩ auto", acceptEdits: "⏩ auto", byp
 const OK_RGB = [96, 200, 104];   // matches render.js OK (done, green)
 const CRIT_RGB = [224, 84, 64];  // matches render.js CRIT (deleted, red)
 const TASK_MARK = { completed: ["✅", OK_RGB], deleted: ["❌", CRIT_RGB], in_progress: ["⏩", null], pending: ["🎯", null] };
-const TASK_ORDER = { completed: 0, deleted: 1, in_progress: 2, pending: 3 }; // settled first, then open
+const TASK_ORDER = { completed: 0, deleted: 0, in_progress: 1, pending: 2 }; // settled (done+deleted, by time) first, then open
 
 export function activityValues(st, now) {
   const v = {};
