@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-06-11
+
+### Fixed
+- Agent labels and task titles are clipped to 24 characters so a long subagent
+  description or task title can no longer blow up the AGENTS / TASKS box width
+  (mirrors the existing PROJECT box clip).
+
 ## [0.3.0] - 2026-06-11
 
 ### Added
