@@ -8,7 +8,7 @@ let fails = 0;
 const ok = (c, m) => { console.log((c?"  ok   ":"  FAIL ")+m); if(!c) fails++; };
 
 // metricFixedWidth handles the object item shape (mark + text), truncated by box later.
-setValues({ "act.tasklist": [{ mark:"✓", markRgb:null, text:"render engine" }] });
+setValues({ "act.tasklist": [{ mark:"✅", markRgb:null, text:"render engine" }] });
 const w = metricFixedWidth({ id:"act.tasklist", render:"scroll" });
 ok(typeof w === "number" && w >= "render engine".length, `scroll width measures mark+text (got ${w})`);
 
@@ -39,7 +39,7 @@ ok(r.start === 0 && r.up === 0 && r.down === 0, "boundary all-fit -> top aligned
     ...SAMPLE,
     "act.subagents": longAgents,
     "act.tasklist": [
-      { mark: "✓", markRgb: null, text: "x" },
+      { mark: "✅", markRgb: null, text: "x" },
       { mark: "🎯", markRgb: null, text: "y" },
     ],
   });

@@ -36,10 +36,10 @@ export const SAMPLE = {
   "pr.state": "#1234",
   "act.subagents": [["hook events", "2m13s"], ["find configs", "12s"]], "act.agents": "2",
   "act.tasklist": [
-    { mark:"✓", markRgb: OK, text:"scaffold project" },
-    { mark:"✓", markRgb: OK, text:"render engine" },
-    { mark:"✗", markRgb: CRIT, text:"port PIL alpha" },
-    { mark:"▶", markRgb: null, text:"statusline values" },
+    { mark:"✅", markRgb: OK, text:"scaffold project" },
+    { mark:"✅", markRgb: OK, text:"render engine" },
+    { mark:"❌", markRgb: CRIT, text:"port PIL alpha" },
+    { mark:"⏩", markRgb: null, text:"statusline values" },
     { mark:"🎯", markRgb: null, text:"hook bus" },
     { mark:"🎯", markRgb: null, text:"installer" },
   ],
@@ -58,7 +58,8 @@ export function vlen(s) {
   let n = 0;
   for (const ch of String(s).replace(ANSI_RE, "")) {
     const cp = ch.codePointAt(0);
-    n += (cp >= 0x1f300 && cp <= 0x1faff) || (cp >= 0x23e9 && cp <= 0x23ec) ? 2 : 1;
+    n += (cp >= 0x1f300 && cp <= 0x1faff) || (cp >= 0x23e9 && cp <= 0x23ec)
+      || cp === 0x2705 || cp === 0x274c ? 2 : 1; // ✅ ❌ are emoji-presentation (2 cols)
   }
   return n;
 }
@@ -368,30 +369,35 @@ export function buildBar(cfg, target, spriteFor) {
         const items = VALUES[m.id] || [];
         const H = totalRows - (headers ? 1 : 0);
         const boundary = items.filter((it) => !Array.isArray(it) &&
-          (it.mark === "✓" || it.mark === "✗")).length; // settled count (ignored for top anchor)
+          (it.mark === "✅" || it.mark === "❌")).length; // settled count (ignored for top anchor)
         const win = scrollWindow(items.length, H, m.anchor || "top", boundary);
         const shown = items.slice(win.start, win.start + H);
         shown.forEach((item, k) => {
           const first = k === 0, last = k === shown.length - 1;
-          const over = first && win.up > 0 ? `↑${win.up} ` : last && win.down > 0 ? `↓${win.down} ` : "";
+          const marker = first && win.up > 0 ? `↑${win.up}` : last && win.down > 0 ? `↓${win.down}` : "";
+          const tail = marker ? " " + marker : "";         // right-aligned scroll marker (gap + ↑k/↓k)
+          const tailW = vlen(tail);
           let body;
           if (Array.isArray(item)) {                       // [left, right] (agents)
-            const right = f(TEXT) + String(item[1]);
-            const prefix = over + lbl;                     // ↑k/↓k marker + icon
-            const labelMax = Math.max(0, w - vlen(prefix) - vlen(String(item[1])) - 1); // 1 = min gap
+            const right = f(TEXT) + String(item[1]) + (marker ? f(TEXT) + tail : "");
+            const rightW = vlen(String(item[1])) + tailW;
+            const labelMax = Math.max(0, w - vlen(lbl) - rightW - 1); // 1 = min gap
             let label = String(item[0]);
             if (vlen(label) > labelMax) label = [...label].slice(0, Math.max(0, labelMax - 1)).join("") + "…";
-            const left = prefix + f(TEXT) + label;
-            const room = Math.max(0, w - vlen(left) - vlen(right));
+            const left = lbl + f(TEXT) + label;
+            const room = Math.max(0, w - vlen(left) - rightW);
             body = left + " ".repeat(room) + right;
           } else {                                         // {mark, markRgb, text} (tasks)
             const markCol = item.markRgb ? f(item.markRgb) : f(TEXT);
+            const m = String(item.mark);
+            const mPad = m + (vlen(m) < 2 ? " " : "");      // normalize mark to 2 cols so text aligns
             let text = String(item.text);
-            const head = over + markCol + String(item.mark) + " " + f(TEXT);
-            const max = w - vlen(over) - vlen(String(item.mark)) - 1;
+            const head = markCol + mPad + " " + f(TEXT);
+            const max = w - vlen(mPad) - 1 - tailW;         // reserve gap + marker on the right
             if (vlen(text) > max) text = [...text].slice(0, Math.max(0, max - 1)).join("") + "…";
             body = head + text;
-            body += " ".repeat(Math.max(0, w - vlen(body)));
+            body += " ".repeat(Math.max(0, w - tailW - vlen(body)));
+            if (tail) body += f(TEXT) + tail;
           }
           col.push(bgsgrBox(boxRgb) + " " + body + " " + RESET);
         });

@@ -19,8 +19,8 @@ ok(v["act.tasks"] === "1/3", `act.tasks counts live only (got ${v["act.tasks"]})
 // tasklist: settled (completed, deleted) then open (in_progress, pending).
 const list = v["act.tasklist"];
 ok(Array.isArray(list) && list.length === 4, "tasklist has all 4 items");
-ok(list[0].mark === "✓" && list[1].mark === "✗", "settled on top: ✓ then ✗");
-ok(list[2].mark === "▶" && list[3].mark === "🎯", "open below: ▶ then 🎯");
+ok(list[0].mark === "✅" && list[1].mark === "❌", "settled on top: ✅ then ❌");
+ok(list[2].mark === "⏩" && list[3].mark === "🎯", "open below: ⏩ then 🎯");
 ok(Array.isArray(list[0].markRgb) && list[1].markRgb[0] === 224, "done green, deleted red");
 
 // Boxes are always shown — tasklist key emitted regardless of state/linger.
