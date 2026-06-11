@@ -1,9 +1,9 @@
 # claude-doom-statusbar
 
-A DOOM-inspired status bar for the [Claude Code](https://docs.claude.com/en/docs/claude-code) CLI. Your session, read off the Doomguy HUD: a mugshot whose face tracks your health, boxes for usage, model, project and system, and a live list of running subagents.
+A DOOM-inspired status bar for the [Claude Code](https://docs.claude.com/en/docs/claude-code) CLI. Your session, read off the Doomguy HUD: a mugshot whose face tracks your health, boxes for usage, model, project and system, and live lists of running agents and tasks.
 
 <p align="center">
-  <img src="assets/images/hud.png" alt="claude-doom-statusbar HUD: MODEL, USAGE, PROJECT, the DOOM mugshot, ACTIVITY, SUBAGENTS and SYS boxes">
+  <img src="assets/images/hud.png" alt="claude-doom-statusbar HUD: MODEL, USAGE, PROJECT, the DOOM mugshot, ACTIVITY, AGENTS, TASKS and SYS boxes">
 </p>
 
 The mugshot is the real DOOM (1993) status-face sprite, rasterised into the terminal at runtime — not ASCII art of it.
@@ -15,9 +15,10 @@ The HUD is a row of boxes centred on the mugshot. Each box is configurable; the 
 - **mugshot** — the Doomguy face. Its HP (how bloodied it looks) follows your *usage headroom* — `min(5h, 7d) rate-limit room`, context as a fallback. It glances around when idle, winces on errors, snarls on writes, grins on a clean finish, dies when you're tapped out, and flashes invulnerable just after an advisor consult.
 - **MODEL** — model name + reasoning effort (a waxing-moon→sun icon), thinking/fast toggles, output style, and the configured `/advisor` model.
 - **USAGE** — context window (HP bar), the 5h / 7d rate-limit bars (with reset countdowns), RAM, session cost.
-- **PROJECT** — cwd, git branch, ahead/behind, dirty count, lines added/removed, PR state. The cwd, branch and PR are **clickable** (OSC 8 hyperlinks): Ctrl/Cmd-click to open the folder, the branch on the host, or the pull request.
-- **ACTIVITY** — a tool-activity "geiger" sparkline (duty-cycle over the last 30 s), running-subagent count, task progress, error count.
-- **SUBAGENTS** — a live list of running subagents (type/description + ticking runtime), always visible, widening to fit.
+- **PROJECT** — session name, cwd, git branch, a merged work line (changed files + ahead/behind), lines added/removed, PR state. The cwd, branch and PR are **clickable** (OSC 8 hyperlinks): Ctrl/Cmd-click to open the folder, the branch on the host, or the pull request. Long names are clipped to 24 chars so the box can't blow up.
+- **ACTIVITY** — a tool-activity "geiger" sparkline (duty-cycle over the last 30 s), running-agent count, task progress, error count.
+- **AGENTS** — a live list of running subagents (type/description + ticking runtime), always visible. Long lists scroll within the box height, with ↑/↓ markers counting the rows hidden off-screen.
+- **TASKS** — the session's todo list: settled items (✅ done, ❌ removed) on top, open items (⏩ in-progress, 🎯 pending) below. Scrolls like AGENTS, anchored on the open/settled boundary.
 - **SYS** — CPU, disk, session length, wall clock.
 
 Anything the session can't supply is hidden automatically, so the same config degrades cleanly.
@@ -54,32 +55,6 @@ npm i -g claude-doom-statusbar@latest    # global install
 npx claude-doom-statusbar@latest install
 ```
 
-### Manual wiring
-
-If you'd rather edit `~/.claude/settings.json` by hand, point it at the package's `src/` (use the absolute install path; on Windows use forward slashes):
-
-```json
-{
-  "env": { "DOOMBAR_PRESET": "/abs/path/claude-doom-statusbar/presets/full.toml", "FORCE_HYPERLINK": "1" },
-  "statusLine": {
-    "type": "command",
-    "command": "node \"/abs/path/claude-doom-statusbar/src/statusline.js\"",
-    "refreshInterval": 1
-  },
-  "hooks": {
-    "PreToolUse":         [{ "hooks": [{ "type": "command", "command": "node \"/abs/path/claude-doom-statusbar/src/hook.js\"" }] }],
-    "PostToolUse":        [{ "hooks": [{ "type": "command", "command": "node \"/abs/path/claude-doom-statusbar/src/hook.js\"" }] }],
-    "PostToolUseFailure": [{ "hooks": [{ "type": "command", "command": "node \"/abs/path/claude-doom-statusbar/src/hook.js\"" }] }],
-    "Stop":               [{ "hooks": [{ "type": "command", "command": "node \"/abs/path/claude-doom-statusbar/src/hook.js\"" }] }],
-    "PermissionDenied":   [{ "hooks": [{ "type": "command", "command": "node \"/abs/path/claude-doom-statusbar/src/hook.js\"" }] }],
-    "SubagentStart":      [{ "hooks": [{ "type": "command", "command": "node \"/abs/path/claude-doom-statusbar/src/hook.js\"" }] }],
-    "SubagentStop":       [{ "hooks": [{ "type": "command", "command": "node \"/abs/path/claude-doom-statusbar/src/hook.js\"" }] }],
-    "TaskCreated":        [{ "hooks": [{ "type": "command", "command": "node \"/abs/path/claude-doom-statusbar/src/hook.js\"" }] }],
-    "TaskCompleted":      [{ "hooks": [{ "type": "command", "command": "node \"/abs/path/claude-doom-statusbar/src/hook.js\"" }] }]
-  }
-}
-```
-
 ### Clickable links
 
 The cwd / branch / PR are emitted as OSC 8 hyperlinks. They render in any terminal but only click in ones Claude Code detects as hyperlink-capable (iTerm2, kitty, WezTerm, …). **Windows Terminal isn't auto-detected** — launch with `FORCE_HYPERLINK=1` to enable them:
@@ -96,7 +71,7 @@ $env:FORCE_HYPERLINK = "1"; claude
 - **`default`** — balanced HUD.
 - **`full`** — every box, the look in the screenshot above.
 
-A preset is TOML: a `[bar]` style block, a `[mugshot]` block, and a list of `[[segment]]` boxes. Each box lists metrics with a render type — `bar`, `number`, `text`, `spark`, `ammo`, `list`, or a `group`. Copy one and rearrange the boxes, swap icons, or change which metrics show.
+A preset is TOML: a `[bar]` style block, a `[mugshot]` block, and a list of `[[segment]]` boxes. Each box lists metrics with a render type — `bar`, `number`, `text`, `spark`, `ammo`, `list`, `scroll`, or a `group`. Copy one and rearrange the boxes, swap icons, or change which metrics show.
 
 ## How it works
 
@@ -110,6 +85,7 @@ See [`docs/ideation/`](docs/ideation/) for the full design write-up.
 
 - The status-face sprites are from **DOOM** (1993), id Software.
 - Mugshot rasterisation by **[chafa](https://hpjansson.org/chafa/)** (Hans Petter Jansson).
+- Prior art that shaped what this HUD shows: **[claude-hud](https://github.com/jarrodwatts/claude-hud)** and **[ccstatusline](https://github.com/sirmalloc/ccstatusline)**.
 
 ## License
 
