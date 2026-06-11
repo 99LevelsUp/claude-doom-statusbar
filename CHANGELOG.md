@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-11
+
+### Added
+- PROJECT box now shows the session name on its first row (from `session_name`,
+  falling back to `session_id`), clipped to 24 characters.
+
+### Changed
+- PROJECT box merges the changed-file count and pull/push (ahead/behind) onto a
+  single row: files first, then pull/push.
+
+### Fixed
+- Repository and branch names are clipped to 24 characters so a long name can no
+  longer blow up the PROJECT box width and push other boxes off screen.
+
 ## [0.2.0] - 2026-06-11
 
 ### Added
@@ -40,7 +54,8 @@ Note: no changes to the published package contents (`src`, `bin`, `presets`,
 - Mugshot tracking session health, plus usage, model, project, and system stats.
 - Live subagent list with always-visible AGENTS and TASKS boxes.
 
-[Unreleased]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/99LevelsUp/claude-doom-statusbar/releases/tag/v0.1.0
