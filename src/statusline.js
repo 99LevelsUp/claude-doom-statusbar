@@ -259,11 +259,7 @@ export function activityValues(st, now) {
   const squad = st.squad || {};
   v["act.agents"] = String(Object.keys(squad).length);
   const agents = Object.values(squad).sort((a, b) => a.start - b.start);
-  v["act.subagents"] = agents.map((a) => {
-    let label = a.desc || a.type || "agent";
-    if ([...label].length > 20) label = [...label].slice(0, 19).join("") + "…";
-    return [label, _dur(now - a.start)];
-  });
+  v["act.subagents"] = agents.map((a) => [clip(a.desc || a.type || "agent", 24), _dur(now - a.start)]);
 
   const tasks = st.tasks && typeof st.tasks === "object" ? Object.values(st.tasks) : [];
   const live = tasks.filter((t) => t.status !== "deleted");
@@ -274,7 +270,7 @@ export function activityValues(st, now) {
     .sort((a, b) => (TASK_ORDER[a.status] - TASK_ORDER[b.status]) || (a.ts - b.ts));
   v["act.tasklist"] = ordered.map((t) => {
     const [mark, markRgb] = TASK_MARK[t.status] || ["🎯", null];
-    return { mark, markRgb, text: t.title };
+    return { mark, markRgb, text: clip(t.title, 24) };
   });
 
   if ("errors" in st) v["act.errors"] = String(st.errors);
