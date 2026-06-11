@@ -145,6 +145,9 @@ export function buildValues(data) {
   let repoUrl = "";
   if (repo.host && repo.owner && repo.name) repoUrl = `https://${repo.host}/${repo.owner}/${repo.name}`;
 
+  const sname = data.session_name || data.session_id; // session_name only set via /rename or --name
+  if (sname) v["session.name"] = clip(sname, 24);
+
   const cwd = data.cwd || (data.workspace || {}).current_dir;
   if (cwd) {
     const name = clip(path.basename(cwd.replace(/[/\\]+$/, "")) || cwd, 24);
@@ -158,6 +161,12 @@ export function buildValues(data) {
     }
     const st = git(cwd, "status", "--porcelain");
     if (st !== null) v["git.status"] = String(st.split("\n").filter((l) => l.trim()).length);
+    // Merge changed-file count + pull/push onto one line (icons baked in, like model.mode):
+    // "✎ <files>  ⇅ ↓<behind> ↑<ahead>" — files first, then pull/push.
+    const work = [];
+    if (v["git.status"] !== undefined) work.push(`✎ ${v["git.status"]}`);
+    if (v["git.behind"] !== undefined) work.push(`⇅ ${v["git.behind"]} ${v["git.ahead"]}`);
+    if (work.length) v["git.work"] = work.join("  ");
   }
 
   const pr = data.pr || {};

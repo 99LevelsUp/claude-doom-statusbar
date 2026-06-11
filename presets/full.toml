@@ -34,12 +34,12 @@ metric = [
 type  = "box"
 title = "PROJECT"
 metric = [
-  { id = "loc.cwd",    render = "text",   icon = "📁" },
-  { id = "git.branch", render = "text",   icon = "🌿" },
-  { group = ["git.behind", "git.ahead"], render = "number", sep = " ", icon = "⇅ " },
-  { id = "git.status", render = "number", icon = "✎ " },
-  { id = "loc.churn",  render = "text",   icon = "📝" },
-  { id = "pr.state",   render = "text",   icon = "⇧ " },
+  { id = "session.name", render = "text", icon = "🎮" },
+  { id = "loc.cwd",      render = "text", icon = "📁" },
+  { id = "git.branch",   render = "text", icon = "🌿" },
+  { id = "git.work",     render = "text" },                # ✎ files  ⇅ pull/push
+  { id = "loc.churn",    render = "text", icon = "📝" },
+  { id = "pr.state",     render = "text", icon = "⇧ " },
 ]
 
 [[segment]]

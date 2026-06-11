@@ -33,7 +33,8 @@ export const SAMPLE = {
   "usage.reset5h": "2h13m", "usage.reset7d": "3d4h", "sys.session": "5h55m", "loc.churn": "+185 / -62",
   "context.hp": 78, "ratelimit.5h": 64, "ratelimit.7d": 31, "cost.total": "$1.83",
   "git.branch": "main", "git.behind": "↓2", "git.ahead": "↑3", "git.status": "3",
-  "pr.state": "#1234",
+  "git.work": "✎ 3  ⇅ ↓2 ↑3", "session.name": "doom-hud-demo",
+  "pr.state": "#1234", "loc.cwd": "claude-doom-statusbar",
   "act.subagents": [["hook events", "2m13s"], ["find configs", "12s"]], "act.agents": "2",
   "act.tasklist": [
     { mark:"✅", markRgb: OK, text:"scaffold project" },
