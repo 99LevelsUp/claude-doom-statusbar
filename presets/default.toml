@@ -18,6 +18,14 @@ metric = [
 ]
 
 [[segment]]
+type  = "box"
+title = "SAVE"
+metric = [
+  { id = "save.leanctx", render = "text", icon = "🪶" },
+  { id = "save.lingua",  render = "text", icon = "📜" },
+]
+
+[[segment]]
 type = "mugshot"
 
 [[segment]]
