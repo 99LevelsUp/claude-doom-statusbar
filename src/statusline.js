@@ -252,8 +252,9 @@ const SAVINGS_SOURCES = [
     extract: (d) => {
       if (!(d.tokens_saved > 0)) return null;
       // compression_rate is a 0-100 percentage (verified against historical data).
+      // Round it — a fractional value would render "63.45%" and shift the box width.
       return typeof d.compression_rate === "number"
-        ? `${k(d.tokens_saved)} ${d.compression_rate}%`
+        ? `${k(d.tokens_saved)} ${Math.round(d.compression_rate)}%`
         : k(d.tokens_saved);
     },
   },
@@ -265,9 +266,10 @@ const SAVINGS_SOURCES = [
       // (llmlingua_logged.py: tokens_saved_total, no session) is absent for the session view.
       const s = d.session;
       if (!s || !(s.tokens_saved > 0)) return null;
-      if (s.last_saved_pct != null) return `${k(s.tokens_saved)} ${s.last_saved_pct}%`;
+      // Round/clamp the secondary figure so a many-decimal value can't shift box width.
+      if (s.last_saved_pct != null) return `${k(s.tokens_saved)} ${Math.round(s.last_saved_pct)}%`;
       // No original-token count in the session block, so a percent isn't derivable; show the ratio.
-      if (s.last_ratio != null) return `${k(s.tokens_saved)} ${s.last_ratio}x`;
+      if (s.last_ratio != null) return `${k(s.tokens_saved)} ${Number(s.last_ratio).toFixed(1)}x`;
       return k(s.tokens_saved);
     },
   },

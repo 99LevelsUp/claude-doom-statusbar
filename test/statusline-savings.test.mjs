@@ -79,6 +79,13 @@ try {
   process.env.DOOMBAR_LEANCTX = fixture("lean-mil.json", { tokens_saved: 1200000, compression_rate: 88 });
   ok(statsValues()["save.leanctx"] === "1.2M 88%", "k(): 1200000 -> '1.2M'");
 
+  // --- fractional figures are normalized so they can't shift box width ---
+  process.env.DOOMBAR_LEANCTX = fixture("lean-frac.json", { tokens_saved: 8263, compression_rate: 63.45 });
+  process.env.DOOMBAR_LLMLINGUA = fixture("ling-frac.json", { session: { tokens_saved: 1234, last_ratio: 1.3333 } });
+  v = statsValues();
+  ok(v["save.leanctx"] === "8.3k 63%", `fractional compression_rate rounded (got ${JSON.stringify(v["save.leanctx"])})`);
+  ok(v["save.lingua"] === "1.2k 1.3x", `many-decimal ratio -> 1 decimal (got ${JSON.stringify(v["save.lingua"])})`);
+
   // --- both files absent -> empty object (R8: neither tool installed) ---
   process.env.DOOMBAR_LEANCTX = MISSING;
   process.env.DOOMBAR_LLMLINGUA = MISSING;
