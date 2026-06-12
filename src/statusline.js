@@ -302,11 +302,12 @@ function leanCtxSavings(cwd, sid) {
   return st.saved > 0 ? fmtSaved(st) : null;
 }
 
-// llmlingua is still global for now (per-session is a follow-up). Prefer the nested session
-// schema (smart-read); flat lifetime-only (llmlingua_logged.py) is absent for the session view.
-function linguaSavings() {
+// Per-session llmlingua. smart-read keys its sessions map by CLAUDE_CODE_SESSION_ID — the same
+// id the statusbar gets on stdin — so we read sessions[sid] (not a single global block).
+// Prefer last_saved_pct; else show the ratio. Flat lifetime-only writers expose no session -> absent.
+function linguaSavings(sid) {
   const d = readJson(llmlinguaPath());
-  const s = d && d.session;
+  const s = d && d.sessions && d.sessions[sid];
   if (!s || !(s.tokens_saved > 0)) return null;
   if (s.last_saved_pct != null) return `${k(s.tokens_saved)} ${Math.round(s.last_saved_pct)}%`;
   if (s.last_ratio != null) return `${k(s.tokens_saved)} ${Number(s.last_ratio).toFixed(1)}x`;
@@ -318,7 +319,7 @@ export function statsValues(data, cwd) {
   const sid = String((data && data.session_id) || "default").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 48);
   const lean = leanCtxSavings(cwd, sid);
   if (lean) v["save.leanctx"] = lean;
-  const ling = linguaSavings();
+  const ling = linguaSavings(sid);
   if (ling) v["save.lingua"] = ling;
   return v;
 }

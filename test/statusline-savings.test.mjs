@@ -108,20 +108,24 @@ try {
   // --- no cwd -> lean omitted (can't attribute) ---
   ok(!("save.leanctx" in statsValues(SID, undefined)), "no cwd -> save.leanctx omitted");
 
-  // === llmlingua (still global for now) ===
-  process.env.DOOMBAR_EVENTS = MISSING; // keep lean out of the way
+  // === llmlingua (per-session: smart-read keys sessions[sid] by CLAUDE_CODE_SESSION_ID) ===
+  process.env.DOOMBAR_EVENTS = MISSING; // keep lean out of the way (SID sanitizes to "test")
 
-  process.env.DOOMBAR_LLMLINGUA = writeJson("ling-nested.json", { session: { runs: 3, tokens_saved: 1234, last_ratio: 1.3 } });
-  ok(statsValues(SID, CWD)["save.lingua"] === "1.2k 1.3x", `llmlingua session ratio -> "1.2k 1.3x" (got ${JSON.stringify(statsValues(SID, CWD)["save.lingua"])})`);
+  process.env.DOOMBAR_LLMLINGUA = writeJson("ling-nested.json", { sessions: { test: { runs: 3, tokens_saved: 1234, last_ratio: 1.3 } } });
+  ok(statsValues(SID, CWD)["save.lingua"] === "1.2k 1.3x", `llmlingua sessions[sid] ratio -> "1.2k 1.3x" (got ${JSON.stringify(statsValues(SID, CWD)["save.lingua"])})`);
 
-  process.env.DOOMBAR_LLMLINGUA = writeJson("ling-pct.json", { session: { tokens_saved: 2048, last_saved_pct: 75 } });
+  process.env.DOOMBAR_LLMLINGUA = writeJson("ling-pct.json", { sessions: { test: { tokens_saved: 2048, last_saved_pct: 75 } } });
   ok(statsValues(SID, CWD)["save.lingua"] === "2.0k 75%", "llmlingua last_saved_pct wins");
 
-  process.env.DOOMBAR_LLMLINGUA = writeJson("ling-frac.json", { session: { tokens_saved: 1234, last_ratio: 1.3333 } });
+  process.env.DOOMBAR_LLMLINGUA = writeJson("ling-frac.json", { sessions: { test: { tokens_saved: 1234, last_ratio: 1.3333 } } });
   ok(statsValues(SID, CWD)["save.lingua"] === "1.2k 1.3x", "many-decimal ratio normalized to 1 decimal");
 
+  // another session's block must NOT leak into this session's row
+  process.env.DOOMBAR_LLMLINGUA = writeJson("ling-other.json", { sessions: { "someone-else": { tokens_saved: 9999, last_ratio: 5.0 } } });
+  ok(!("save.lingua" in statsValues(SID, CWD)), "only this session's sessions[sid] is shown, not another session's");
+
   process.env.DOOMBAR_LLMLINGUA = writeJson("ling-flat.json", { runs: 5, tokens_saved_total: 4242, last_ratio: 2.1 });
-  ok(!("save.lingua" in statsValues(SID, CWD)), "flat lifetime-only llmlingua omitted (no session block)");
+  ok(!("save.lingua" in statsValues(SID, CWD)), "flat lifetime-only llmlingua omitted (no sessions map)");
 
   process.env.DOOMBAR_LLMLINGUA = writeJson("ling-bad.json", "{ not json ");
   ok(!("save.lingua" in statsValues(SID, CWD)), "malformed llmlingua JSON omitted, no throw");
