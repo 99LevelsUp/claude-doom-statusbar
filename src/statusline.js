@@ -45,6 +45,10 @@ function git(cwd, ...args) {
 // so an oversized repo or branch name can't blow up the PROJECT box width.
 const clip = (s, n) => ([...String(s)].length > n ? [...String(s)].slice(0, n - 1).join("") + "…" : String(s));
 
+// Human-readable token count: 8263 -> "8.3k", 1200000 -> "1.2M", 512 -> "512".
+// Lowercase k/M — the savings rows read softer than model.window's uppercase K/M.
+const k = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : `${n}`);
+
 function _dur(secsF) {
   let secs = Math.max(0, Math.trunc(secsF));
   const d = Math.floor(secs / 86400); secs %= 86400;
@@ -228,6 +232,58 @@ function sysValues(cwd) {
   return v;
 }
 
+// Token-savings rows read from the small JSON files context-optimization tools already
+// persist. No plugin patching, no binary spawn — just a cheap read each refresh. Paths are
+// env-overridable (DOOMBAR_*) so tests can point at fixtures, mirroring statePath/MUGSHOT_STATE.
+const leanCtxPath = () => process.env.DOOMBAR_LEANCTX || path.join(os.homedir(), ".lean-ctx", "mcp-live.json");
+const llmlinguaPath = () => process.env.DOOMBAR_LLMLINGUA || path.join(os.homedir(), ".llmlingua-stats.json");
+
+// Defensive read: missing file or malformed JSON -> null (the row simply never appears).
+function readJson(p) {
+  try { return JSON.parse(readFileSync(p, "utf8")); } catch { return null; }
+}
+
+// One entry per savings source; extract returns the display string or null (omit the row).
+// Adding a source later is one entry here plus one preset line — not an adapter framework.
+const SAVINGS_SOURCES = [
+  {
+    key: "save.leanctx",
+    path: leanCtxPath,
+    extract: (d) => {
+      if (!(d.tokens_saved > 0)) return null;
+      // compression_rate is a 0-100 percentage (verified against historical data).
+      return typeof d.compression_rate === "number"
+        ? `${k(d.tokens_saved)} ${d.compression_rate}%`
+        : k(d.tokens_saved);
+    },
+  },
+  {
+    key: "save.lingua",
+    path: llmlinguaPath,
+    extract: (d) => {
+      // Prefer the nested session schema (smart-read). The flat lifetime-only shape
+      // (llmlingua_logged.py: tokens_saved_total, no session) is absent for the session view.
+      const s = d.session;
+      if (!s || !(s.tokens_saved > 0)) return null;
+      if (s.last_saved_pct != null) return `${k(s.tokens_saved)} ${s.last_saved_pct}%`;
+      // No original-token count in the session block, so a percent isn't derivable; show the ratio.
+      if (s.last_ratio != null) return `${k(s.tokens_saved)} ${s.last_ratio}x`;
+      return k(s.tokens_saved);
+    },
+  },
+];
+
+export function statsValues() {
+  const v = {};
+  for (const src of SAVINGS_SOURCES) {
+    const data = readJson(src.path());
+    if (!data) continue;
+    const out = src.extract(data);
+    if (out) v[src.key] = out; // omit on null/zero -> render.js available() drops the row
+  }
+  return v;
+}
+
 const PERM = { plan: "📋 plan", auto: "⏩ auto", acceptEdits: "⏩ auto", bypassPermissions: "⏩ bypass" };
 const OK_RGB = [96, 200, 104];   // matches render.js OK (done, green)
 const CRIT_RGB = [224, 84, 64];  // matches render.js CRIT (deleted, red)
@@ -287,7 +343,7 @@ function main() {
   const now = Date.now() / 1000;
   const st = readState(data);
   const cwd = data.cwd || (data.workspace || {}).current_dir;
-  const values = { ...buildValues(data), ...activityValues(st, now), ...sysValues(cwd) };
+  const values = { ...buildValues(data), ...activityValues(st, now), ...sysValues(cwd), ...statsValues() };
   const [advModel, advTs] = advisorInfo(data.transcript_path || "");
   if (advModel) values["advisor.model"] = advModel;
   const god_until = godFlash(data, advTs, now);
