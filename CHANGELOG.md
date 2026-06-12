@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-12
+
+### Added
+- SAVE box showing per-tool session token savings, read from the JSON files
+  that lean-ctx (`~/.lean-ctx/mcp-live.json`, 🪶) and llmlingua
+  (`~/.llmlingua-stats.json`, 📜) already persist — no plugin patching, no
+  binary spawn. Rows read defensively: a missing file, malformed JSON, or zero
+  savings omits the row, so the box collapses entirely when neither tool is
+  installed. Shown in the `default` (after USAGE) and `full` presets.
+
 ## [0.3.1] - 2026-06-11
 
 ### Fixed
