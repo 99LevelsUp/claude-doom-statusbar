@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-06-12
+
+### Changed
+- SAVE box savings are now **per-session** instead of global. The lean-ctx row
+  (🪶) sums tokens saved for files under the current working directory from
+  lean-ctx's append-only `events.jsonl`, read incrementally by byte offset and
+  accumulated in a per-session state file — so concurrent sessions no longer show
+  identical numbers, and the figure follows you across `cwd` changes. The llmlingua
+  row (📜) reads the per-session block keyed by `CLAUDE_CODE_SESSION_ID`. The
+  compression rate is derived from each session's own accumulated totals.
+
 ## [0.4.0] - 2026-06-12
 
 ### Added
