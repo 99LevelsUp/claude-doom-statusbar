@@ -2,7 +2,7 @@
 import { statsValues } from "../src/statusline.js";
 import { setValues, buildBar, vlen, SAMPLE } from "../src/render.js";
 import { parse as parseToml } from "smol-toml";
-import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, appendFileSync, rmSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,90 +12,124 @@ const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fai
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const tmp = mkdtempSync(path.join(os.tmpdir(), "doombar-savings-"));
+const MISSING = path.join(tmp, "does-not-exist");
 
-// Write a fixture file and point the matching env override at it.
-// `content` may be a string (written verbatim, for malformed-JSON tests) or an object.
-const fixture = (name, content) => {
-  const p = path.join(tmp, name);
-  writeFileSync(p, typeof content === "string" ? content : JSON.stringify(content));
-  return p;
+// Each scenario gets an isolated events log + accumulator state file.
+let seq = 0;
+const scenario = () => {
+  const ev = path.join(tmp, `events-${seq}.jsonl`);
+  process.env.DOOMBAR_EVENTS = ev;
+  process.env.DOOMBAR_SAVINGS_STATE = path.join(tmp, `state-${seq}.json`);
+  seq++;
+  return ev;
 };
-const MISSING = path.join(tmp, "does-not-exist.json");
+// A ToolCall event line (savings-bearing). Omit `p` for a path-less event (ctx_shell).
+const tc = (saved, orig, p) => JSON.stringify({ id: 1, kind: { type: "ToolCall", tool: "ctx_read", tokens_saved: saved, tokens_original: orig, ...(p ? { path: p } : {}) } }) + "\n";
+const writeJson = (name, obj) => { const p = path.join(tmp, name); writeFileSync(p, typeof obj === "string" ? obj : JSON.stringify(obj)); return p; };
+
+const CWD = "D:/Smeti/Dev/Claude/proj";
+const SID = { session_id: "test" };
 
 try {
-  // --- lean-ctx happy path: saved + compression_rate as a direct percent ---
-  process.env.DOOMBAR_LEANCTX = fixture("lean.json", { tokens_saved: 8263, compression_rate: 63 });
+  // No llmlingua during lean tests.
   process.env.DOOMBAR_LLMLINGUA = MISSING;
-  let v = statsValues();
-  ok(v["save.leanctx"] === "8.3k 63%", `lean-ctx -> "8.3k 63%" (got ${JSON.stringify(v["save.leanctx"])})`);
-  ok(!("save.lingua" in v), "missing llmlingua file -> save.lingua omitted");
 
-  // --- llmlingua nested session schema (smart-read): ratio when no pct ---
-  process.env.DOOMBAR_LEANCTX = MISSING;
-  process.env.DOOMBAR_LLMLINGUA = fixture("ling-nested.json", {
-    session: { runs: 3, tokens_saved: 1234, last_ratio: 1.3 },
-    lifetime: { runs: 99, tokens_saved_total: 99999 },
-  });
-  v = statsValues();
-  ok(v["save.lingua"] === "1.2k 1.3x", `llmlingua session -> "1.2k 1.3x" (got ${JSON.stringify(v["save.lingua"])})`);
-  ok(!("save.leanctx" in v), "missing lean-ctx file -> save.leanctx omitted");
+  // --- init at EOF: events that predate the session are not counted ---
+  let ev = scenario();
+  writeFileSync(ev, tc(999, 1000, `${CWD}/old.js`));
+  ok(!("save.leanctx" in statsValues(SID, CWD)), "first sight starts accumulator at EOF (pre-session events ignored)");
 
-  // --- llmlingua nested session with explicit last_saved_pct -> percent wins ---
-  process.env.DOOMBAR_LLMLINGUA = fixture("ling-pct.json", {
-    session: { runs: 2, tokens_saved: 2048, last_saved_pct: 75, last_ratio: 4.0 },
-  });
-  v = statsValues();
-  ok(v["save.lingua"] === "2.0k 75%", `llmlingua last_saved_pct -> "2.0k 75%" (got ${JSON.stringify(v["save.lingua"])})`);
+  // --- delta on append: events under cwd are summed; rate from accumulated totals ---
+  appendFileSync(ev, tc(800, 1000, `${CWD}/a.js`));
+  ok(statsValues(SID, CWD)["save.leanctx"] === "800 80%", `counts new event under cwd (800/1000) (got ${JSON.stringify(statsValues(SID, CWD)["save.leanctx"])})`);
 
-  // --- llmlingua flat lifetime-only shape (llmlingua_logged.py) -> absent for session view (R6) ---
-  process.env.DOOMBAR_LLMLINGUA = fixture("ling-flat.json", { runs: 5, tokens_saved_total: 4242, last_ratio: 2.1 });
-  v = statsValues();
-  ok(!("save.lingua" in v), "flat lifetime-only llmlingua -> save.lingua omitted (no session block)");
+  // --- events outside cwd, and path-less events, are not counted ---
+  ev = scenario();
+  writeFileSync(ev, "");
+  statsValues(SID, CWD); // init at EOF (empty)
+  appendFileSync(ev, tc(800, 1000, `${CWD}/a.js`));
+  appendFileSync(ev, tc(5000, 6000, "D:/Karat/other/b.cs")); // outside cwd
+  appendFileSync(ev, tc(300, 400)); // path-less (ctx_shell)
+  ok(statsValues(SID, CWD)["save.leanctx"] === "800 80%", "outside-cwd and path-less events excluded");
 
-  // --- malformed JSON -> omitted, never throws (R3) ---
-  process.env.DOOMBAR_LEANCTX = fixture("lean-bad.json", "{ this is not json ");
-  process.env.DOOMBAR_LLMLINGUA = MISSING;
-  v = statsValues(); // must not throw
-  ok(!("save.leanctx" in v), "malformed JSON -> save.leanctx omitted, no throw");
+  // --- boundary-safe prefix: a sibling dir sharing a prefix is not counted ---
+  ev = scenario();
+  writeFileSync(ev, "");
+  statsValues(SID, CWD);
+  appendFileSync(ev, tc(700, 1000, `${CWD}-sibling/x.js`)); // D:/.../proj-sibling, must NOT match proj
+  ok(!("save.leanctx" in statsValues(SID, CWD)), "sibling dir sharing a path prefix is not counted");
 
-  // --- zero savings -> omitted, never a misleading "0" row (R4) ---
-  process.env.DOOMBAR_LEANCTX = fixture("lean-zero.json", { tokens_saved: 0, compression_rate: 0 });
-  v = statsValues();
-  ok(!("save.leanctx" in v), "tokens_saved 0 -> save.leanctx omitted");
+  // --- cwd change: accumulator keeps prior total and adds the new location's events ---
+  ev = scenario();
+  writeFileSync(ev, "");
+  statsValues(SID, CWD);
+  appendFileSync(ev, tc(800, 1000, `${CWD}/a.js`));
+  ok(statsValues(SID, CWD)["save.leanctx"] === "800 80%", "before cwd change: 800 80%");
+  const CWD2 = "D:/Karat/other";
+  appendFileSync(ev, tc(1200, 2000, `${CWD2}/c.cs`));
+  ok(statsValues(SID, CWD2)["save.leanctx"] === "2.0k 67%", `after cwd change accumulates: (800+1200)/(1000+2000)=67% (got ${JSON.stringify(statsValues(SID, CWD2)["save.leanctx"])})`);
 
-  // --- key present but tokens_saved missing -> omitted (R3) ---
-  process.env.DOOMBAR_LEANCTX = fixture("lean-nokey.json", { compression_rate: 50 });
-  v = statsValues();
-  ok(!("save.leanctx" in v), "no tokens_saved key -> save.leanctx omitted");
+  // --- partial trailing line is held until its newline arrives ---
+  ev = scenario();
+  writeFileSync(ev, "");
+  statsValues(SID, CWD);
+  appendFileSync(ev, tc(1000, 2000, `${CWD}/a.js`));
+  ok(statsValues(SID, CWD)["save.leanctx"] === "1.0k 50%", "full line counted");
+  appendFileSync(ev, JSON.stringify({ id: 2, kind: { type: "ToolCall", path: `${CWD}/b.js`, tokens_saved: 500, tokens_original: 500 } })); // no newline
+  ok(statsValues(SID, CWD)["save.leanctx"] === "1.0k 50%", "partial line (no newline) not yet consumed");
+  appendFileSync(ev, "\n");
+  ok(statsValues(SID, CWD)["save.leanctx"] === "1.5k 60%", `partial line consumed after newline: (1000+500)/(2000+500)=60% (got ${JSON.stringify(statsValues(SID, CWD)["save.leanctx"])})`);
 
-  // --- compression_rate missing -> saved only, no percent ---
-  process.env.DOOMBAR_LEANCTX = fixture("lean-nopct.json", { tokens_saved: 8263 });
-  v = statsValues();
-  ok(v["save.leanctx"] === "8.3k", `lean-ctx no pct -> "8.3k" (got ${JSON.stringify(v["save.leanctx"])})`);
+  // --- log truncation/rotation (offset > size) resets without crashing ---
+  ev = scenario();
+  writeFileSync(ev, tc(800, 1000, `${CWD}/a.js`) + tc(800, 1000, `${CWD}/b.js`));
+  const statePath = process.env.DOOMBAR_SAVINGS_STATE;
+  writeFileSync(statePath, JSON.stringify({ offset: 999999, saved: 1234, original: 2000 })); // stale huge offset
+  const after = statsValues(SID, CWD); // must not throw; offset clamps to 0/size
+  ok(typeof (after["save.leanctx"]) === "string" || after["save.leanctx"] === undefined, "truncation/rotation handled without crash");
 
-  // --- k() formatter via statsValues output: small / abbreviated / millions ---
-  process.env.DOOMBAR_LEANCTX = fixture("lean-512.json", { tokens_saved: 512, compression_rate: 9 });
-  ok(statsValues()["save.leanctx"] === "512 9%", "k(): 512 -> '512'");
-  process.env.DOOMBAR_LEANCTX = fixture("lean-mil.json", { tokens_saved: 1200000, compression_rate: 88 });
-  ok(statsValues()["save.leanctx"] === "1.2M 88%", "k(): 1200000 -> '1.2M'");
+  // --- k() formatting via accumulated savings ---
+  ev = scenario();
+  writeFileSync(ev, "");
+  statsValues(SID, CWD);
+  appendFileSync(ev, tc(8263, 13163, `${CWD}/big.js`));
+  ok(statsValues(SID, CWD)["save.leanctx"] === "8.3k 63%", `k() abbreviates: 8263 -> 8.3k, 63% (got ${JSON.stringify(statsValues(SID, CWD)["save.leanctx"])})`);
+  ev = scenario();
+  writeFileSync(ev, "");
+  statsValues(SID, CWD);
+  appendFileSync(ev, tc(1200000, 2000000, `${CWD}/huge.js`));
+  ok(statsValues(SID, CWD)["save.leanctx"] === "1.2M 60%", "k() millions: 1200000 -> 1.2M");
 
-  // --- fractional figures are normalized so they can't shift box width ---
-  process.env.DOOMBAR_LEANCTX = fixture("lean-frac.json", { tokens_saved: 8263, compression_rate: 63.45 });
-  process.env.DOOMBAR_LLMLINGUA = fixture("ling-frac.json", { session: { tokens_saved: 1234, last_ratio: 1.3333 } });
-  v = statsValues();
-  ok(v["save.leanctx"] === "8.3k 63%", `fractional compression_rate rounded (got ${JSON.stringify(v["save.leanctx"])})`);
-  ok(v["save.lingua"] === "1.2k 1.3x", `many-decimal ratio -> 1 decimal (got ${JSON.stringify(v["save.lingua"])})`);
+  // --- missing events log -> no key, no throw ---
+  process.env.DOOMBAR_EVENTS = MISSING;
+  process.env.DOOMBAR_SAVINGS_STATE = path.join(tmp, "state-missing.json");
+  ok(!("save.leanctx" in statsValues(SID, CWD)), "missing events log -> save.leanctx omitted, no throw");
 
-  // --- both files absent -> empty object (R8: neither tool installed) ---
-  process.env.DOOMBAR_LEANCTX = MISSING;
-  process.env.DOOMBAR_LLMLINGUA = MISSING;
-  ok(Object.keys(statsValues()).length === 0, "neither file -> {} (no keys emitted)");
+  // --- no cwd -> lean omitted (can't attribute) ---
+  ok(!("save.leanctx" in statsValues(SID, undefined)), "no cwd -> save.leanctx omitted");
 
-  // --- icon widths: both must measure vlen 2 so the two rows align (R10) ---
+  // === llmlingua (still global for now) ===
+  process.env.DOOMBAR_EVENTS = MISSING; // keep lean out of the way
+
+  process.env.DOOMBAR_LLMLINGUA = writeJson("ling-nested.json", { session: { runs: 3, tokens_saved: 1234, last_ratio: 1.3 } });
+  ok(statsValues(SID, CWD)["save.lingua"] === "1.2k 1.3x", `llmlingua session ratio -> "1.2k 1.3x" (got ${JSON.stringify(statsValues(SID, CWD)["save.lingua"])})`);
+
+  process.env.DOOMBAR_LLMLINGUA = writeJson("ling-pct.json", { session: { tokens_saved: 2048, last_saved_pct: 75 } });
+  ok(statsValues(SID, CWD)["save.lingua"] === "2.0k 75%", "llmlingua last_saved_pct wins");
+
+  process.env.DOOMBAR_LLMLINGUA = writeJson("ling-frac.json", { session: { tokens_saved: 1234, last_ratio: 1.3333 } });
+  ok(statsValues(SID, CWD)["save.lingua"] === "1.2k 1.3x", "many-decimal ratio normalized to 1 decimal");
+
+  process.env.DOOMBAR_LLMLINGUA = writeJson("ling-flat.json", { runs: 5, tokens_saved_total: 4242, last_ratio: 2.1 });
+  ok(!("save.lingua" in statsValues(SID, CWD)), "flat lifetime-only llmlingua omitted (no session block)");
+
+  process.env.DOOMBAR_LLMLINGUA = writeJson("ling-bad.json", "{ not json ");
+  ok(!("save.lingua" in statsValues(SID, CWD)), "malformed llmlingua JSON omitted, no throw");
+
+  // === presentation (render.js) ===
   ok(vlen("🪶") === 2, "lean icon 🪶 vlen 2");
   ok(vlen("📜") === 2, "lingua icon 📜 vlen 2");
 
-  // --- box collapse is discriminating: other metrics present, save.* absent ---
   const cfg = parseToml(readFileSync(path.join(HERE, "..", "presets", "default.toml"), "utf8"));
   const noSave = { ...SAMPLE };
   delete noSave["save.leanctx"];
@@ -105,8 +139,7 @@ try {
   ok(!out.includes("SAVE"), "savings absent -> SAVE box collapses");
   ok(out.includes("USAGE") && out.includes("GIT"), "other boxes still render (collapse is targeted, not total)");
 
-  // --- ...and the box appears when savings are present ---
-  setValues({ ...SAMPLE }); // SAMPLE carries save.leanctx / save.lingua
+  setValues({ ...SAMPLE });
   out = buildBar(cfg, 120).lines.join("\n");
   ok(out.includes("SAVE"), "savings present -> SAVE box renders");
 } finally {

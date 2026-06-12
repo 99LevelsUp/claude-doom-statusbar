@@ -10,7 +10,7 @@
 // Config: $DOOMBAR_PRESET (default presets/default.toml)  State: $MUGSHOT_STATE
 
 import {
-  readFileSync, writeFileSync, openSync, fstatSync, readSync, closeSync, statfsSync,
+  readFileSync, writeFileSync, openSync, fstatSync, readSync, closeSync, statfsSync, statSync,
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -232,10 +232,10 @@ function sysValues(cwd) {
   return v;
 }
 
-// Token-savings rows read from the small JSON files context-optimization tools already
-// persist. No plugin patching, no binary spawn — just a cheap read each refresh. Paths are
-// env-overridable (DOOMBAR_*) so tests can point at fixtures, mirroring statePath/MUGSHOT_STATE.
-const leanCtxPath = () => process.env.DOOMBAR_LEANCTX || path.join(os.homedir(), ".lean-ctx", "mcp-live.json");
+// --- Token-savings rows -----------------------------------------------------
+// Read from what context-optimization tools already persist on disk. No plugin
+// patching, no binary spawn. Paths are env-overridable (DOOMBAR_*) for tests.
+const eventsPath = () => process.env.DOOMBAR_EVENTS || path.join(os.homedir(), ".lean-ctx", "events.jsonl");
 const llmlinguaPath = () => process.env.DOOMBAR_LLMLINGUA || path.join(os.homedir(), ".llmlingua-stats.json");
 
 // Defensive read: missing file or malformed JSON -> null (the row simply never appears).
@@ -243,46 +243,83 @@ function readJson(p) {
   try { return JSON.parse(readFileSync(p, "utf8")); } catch { return null; }
 }
 
-// One entry per savings source; extract returns the display string or null (omit the row).
-// Adding a source later is one entry here plus one preset line — not an adapter framework.
-const SAVINGS_SOURCES = [
-  {
-    key: "save.leanctx",
-    path: leanCtxPath,
-    extract: (d) => {
-      if (!(d.tokens_saved > 0)) return null;
-      // compression_rate is a 0-100 percentage (verified against historical data).
-      // Round it — a fractional value would render "63.45%" and shift the box width.
-      return typeof d.compression_rate === "number"
-        ? `${k(d.tokens_saved)} ${Math.round(d.compression_rate)}%`
-        : k(d.tokens_saved);
-    },
-  },
-  {
-    key: "save.lingua",
-    path: llmlinguaPath,
-    extract: (d) => {
-      // Prefer the nested session schema (smart-read). The flat lifetime-only shape
-      // (llmlingua_logged.py: tokens_saved_total, no session) is absent for the session view.
-      const s = d.session;
-      if (!s || !(s.tokens_saved > 0)) return null;
-      // Round/clamp the secondary figure so a many-decimal value can't shift box width.
-      if (s.last_saved_pct != null) return `${k(s.tokens_saved)} ${Math.round(s.last_saved_pct)}%`;
-      // No original-token count in the session block, so a percent isn't derivable; show the ratio.
-      if (s.last_ratio != null) return `${k(s.tokens_saved)} ${Number(s.last_ratio).toFixed(1)}x`;
-      return k(s.tokens_saved);
-    },
-  },
-];
+const normPath = (p) => String(p).replace(/\\/g, "/").toLowerCase();
 
-export function statsValues() {
-  const v = {};
-  for (const src of SAVINGS_SOURCES) {
-    const data = readJson(src.path());
-    if (!data) continue;
-    const out = src.extract(data);
-    if (out) v[src.key] = out; // omit on null/zero -> render.js available() drops the row
+// "8.3k 63%" — saved + a per-session compression rate derived from accumulated totals.
+function fmtSaved(st) {
+  return st.original > 0 ? `${k(st.saved)} ${Math.round(100 * st.saved / st.original)}%` : k(st.saved);
+}
+
+const savingsStatePath = (sid) =>
+  process.env.DOOMBAR_SAVINGS_STATE || path.join(TMP, `savings_${sid}.json`);
+
+// Per-session lean-ctx savings. lean-ctx's mcp-live.json is a single global file clobbered
+// by every concurrent session, so it can't be per-session. events.jsonl is append-only and
+// each ToolCall carries the file path it compressed — so we sum tokens_saved over NEW events
+// (tracked by byte offset) whose path is under the current cwd, accumulated across refreshes
+// in a per-session state file keyed by session_id. The accumulator follows cwd changes (it
+// keeps adding wherever you currently work) and stays cheap — it reads only the bytes appended
+// since the last refresh, never the whole log. Residual: two sessions concurrently in the SAME
+// project share events and both count them — unsplittable from disk, accepted.
+function leanCtxSavings(cwd, sid) {
+  if (!cwd) return null;
+  const cwdN = normPath(cwd).replace(/\/+$/, "") + "/"; // match on a path boundary, not a prefix
+  const sp = savingsStatePath(sid);
+  let st = { offset: null, saved: 0, original: 0 };
+  try { st = { ...st, ...JSON.parse(readFileSync(sp, "utf8")) }; } catch { /* fresh session */ }
+
+  let size = -1;
+  try { size = statSync(eventsPath()).size; } catch { /* no log */ }
+  if (size < 0) return st.saved > 0 ? fmtSaved(st) : null; // log gone -> keep prior total
+
+  if (st.offset === null) st.offset = size; // first sight of this session: count from now on
+  if (st.offset > size) st.offset = 0;      // log rotated/truncated -> restart
+
+  if (size > st.offset) {
+    let chunk = "";
+    try {
+      const fd = openSync(eventsPath(), "r");
+      const buf = Buffer.alloc(size - st.offset);
+      readSync(fd, buf, 0, buf.length, st.offset);
+      closeSync(fd);
+      chunk = buf.toString("utf8");
+    } catch { chunk = ""; }
+    const lastNl = chunk.lastIndexOf("\n"); // consume complete lines only; keep any partial tail
+    if (lastNl >= 0) {
+      for (const ln of chunk.slice(0, lastNl).split("\n")) {
+        if (!ln) continue;
+        let o; try { o = JSON.parse(ln); } catch { continue; }
+        const ev = o.kind;
+        if (!ev || ev.type !== "ToolCall" || !ev.path) continue;
+        if (!normPath(ev.path).startsWith(cwdN)) continue; // cwdN ends in "/" -> boundary-safe
+        st.saved += ev.tokens_saved || 0;
+        st.original += ev.tokens_original || 0;
+      }
+      st.offset += Buffer.byteLength(chunk.slice(0, lastNl + 1), "utf8");
+    }
   }
+  try { writeFileSync(sp, JSON.stringify(st)); } catch { /* ignore */ }
+  return st.saved > 0 ? fmtSaved(st) : null;
+}
+
+// llmlingua is still global for now (per-session is a follow-up). Prefer the nested session
+// schema (smart-read); flat lifetime-only (llmlingua_logged.py) is absent for the session view.
+function linguaSavings() {
+  const d = readJson(llmlinguaPath());
+  const s = d && d.session;
+  if (!s || !(s.tokens_saved > 0)) return null;
+  if (s.last_saved_pct != null) return `${k(s.tokens_saved)} ${Math.round(s.last_saved_pct)}%`;
+  if (s.last_ratio != null) return `${k(s.tokens_saved)} ${Number(s.last_ratio).toFixed(1)}x`;
+  return k(s.tokens_saved);
+}
+
+export function statsValues(data, cwd) {
+  const v = {};
+  const sid = String((data && data.session_id) || "default").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 48);
+  const lean = leanCtxSavings(cwd, sid);
+  if (lean) v["save.leanctx"] = lean;
+  const ling = linguaSavings();
+  if (ling) v["save.lingua"] = ling;
   return v;
 }
 
@@ -345,7 +382,7 @@ function main() {
   const now = Date.now() / 1000;
   const st = readState(data);
   const cwd = data.cwd || (data.workspace || {}).current_dir;
-  const values = { ...buildValues(data), ...activityValues(st, now), ...sysValues(cwd), ...statsValues() };
+  const values = { ...buildValues(data), ...activityValues(st, now), ...sysValues(cwd), ...statsValues(data, cwd) };
   const [advModel, advTs] = advisorInfo(data.transcript_path || "");
   if (advModel) values["advisor.model"] = advModel;
   const god_until = godFlash(data, advTs, now);
