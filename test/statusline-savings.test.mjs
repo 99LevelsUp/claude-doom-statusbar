@@ -130,6 +130,11 @@ try {
   process.env.DOOMBAR_LLMLINGUA = writeJson("ling-bad.json", "{ not json ");
   ok(!("save.lingua" in statsValues(SID, CWD)), "malformed llmlingua JSON omitted, no throw");
 
+  // lingua lookup uses the RAW session id (smart-read's key), not the filesystem-sanitized one
+  const dotted = { session_id: "abc.def:99" }; // chars sanitize would mangle
+  process.env.DOOMBAR_LLMLINGUA = writeJson("ling-raw.json", { sessions: { "abc.def:99": { tokens_saved: 1500, last_ratio: 2.0 } } });
+  ok(statsValues(dotted, CWD)["save.lingua"] === "1.5k 2.0x", `raw session id used for lingua key (got ${JSON.stringify(statsValues(dotted, CWD)["save.lingua"])})`);
+
   // === presentation (render.js) ===
   ok(vlen("🪶") === 2, "lean icon 🪶 vlen 2");
   ok(vlen("📜") === 2, "lingua icon 📜 vlen 2");

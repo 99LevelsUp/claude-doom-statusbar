@@ -243,7 +243,12 @@ function readJson(p) {
   try { return JSON.parse(readFileSync(p, "utf8")); } catch { return null; }
 }
 
-const normPath = (p) => String(p).replace(/\\/g, "/").toLowerCase();
+// Windows FS is case-insensitive, POSIX is not — only fold case on win32 to avoid
+// false path matches (e.g. /home/User vs /home/user) on the platforms the npm package also runs on.
+const normPath = (p) => {
+  const s = String(p).replace(/\\/g, "/");
+  return process.platform === "win32" ? s.toLowerCase() : s;
+};
 
 // "8.3k 63%" — saved + a per-session compression rate derived from accumulated totals.
 function fmtSaved(st) {
@@ -273,7 +278,11 @@ function leanCtxSavings(cwd, sid) {
   if (size < 0) return st.saved > 0 ? fmtSaved(st) : null; // log gone -> keep prior total
 
   if (st.offset === null) st.offset = size; // first sight of this session: count from now on
-  if (st.offset > size) st.offset = 0;      // log rotated/truncated -> restart
+  // Log shrank -> lean-ctx rotated it (old events go to archives/, the restarted log holds only
+  // NEW events). Keep the running total and re-read from 0: prior total + new events = correct.
+  // (An in-place truncate-and-rewrite retaining old content would double-count, but an append-only
+  // log doesn't do that.)
+  if (st.offset > size) st.offset = 0;
 
   if (size > st.offset) {
     let chunk = "";
@@ -316,10 +325,12 @@ function linguaSavings(sid) {
 
 export function statsValues(data, cwd) {
   const v = {};
-  const sid = String((data && data.session_id) || "default").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 48);
+  const rawSid = String((data && data.session_id) || "default");
+  const sid = rawSid.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 48); // filesystem-safe state-file key
   const lean = leanCtxSavings(cwd, sid);
   if (lean) v["save.leanctx"] = lean;
-  const ling = linguaSavings(sid);
+  // smart-read keys sessions[] by the RAW CLAUDE_CODE_SESSION_ID -> look up with the unsanitized id.
+  const ling = linguaSavings(rawSid);
   if (ling) v["save.lingua"] = ling;
   return v;
 }
