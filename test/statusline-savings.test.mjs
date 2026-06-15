@@ -139,17 +139,18 @@ try {
   ok(vlen("🪶") === 2, "lean icon 🪶 vlen 2");
   ok(vlen("📜") === 2, "lingua icon 📜 vlen 2");
 
-  const cfg = parseToml(readFileSync(path.join(HERE, "..", "presets", "standard.toml"), "utf8"));
+  // full is the preset that carries the SAVE box (standard/minimal drop it).
+  const cfg = parseToml(readFileSync(path.join(HERE, "..", "presets", "full.toml"), "utf8"));
   const noSave = { ...SAMPLE };
   delete noSave["save.leanctx"];
   delete noSave["save.lingua"];
   setValues(noSave);
-  let out = buildBar(cfg, 120).lines.join("\n");
+  let out = buildBar(cfg, 200).lines.join("\n");
   ok(!out.includes("SAVE"), "savings absent -> SAVE box collapses");
-  ok(out.includes("USAGE") && out.includes("GIT"), "other boxes still render (collapse is targeted, not total)");
+  ok(out.includes("USAGE") && out.includes("PROJECT"), "other boxes still render (collapse is targeted, not total)");
 
   setValues({ ...SAMPLE });
-  out = buildBar(cfg, 120).lines.join("\n");
+  out = buildBar(cfg, 200).lines.join("\n");
   ok(out.includes("SAVE"), "savings present -> SAVE box renders");
 } finally {
   rmSync(tmp, { recursive: true, force: true });
