@@ -410,12 +410,14 @@ export function planLayout(cfg, target, spriteFor) {
 // (smallest) one reached. `loadByName(name) -> cfg | null` loads a sibling preset;
 // returning null (missing/unreadable) ends the chain. Stateless: ceiling + recovery
 // fall out of re-deriving from `target` each call. Guards against fallback cycles.
-export function resolvePreset(chosenCfg, target, loadByName) {
+export function resolvePreset(chosenCfg, target, loadByName, spriteFor) {
   let cfg = chosenCfg, last = chosenCfg;
   const seen = new Set();
   while (cfg) {
     last = cfg;
-    if (planLayout(cfg, target).fits) return cfg;
+    // Fit-test with the SAME sprite buildBar will render, so the mugshot column
+    // width matches: plan.fits then implies the rendered layout actually fits.
+    if (planLayout(cfg, target, spriteFor).fits) return cfg;
     const next = cfg.bar && cfg.bar.fallback;
     if (!next || seen.has(next)) break;   // terminus or cycle
     seen.add(next);

@@ -436,7 +436,7 @@ function main() {
     try { return parseToml(readFileSync(path.join(presetDir, `${name}.toml`), "utf8")); }
     catch { return null; }
   };
-  const selected = resolvePreset(cfg, target, loadByName);
+  const selected = resolvePreset(cfg, target, loadByName, spriteFor);
   const res = buildBar(selected, target, spriteFor, tick);
   process.stdout.write(res.lines.join("\n") + "\n");
 }

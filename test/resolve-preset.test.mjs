@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-import { resolvePreset, setValues } from "../src/render.js";
+import { resolvePreset, planLayout, setValues, SAMPLE } from "../src/render.js";
+import { parse as parseToml } from "smol-toml";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 
@@ -45,6 +49,35 @@ ok(
 {
   const orphan = mk(200, "ghost");
   ok(resolvePreset(orphan, 10, () => null) === orphan, "missing fallback -> ends at chosen");
+}
+
+// resolvePreset must fit-test with the SAME sprite buildBar will render. The "turn"
+// sprites (STFTL/STFTR) are 1 col wider than idle, so an idle-only fit test would
+// under-measure the mugshot column: at the boundary width it keeps `full` even
+// though `full` does not fit that sprite. The invariant: any selected preset that
+// is not the last resort must itself pass planLayout with the SAME sprite. Without
+// the spriteFor thread-through this fails at full's idle-vs-wide boundary width.
+{
+  const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "presets");
+  const presets = {
+    full: parseToml(readFileSync(path.join(root, "full.toml"), "utf8")),
+    standard: parseToml(readFileSync(path.join(root, "standard.toml"), "utf8")),
+    minimal: parseToml(readFileSync(path.join(root, "minimal.toml"), "utf8")),
+  };
+  const loadByName = (n) => presets[n] || null;
+  const wide = () => "STFTL00"; // widest face (look-around), 1 col wider than idle
+  setValues(SAMPLE);
+  let consistent = true, degrades = false, prevName = null;
+  for (let target = 220; target >= 40; target -= 1) {
+    const selected = resolvePreset(presets.full, target, loadByName, wide);
+    // Unless minimal is the forced last resort, the pick must actually fit the sprite.
+    if (selected !== presets.minimal && !planLayout(selected, target, wide).fits) consistent = false;
+    const name = selected === presets.full ? "full" : selected === presets.standard ? "standard" : "minimal";
+    if (prevName && name !== prevName) degrades = true; // saw at least one preset switch
+    prevName = name;
+  }
+  ok(consistent, "real path: a non-last-resort pick fits the same sprite it renders with");
+  ok(degrades, "real path: the preset degrades as the target shrinks");
 }
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILED`);
