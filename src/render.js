@@ -552,7 +552,7 @@ function main() {
     p = path.isAbsolute(arg) ? arg : path.join(process.cwd(), arg);
     try { readFileSync(p); } catch { p = path.join(REPO, "presets", path.basename(arg)); }
   } else {
-    p = path.join(REPO, "presets", "default.toml");
+    p = path.join(REPO, "presets", "standard.toml");
   }
   const target = process.argv[3] ? parseInt(process.argv[3], 10) : 100;
   const tick = process.argv[4] ? parseInt(process.argv[4], 10) : 0; // marquee phase for previews

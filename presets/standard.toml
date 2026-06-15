@@ -1,9 +1,10 @@
-# default — balanced (the live-mockup look)
+# standard — balanced (the live-mockup look)
 [bar]
 border_style   = "vertical"
 border_color   = "term-fg"
 box_background = "term-bg"
 headers        = true
+fallback       = "minimal"          # degrade to this preset when the terminal is too narrow
 
 [mugshot]
 background = "#000000"

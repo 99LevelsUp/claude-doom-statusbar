@@ -38,7 +38,7 @@ npx claude-doom-statusbar install
 That writes the `statusLine`, the lifecycle hooks, and the preset into `~/.claude/settings.json` for you (merging into whatever's already there, with a one-level `.bak`). Restart Claude Code and the HUD is live.
 
 ```bash
-npx claude-doom-statusbar install --preset full   # full | default | minimal (default: full)
+npx claude-doom-statusbar install --preset full   # full | standard | minimal (default: full)
 npx claude-doom-statusbar install --project       # write ./.claude/settings.json instead of ~/.claude
 npx claude-doom-statusbar uninstall                # remove everything the installer added
 ```
@@ -65,13 +65,17 @@ $env:FORCE_HYPERLINK = "1"; claude
 
 ## Presets
 
-`DOOMBAR_PRESET` picks the layout (defaults to `presets/default.toml`):
+`DOOMBAR_PRESET` picks the layout (defaults to `presets/standard.toml`):
 
 - **`minimal`** — a couple of bars, blends into the terminal.
-- **`default`** — balanced HUD.
+- **`standard`** — balanced HUD.
 - **`full`** — every box, the look in the screenshot above.
 
 A preset is TOML: a `[bar]` style block, a `[mugshot]` block, and a list of `[[segment]]` boxes. Each box lists metrics with a render type — `bar`, `number`, `text`, `spark`, `ammo`, `list`, `scroll`, or a `group`. Copy one and rearrange the boxes, swap icons, or change which metrics show.
+
+### Responsive width
+
+As the terminal narrows, the HUD shrinks: bars contract and text columns shrink together, and whatever overflows scrolls (the marquee). When even the smallest layout no longer fits, the preset falls back to a smaller one via its `[bar].fallback` key — `full → standard → minimal`. Your chosen preset is the ceiling; widening the terminal recovers it. It's stateless — each refresh re-reads the terminal width (`COLUMNS`), so it follows live resizes.
 
 ## How it works
 

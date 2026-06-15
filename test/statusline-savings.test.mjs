@@ -139,7 +139,7 @@ try {
   ok(vlen("🪶") === 2, "lean icon 🪶 vlen 2");
   ok(vlen("📜") === 2, "lingua icon 📜 vlen 2");
 
-  const cfg = parseToml(readFileSync(path.join(HERE, "..", "presets", "default.toml"), "utf8"));
+  const cfg = parseToml(readFileSync(path.join(HERE, "..", "presets", "standard.toml"), "utf8"));
   const noSave = { ...SAMPLE };
   delete noSave["save.leanctx"];
   delete noSave["save.lingua"];

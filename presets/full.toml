@@ -4,6 +4,7 @@ border_style   = "vertical"
 border_color   = "term-bg"      # seamless cuts through the panel
 box_background = "#1c2036"
 headers        = true
+fallback       = "standard"     # degrade to this preset when the terminal is too narrow
 
 [mugshot]
 background = "#000000"

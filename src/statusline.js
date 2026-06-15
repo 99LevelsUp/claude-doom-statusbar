@@ -7,7 +7,7 @@
 // settings.json:
 //   "statusLine": { "type": "command",
 //       "command": "node /abs/path/src/statusline.js", "refreshInterval": 1 }
-// Config: $DOOMBAR_PRESET (default presets/default.toml)  State: $MUGSHOT_STATE
+// Config: $DOOMBAR_PRESET (default presets/standard.toml)  State: $MUGSHOT_STATE
 
 import {
   readFileSync, writeFileSync, openSync, fstatSync, readSync, closeSync, statfsSync, statSync,
@@ -390,7 +390,7 @@ function main() {
   let data = {};
   try { data = JSON.parse(readFileSync(0, "utf8")); } catch { data = {}; }
 
-  const preset = process.env.DOOMBAR_PRESET || path.join(REPO, "presets", "default.toml");
+  const preset = process.env.DOOMBAR_PRESET || path.join(REPO, "presets", "standard.toml");
   const cfg = parseToml(readFileSync(preset, "utf8"));
 
   const now = Date.now() / 1000;
