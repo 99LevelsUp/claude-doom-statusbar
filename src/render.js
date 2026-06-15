@@ -405,6 +405,27 @@ export function planLayout(cfg, target, spriteFor) {
   return { cells: 4, textCap, width: balancedWidthOf(segs, faceW, 4, textCap), fits: false };
 }
 
+// Walk the per-preset fallback chain from `chosenCfg` (the ceiling) downward and
+// return the first preset whose layout fits `target`; if none fit, return the last
+// (smallest) one reached. `loadByName(name) -> cfg | null` loads a sibling preset;
+// returning null (missing/unreadable) ends the chain. Stateless: ceiling + recovery
+// fall out of re-deriving from `target` each call. Guards against fallback cycles.
+export function resolvePreset(chosenCfg, target, loadByName) {
+  let cfg = chosenCfg, last = chosenCfg;
+  const seen = new Set();
+  while (cfg) {
+    last = cfg;
+    if (planLayout(cfg, target).fits) return cfg;
+    const next = cfg.bar && cfg.bar.fallback;
+    if (!next || seen.has(next)) break;   // terminus or cycle
+    seen.add(next);
+    const loaded = loadByName(next);
+    if (!loaded) break;                    // missing/unreadable fallback
+    cfg = loaded;
+  }
+  return last;                             // nothing fit -> smallest reached
+}
+
 export function buildBar(cfg, target, spriteFor, tick = 0) {
   if (!spriteFor) spriteFor = (hp) => `STFST${hp}1`;
 
