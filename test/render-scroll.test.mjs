@@ -50,5 +50,26 @@ ok(r.start === 0 && r.up === 0 && r.down === 0, "boundary all-fit -> top aligned
   ok(new Set(widths).size === 1, `all HUD rows equal width with overflow marker (widths: ${[...new Set(widths)].join(",")})`);
 }
 
+// Marquee integration: a long scrolled label keeps every HUD row equal width at
+// every tick, and the visible window actually moves as the tick advances.
+{
+  setValues({
+    ...SAMPLE,
+    "act.subagents": [["a-really-long-agent-label-that-overflows-its-box", "1m2s"]],
+    "act.tasklist": [{ mark: "⏩", markRgb: null, text: "port-PIL-alpha-compositing-into-JS-render" }],
+  });
+  const cfgRoot = path2.dirname(f2u(import.meta.url));
+  const cfg = parseToml(readFileSync(path2.join(cfgRoot, "..", "presets", "full.toml"), "utf8"));
+  let uniform = true;
+  const frames = new Set();
+  for (let t = 0; t < 24; t++) {
+    const res = buildBar(cfg, 160, undefined, t);
+    if (new Set(res.lines.map((l) => vlen(l))).size !== 1) uniform = false;
+    frames.add(res.lines.join("\n"));
+  }
+  ok(uniform, "marquee: all HUD rows stay equal width at every tick");
+  ok(frames.size > 1, "marquee: the rendered HUD changes as the tick advances");
+}
+
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILED`);
 process.exit(fails === 0 ? 0 : 1);

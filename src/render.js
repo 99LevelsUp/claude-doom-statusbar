@@ -246,6 +246,53 @@ export function scrollWindow(n, h, anchor, boundary) {
   return { start, up: start, down: n - start - h };
 }
 
+// --- horizontal marquee (the "car radio" scroll) ----------------------------
+// Long text that won't fit its column budget glides left until its tail shows,
+// pauses, then glides back to the start and pauses again — ping-pong, driven by
+// the same per-refresh `tick` as the mugshot/geiger. Pure function of `tick`
+// (no Date in here) so renders stay deterministic and testable.
+const MARQUEE_STEP = 1;   // display columns advanced per tick
+const MARQUEE_DWELL = 3;  // ticks held at each end before reversing
+
+// Triangular offset wave 0..span..0 with a dwell at both extremes.
+function marqueeOffset(span, tick) {
+  if (span <= 0) return 0;
+  const sweep = Math.ceil(span / MARQUEE_STEP);
+  const cycle = 2 * (MARQUEE_DWELL + sweep);
+  let t = ((tick % cycle) + cycle) % cycle;
+  if (t < MARQUEE_DWELL) return 0;                            // hold at start
+  t -= MARQUEE_DWELL;
+  if (t < sweep) return Math.min(span, t * MARQUEE_STEP);     // glide forward 0->span
+  t -= sweep;
+  if (t < MARQUEE_DWELL) return span;                         // hold at end
+  t -= MARQUEE_DWELL;
+  return Math.max(0, span - t * MARQUEE_STEP);                // glide back span->0
+}
+
+// Take a `width`-wide display window starting `off` columns in, never splitting a
+// 2-col glyph; the result is always exactly `width` columns (padded with spaces).
+function sliceCols(text, off, width) {
+  let col = 0, taken = 0, out = "";
+  for (const ch of [...String(text)]) {
+    const cw = vlen(ch);
+    if (col < off) { col += cw; continue; }          // still left of the window
+    if (taken + cw > width) break;                   // glyph would overflow the window
+    out += ch; taken += cw; col += cw;
+  }
+  if (taken < width) out += " ".repeat(width - taken);
+  return out;
+}
+
+// Fit `text` into exactly `width` display columns. Fits -> left-aligned + padded.
+// Overflows -> ping-pong marquee window for the current `tick`.
+export function marquee(text, width, tick = 0) {
+  text = String(text);
+  if (width <= 0) return "";
+  const tw = vlen(text);
+  if (tw <= width) return text + " ".repeat(width - tw);
+  return sliceCols(text, marqueeOffset(tw - width, tick), width);
+}
+
 function available(entry) {
   if ("group" in entry) return entry.group.some((i) => i in VALUES);
   if (entry.render === "list") return true;
@@ -280,7 +327,7 @@ function hpRow(thresholds = HP_THRESHOLDS) {
   return thresholds.filter((t) => headroom < t).length;
 }
 
-export function buildBar(cfg, target, spriteFor) {
+export function buildBar(cfg, target, spriteFor, tick = 0) {
   if (!spriteFor) spriteFor = (hp) => `STFST${hp}1`;
 
   const bar = cfg.bar || {};
@@ -354,12 +401,12 @@ export function buildBar(cfg, target, spriteFor) {
         for (const item of VALUES[m.id] || []) {
           let body;
           if (Array.isArray(item) && item.length === 2) {
-            const left = lbl + f(TEXT) + String(item[0]);
             const right = f(TEXT) + String(item[1]);
-            body = left + " ".repeat(Math.max(0, w - vlen(left) - vlen(right))) + right;
+            const budget = Math.max(0, w - vlen(lbl) - vlen(String(item[1])) - 1); // 1 = min gap
+            const left = lbl + f(TEXT) + marquee(String(item[0]), budget, tick);
+            body = left + " ".repeat(Math.max(0, w - vlen(left) - vlen(String(item[1])))) + right;
           } else {
-            body = lbl + f(TEXT) + String(item);
-            body += " ".repeat(Math.max(0, w - vlen(body)));
+            body = lbl + f(TEXT) + marquee(String(item), Math.max(0, w - vlen(lbl)), tick);
           }
           col.push(bgsgrBox(boxRgb) + " " + body + " " + RESET);
         }
@@ -384,20 +431,16 @@ export function buildBar(cfg, target, spriteFor) {
             const right = f(TEXT) + String(item[1]) + (marker ? f(TEXT) + tail : "");
             const rightW = vlen(String(item[1])) + tailW;
             const labelMax = Math.max(0, w - vlen(lbl) - rightW - 1); // 1 = min gap
-            let label = String(item[0]);
-            if (vlen(label) > labelMax) label = [...label].slice(0, Math.max(0, labelMax - 1)).join("") + "…";
-            const left = lbl + f(TEXT) + label;
+            const left = lbl + f(TEXT) + marquee(String(item[0]), labelMax, tick);
             const room = Math.max(0, w - vlen(left) - rightW);
             body = left + " ".repeat(room) + right;
           } else {                                         // {mark, markRgb, text} (tasks)
             const markCol = item.markRgb ? f(item.markRgb) : f(TEXT);
             const m = String(item.mark);
             const mPad = m + (vlen(m) < 2 ? " " : "");      // normalize mark to 2 cols so text aligns
-            let text = String(item.text);
             const head = markCol + mPad + " " + f(TEXT);
-            const max = w - vlen(mPad) - 1 - tailW;         // reserve gap + marker on the right
-            if (vlen(text) > max) text = [...text].slice(0, Math.max(0, max - 1)).join("") + "…";
-            body = head + text;
+            const max = Math.max(0, w - vlen(mPad) - 1 - tailW); // reserve gap + marker on the right
+            body = head + marquee(String(item.text), max, tick);
             body += " ".repeat(Math.max(0, w - tailW - vlen(body)));
             if (tail) body += f(TEXT) + tail;
           }
@@ -408,6 +451,21 @@ export function buildBar(cfg, target, spriteFor) {
       let body = renderValue(m, m.render === "bar" ? cells : 0, boxRgb);
       const rid = m.right;
       const rhs = rid && rid in VALUES ? f(TEXT) + String(VALUES[rid]) : "";
+      // Plain text/number that overflows its column budget -> marquee. Skipped when
+      // the value carries ANSI/OSC escapes (colours, hyperlinks): those can't be
+      // sliced by column without corrupting the escape sequence.
+      const r = m.render || "text";
+      if ((r === "text" || r === "number") && !("group" in m) && m.id in VALUES) {
+        const raw = String(VALUES[m.id]);
+        const lbl = m.icon ? m.icon + " " : "";
+        const budget = w - vlen(lbl) - vlen(rhs);
+        if (!/[\x1b]/.test(raw) && budget > 0 && vlen(raw) > budget) {
+          let col;
+          if (m.color === "threshold") col = threshold(parseInt(raw.replace(/\D/g, "") || "0", 10));
+          else col = m.color ? rgbOf(m.color) : TEXT;
+          body = lbl + f(col) + marquee(raw, budget, tick);
+        }
+      }
       body += " ".repeat(Math.max(0, w - vlen(body) - vlen(rhs))) + rhs;
       col.push(bgsgrBox(boxRgb) + " " + body + " " + RESET);
     }
@@ -459,8 +517,9 @@ function main() {
     p = path.join(REPO, "presets", "default.toml");
   }
   const target = process.argv[3] ? parseInt(process.argv[3], 10) : 100;
+  const tick = process.argv[4] ? parseInt(process.argv[4], 10) : 0; // marquee phase for previews
   const cfg = parseToml(readFileSync(p, "utf8"));
-  const res = buildBar(cfg, target);
+  const res = buildBar(cfg, target, undefined, tick);
   const out = ["", `  preset: ${path.basename(p)}   style=${res.style}  headers=${res.headers}  bar=${res.cells}`, ""];
   out.push(...res.lines, "");
   process.stdout.write(out.join("\n") + "\n");

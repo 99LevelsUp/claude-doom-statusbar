@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Marquee scrolling for overflowing text** (the "car radio" effect). Plain text
+  that is too wide for its column budget now glides left until its tail shows,
+  pauses, then glides back to the start and pauses again — ping-pong, advanced one
+  step per statusbar refresh (a pure function of time, so renders stay
+  deterministic). Applies to `scroll` and `list` rows (agent labels, task titles)
+  and to plain `text`/`number` values. Values carrying ANSI/OSC escapes (coloured
+  text, hyperlinks such as `loc.cwd`, `git.branch`, `pr.state`) are left untouched,
+  since they can't be sliced by column without corrupting the escape sequence.
+  The `full` preset caps the AGENTS and TASKS boxes (`max_width = 22`) so long
+  labels actually scroll instead of stretching the box.
+
 ## [0.5.0] - 2026-06-12
 
 ### Changed

@@ -366,7 +366,9 @@ export function activityValues(st, now) {
   const squad = st.squad || {};
   v["act.agents"] = String(Object.keys(squad).length);
   const agents = Object.values(squad).sort((a, b) => a.start - b.start);
-  v["act.subagents"] = agents.map((a) => [clip(a.desc || a.type || "agent", 24), _dur(now - a.start)]);
+  // Clip generously (not 24): the box caps width and the label marquees, so a long
+  // agent description should stay long enough to be worth scrolling through.
+  v["act.subagents"] = agents.map((a) => [clip(a.desc || a.type || "agent", 60), _dur(now - a.start)]);
 
   const tasks = st.tasks && typeof st.tasks === "object" ? Object.values(st.tasks) : [];
   const live = tasks.filter((t) => t.status !== "deleted");
@@ -377,7 +379,7 @@ export function activityValues(st, now) {
     .sort((a, b) => (TASK_ORDER[a.status] - TASK_ORDER[b.status]) || (a.ts - b.ts));
   v["act.tasklist"] = ordered.map((t) => {
     const [mark, markRgb] = TASK_MARK[t.status] || ["🎯", null];
-    return { mark, markRgb, text: clip(t.title, 24) };
+    return { mark, markRgb, text: clip(t.title, 60) }; // generous clip: box width caps it, title marquees
   });
 
   if ("errors" in st) v["act.errors"] = String(st.errors);
@@ -425,7 +427,8 @@ function main() {
   };
 
   const target = parseInt(process.env.COLUMNS || "100", 10);
-  const res = buildBar(cfg, target, spriteFor);
+  const tick = Math.floor(now); // one marquee step per refresh (~1s); pure fn of time
+  const res = buildBar(cfg, target, spriteFor, tick);
   process.stdout.write(res.lines.join("\n") + "\n");
 }
 

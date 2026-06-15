@@ -66,6 +66,7 @@ metric = [
 [[segment]]
 type  = "box"
 title = "AGENTS"
+max_width = 22                      # cap width so long agent labels marquee (scroll back and forth)
 metric = [
   { id = "act.subagents", render = "scroll", anchor = "top", icon = "👹" },
 ]
@@ -73,6 +74,7 @@ metric = [
 [[segment]]
 type  = "box"
 title = "TASKS"
+max_width = 22                      # cap width so long task titles marquee (scroll back and forth)
 metric = [
   { id = "act.tasklist", render = "scroll", anchor = "boundary" },
 ]
