@@ -1,8 +1,4 @@
-# standard — full minus SAVE and SYS.
-# Mugshot sits after USAGE (not after PROJECT like full): the panel width is
-# 2*max(left,right)+mugshot, so balancing the heavy MODEL+USAGE+PROJECT boxes
-# around the mugshot drops the min-fit width below full's, giving this preset a
-# real fallback band instead of collapsing to the same floor as full.
+# standard — full minus SAVE and SYS
 [bar]
 border_style   = "vertical"
 border_color   = "term-bg"      # seamless cuts through the panel
@@ -36,9 +32,6 @@ metric = [
 ]
 
 [[segment]]
-type = "mugshot"
-
-[[segment]]
 type  = "box"
 title = "PROJECT"
 metric = [
@@ -49,6 +42,9 @@ metric = [
   { id = "loc.churn",    render = "text", icon = "📝" },
   { id = "pr.state",     render = "text", icon = "⇧ " },
 ]
+
+[[segment]]
+type = "mugshot"
 
 [[segment]]
 type  = "box"
