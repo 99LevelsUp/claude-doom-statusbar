@@ -7,7 +7,7 @@
 // settings.json:
 //   "statusLine": { "type": "command",
 //       "command": "node /abs/path/src/statusline.js", "refreshInterval": 1 }
-// Config: $DOOMBAR_PRESET (default presets/default.toml)  State: $MUGSHOT_STATE
+// Config: $DOOMBAR_PRESET (default presets/standard.toml)  State: $MUGSHOT_STATE
 
 import {
   readFileSync, writeFileSync, openSync, fstatSync, readSync, closeSync, statfsSync, statSync,
@@ -18,7 +18,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import { parse as parseToml } from "smol-toml";
 import { pyround, sgrFg } from "./ansi.js";
-import { buildBar, setValues, OK, TEXT, CRIT } from "./render.js";
+import { buildBar, setValues, resolvePreset, OK, TEXT, CRIT } from "./render.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.dirname(HERE);
@@ -390,7 +390,7 @@ function main() {
   let data = {};
   try { data = JSON.parse(readFileSync(0, "utf8")); } catch { data = {}; }
 
-  const preset = process.env.DOOMBAR_PRESET || path.join(REPO, "presets", "default.toml");
+  const preset = process.env.DOOMBAR_PRESET || path.join(REPO, "presets", "standard.toml");
   const cfg = parseToml(readFileSync(preset, "utf8"));
 
   const now = Date.now() / 1000;
@@ -428,7 +428,16 @@ function main() {
 
   const target = parseInt(process.env.COLUMNS || "100", 10);
   const tick = Math.floor(now); // one marquee step per refresh (~1s); pure fn of time
-  const res = buildBar(cfg, target, spriteFor, tick);
+  // Pick the preset that fits the terminal: the chosen preset is the ceiling; if it
+  // (at its minimum scale) overflows COLUMNS, fall back down its [bar].fallback chain.
+  // Sibling presets resolve relative to the chosen preset's directory.
+  const presetDir = path.dirname(preset);
+  const loadByName = (name) => {
+    try { return parseToml(readFileSync(path.join(presetDir, `${name}.toml`), "utf8")); }
+    catch { return null; }
+  };
+  const selected = resolvePreset(cfg, target, loadByName, spriteFor);
+  const res = buildBar(selected, target, spriteFor, tick);
   process.stdout.write(res.lines.join("\n") + "\n");
 }
 

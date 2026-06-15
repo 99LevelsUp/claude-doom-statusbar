@@ -3,7 +3,7 @@
 // Port of install.py.
 //
 //   claude-doom-statusbar install              # install into ~/.claude/settings.json
-//   claude-doom-statusbar install --preset full # pick a preset (full | default | minimal)
+//   claude-doom-statusbar install --preset full # pick a preset (full | standard | minimal)
 //   claude-doom-statusbar install --project     # install into ./.claude/settings.json instead
 //   claude-doom-statusbar uninstall             # remove everything this installer added
 //
@@ -124,7 +124,7 @@ function parseArgs(argv) {
     else if (a.startsWith("--preset=")) out.preset = a.slice("--preset=".length);
     else die(`! unknown argument: ${a}`);
   }
-  if (out.cmd === "install" && !out.preset) die("! --preset needs a value (full | default | minimal)");
+  if (out.cmd === "install" && !out.preset) die("! --preset needs a value (full | standard | minimal)");
   return out;
 }
 

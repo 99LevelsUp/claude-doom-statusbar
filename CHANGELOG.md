@@ -18,6 +18,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   since they can't be sliced by column without corrupting the escape sequence.
   The `full` preset caps the AGENTS and TASKS boxes (`max_width = 22`) so long
   labels actually scroll instead of stretching the box.
+- **Responsive width with preset fallback.** As the terminal narrows, bars
+  (14 → 4 cells) and text (24 → 10 columns) shrink together on one scale; overflow
+  is handled by the marquee. When even the smallest layout no longer fits the
+  terminal width (`COLUMNS`), the preset falls back to a smaller one via a new
+  `[bar].fallback` key — `full → standard → minimal`. The chosen preset is the
+  ceiling; widening recovers it. Stateless: each refresh re-reads `COLUMNS`, so it
+  tracks live resizes.
+
+### Changed
+- **Renamed the `default` preset to `standard`** (`presets/default.toml` →
+  `presets/standard.toml`). The default `DOOMBAR_PRESET` and installer help now
+  reference `standard`. No back-compat alias — update any config that named
+  `default`.
 
 ## [0.5.0] - 2026-06-12
 
