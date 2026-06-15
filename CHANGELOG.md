@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-06-15
+
 ### Added
 - **Marquee scrolling for overflowing text** (the "car radio" effect). Plain text
   that is too wide for its column budget now glides left until its tail shows,
@@ -31,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `presets/standard.toml`). The default `DOOMBAR_PRESET` and installer help now
   reference `standard`. No back-compat alias — update any config that named
   `default`.
+- **Trimmed the `standard` and `minimal` presets** so the fallback chain steps
+  down in size. `standard` drops the SAVE and SYS boxes; `minimal` is pared to
+  USAGE, PROJECT, and ACTIVITY around the mugshot, with PROJECT to the right of
+  the face.
 
 ## [0.5.0] - 2026-06-12
 
@@ -107,7 +113,10 @@ Note: no changes to the published package contents (`src`, `bin`, `presets`,
 - Mugshot tracking session health, plus usage, model, project, and system stats.
 - Live subagent list with always-visible AGENTS and TASKS boxes.
 
-[Unreleased]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.1.0...v0.1.1

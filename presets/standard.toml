@@ -1,29 +1,46 @@
-# standard — balanced (the live-mockup look)
+# standard — full minus SAVE and SYS
 [bar]
 border_style   = "vertical"
-border_color   = "term-fg"
-box_background = "term-bg"
+border_color   = "term-bg"      # seamless cuts through the panel
+box_background = "#1c2036"
 headers        = true
-fallback       = "minimal"          # degrade to this preset when the terminal is too narrow
+fallback       = "minimal"      # degrade to this preset when the terminal is too narrow
 
 [mugshot]
 background = "#000000"
 
 [[segment]]
 type  = "box"
-title = "USAGE"
+title = "MODEL"
 metric = [
-  { id = "context.hp",   render = "bar", icon = "🧠", color = "threshold" },
-  { id = "ratelimit.5h", render = "bar", icon = "🕔", color = "threshold" },
-  { id = "ratelimit.7d", render = "bar", icon = "📅", color = "threshold" },
+  { id = "model.name",       render = "text", icon = "🤖", right = "model.effort" },
+  { id = "model.mode",       render = "text" },                 # 💭 thinking  🚀 fast
+  { id = "model.permission", render = "text" },                 # 📋 plan / ⏩ auto (hidden on default)
+  { id = "model.style",      render = "text", icon = "🎨" },
+  { id = "advisor.model",    render = "text", icon = "🧙" },
 ]
 
 [[segment]]
 type  = "box"
-title = "SAVE"
+title = "USAGE"
 metric = [
-  { id = "save.leanctx", render = "text", icon = "🪶" },
-  { id = "save.lingua",  render = "text", icon = "📜" },
+  { id = "context.hp",   render = "bar",    icon = "🧠", color = "threshold" },
+  { id = "ratelimit.5h", render = "bar",    icon = "🕔", color = "threshold", show_pct = false, suffix = "usage.reset5h" },
+  { id = "ratelimit.7d", render = "bar",    icon = "📅", color = "threshold", show_pct = false, suffix = "usage.reset7d" },
+  { id = "sys.ram",      render = "bar",    icon = "💾", color = "threshold" },
+  { id = "cost.total",   render = "number", icon = "💰" },
+]
+
+[[segment]]
+type  = "box"
+title = "PROJECT"
+metric = [
+  { id = "session.name", render = "text", icon = "🎮" },
+  { id = "loc.cwd",      render = "text", icon = "📁" },
+  { id = "git.branch",   render = "text", icon = "🌿" },
+  { id = "git.work",     render = "text" },                # ✎ files  ⇅ pull/push
+  { id = "loc.churn",    render = "text", icon = "📝" },
+  { id = "pr.state",     render = "text", icon = "⇧ " },
 ]
 
 [[segment]]
@@ -31,9 +48,26 @@ type = "mugshot"
 
 [[segment]]
 type  = "box"
-title = "GIT"
+title = "ACTIVITY"
 metric = [
-  { id = "git.branch", render = "text",   icon = "🌿" },
-  { group = ["git.behind", "git.ahead"], render = "number", sep = " ", icon = "⇅" },
-  { id = "cost.total", render = "number", icon = "💰" },
+  { id = "act.geiger", render = "spark",  icon = "📟", spark_style = "octant", spark_max = 1 },
+  { id = "act.agents", render = "number", icon = "👹" },
+  { id = "act.tasks",  render = "number", icon = "🎯" },
+  { id = "act.errors", render = "number", icon = "💢", color = "threshold" },
+]
+
+[[segment]]
+type  = "box"
+title = "AGENTS"
+max_width = 22                      # cap width so long agent labels marquee (scroll back and forth)
+metric = [
+  { id = "act.subagents", render = "scroll", anchor = "top", icon = "👹" },
+]
+
+[[segment]]
+type  = "box"
+title = "TASKS"
+max_width = 22                      # cap width so long task titles marquee (scroll back and forth)
+metric = [
+  { id = "act.tasklist", render = "scroll", anchor = "boundary" },
 ]

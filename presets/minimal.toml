@@ -1,19 +1,56 @@
-# minimal — blends into the terminal, smallest footprint
+# minimal — MODEL, USAGE, mugshot, PROJECT, ACTIVITY
 [bar]
-border_style   = "none"
-box_background = "term-bg"
-headers        = false
+border_style   = "vertical"
+border_color   = "term-bg"      # seamless cuts through the panel
+box_background = "#1c2036"
+headers        = true
 
 [mugshot]
-background = "term-bg"
+background = "#000000"
 
 [[segment]]
-type = "box"
+type  = "box"
+title = "MODEL"
+metric = [
+  { id = "model.name",       render = "text", icon = "🤖", right = "model.effort" },
+  { id = "model.mode",       render = "text" },                 # 💭 thinking  🚀 fast
+  { id = "model.permission", render = "text" },                 # 📋 plan / ⏩ auto (hidden on default)
+  { id = "model.style",      render = "text", icon = "🎨" },
+  { id = "advisor.model",    render = "text", icon = "🧙" },
+]
+
+[[segment]]
+type  = "box"
+title = "USAGE"
 metric = [
   { id = "context.hp",   render = "bar",    icon = "🧠", color = "threshold" },
-  { id = "ratelimit.5h", render = "ammo",   icon = "🕔" },
+  { id = "ratelimit.5h", render = "bar",    icon = "🕔", color = "threshold", show_pct = false, suffix = "usage.reset5h" },
+  { id = "ratelimit.7d", render = "bar",    icon = "📅", color = "threshold", show_pct = false, suffix = "usage.reset7d" },
+  { id = "sys.ram",      render = "bar",    icon = "💾", color = "threshold" },
   { id = "cost.total",   render = "number", icon = "💰" },
 ]
 
 [[segment]]
 type = "mugshot"
+
+[[segment]]
+type  = "box"
+title = "PROJECT"
+metric = [
+  { id = "session.name", render = "text", icon = "🎮" },
+  { id = "loc.cwd",      render = "text", icon = "📁" },
+  { id = "git.branch",   render = "text", icon = "🌿" },
+  { id = "git.work",     render = "text" },                # ✎ files  ⇅ pull/push
+  { id = "loc.churn",    render = "text", icon = "📝" },
+  { id = "pr.state",     render = "text", icon = "⇧ " },
+]
+
+[[segment]]
+type  = "box"
+title = "ACTIVITY"
+metric = [
+  { id = "act.geiger", render = "spark",  icon = "📟", spark_style = "octant", spark_max = 1 },
+  { id = "act.agents", render = "number", icon = "👹" },
+  { id = "act.tasks",  render = "number", icon = "🎯" },
+  { id = "act.errors", render = "number", icon = "💢", color = "threshold" },
+]
