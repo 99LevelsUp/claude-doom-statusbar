@@ -203,7 +203,20 @@ function barMeta(entry) {
   return [lw, 0, entry.render || "text"];
 }
 
-export function metricFixedWidth(entry) {
+// Display width of a plain text run, capped at `textCap` columns — but only when
+// it is marquee-safe. Values carrying ANSI/OSC escapes (coloured text, hyperlinks)
+// can't be column-sliced without corrupting the escape, so they keep full width
+// (a hard floor): their box shrinks less, which is what trips the preset fallback.
+const TEXTCAP_MAX = 24; // upper bound — matches statusline's clip(…, 24)
+const TEXTCAP_MIN = 10; // lower bound — the readable floor before falling back
+const ESC_RE = /\x1b/;
+function capLen(s, textCap) {
+  const str = String(s);
+  const w = vlen(str);
+  return ESC_RE.test(str) ? w : Math.min(w, textCap);
+}
+
+export function metricFixedWidth(entry, textCap = TEXTCAP_MAX) {
   const icon = entry.icon || "";
   const lw = vlen(icon ? icon + " " : "");
   const r = entry.render || "text";
@@ -211,7 +224,7 @@ export function metricFixedWidth(entry) {
   const rextra = rid && rid in VALUES ? 1 + vlen(String(VALUES[rid])) : 0;
   if ("group" in entry) {
     const sep = entry.sep ?? " ";
-    return lw + vlen(entry.group.filter((i) => i in VALUES).map((i) => String(VALUES[i])).join(sep)) + rextra;
+    return lw + capLen(entry.group.filter((i) => i in VALUES).map((i) => String(VALUES[i])).join(sep), textCap) + rextra;
   }
   if (r === "spark") return lw + Math.floor(((VALUES[entry.id] || []).length + 1) / 2);
   if (r === "ammo") return lw + 5 + vlen(" " + (entry.id in VALUES ? VALUES[entry.id] : 0) + "%");
@@ -220,21 +233,27 @@ export function metricFixedWidth(entry) {
     if (items.length === 0) return lw;
     return Math.max(...items.map((it) =>
       Array.isArray(it) && it.length === 2
-        ? lw + vlen(String(it[0])) + 1 + vlen(String(it[1]))
-        : lw + vlen(String(it))));
+        ? lw + capLen(it[0], textCap) + 1 + vlen(String(it[1]))
+        : lw + capLen(it, textCap)));
   }
   if (r === "scroll") {
     const items = VALUES[entry.id] || [];
     if (items.length === 0) return lw;
     return Math.max(...items.map((it) => {
       if (Array.isArray(it) && it.length === 2)
-        return lw + vlen(String(it[0])) + 1 + vlen(String(it[1]));
+        return lw + capLen(it[0], textCap) + 1 + vlen(String(it[1]));
       // object {mark, text}
-      return lw + vlen(String(it.mark || "")) + 1 + vlen(String(it.text || ""));
+      return lw + vlen(String(it.mark || "")) + 1 + capLen(it.text || "", textCap);
     }));
   }
   if (r === "bar") return null;
-  return lw + vlen(String(entry.id in VALUES ? VALUES[entry.id] : "?")) + rextra;
+  return lw + capLen(entry.id in VALUES ? VALUES[entry.id] : "?", textCap) + rextra;
+}
+
+// The coupled text cap for a given bar-cell count: cells 14 -> cap 24, cells 4 ->
+// cap 10, linearly in between. One scale drives bars and text together (approach A).
+export function textCapFor(cells) {
+  return Math.round(TEXTCAP_MIN + (cells - 4) / (14 - 4) * (TEXTCAP_MAX - TEXTCAP_MIN));
 }
 
 export function scrollWindow(n, h, anchor, boundary) {
@@ -299,10 +318,10 @@ function available(entry) {
   return entry.id in VALUES;
 }
 
-function boxWidth(box, cells) {
+function boxWidth(box, cells, textCap = TEXTCAP_MAX) {
   const widths = [vlen(box.title || "")];
   for (const m of box.metric) {
-    let fw = metricFixedWidth(m);
+    let fw = metricFixedWidth(m, textCap);
     if (fw === null) {
       const [lw, sw] = barMeta(m);
       fw = lw + cells + sw;
@@ -327,17 +346,15 @@ function hpRow(thresholds = HP_THRESHOLDS) {
   return thresholds.filter((t) => headroom < t).length;
 }
 
-export function buildBar(cfg, target, spriteFor, tick = 0) {
+// Width-relevant layout context shared by buildBar (render) and planLayout (fit
+// test). Filters unavailable metrics, computes the row count, and loads the mugshot
+// art so its width counts toward the layout. spriteFor defaults to the idle face;
+// the exact sprite never changes the mugshot's column width.
+function layoutContext(cfg, spriteFor) {
   if (!spriteFor) spriteFor = (hp) => `STFST${hp}1`;
-
   const bar = cfg.bar || {};
   const style = bar.border_style ?? "vertical";
   const headers = (bar.headers ?? true) && style !== "frame";
-  const boxRgb = rgbOf(bar.box_background ?? "term-bg");
-  const bcol = bar.border_color ?? "term-fg";
-  const mugRgb = rgbOf((cfg.mugshot || {}).background ?? "#000000");
-
-  // availability: drop metrics whose value is absent; collapse empty boxes.
   const segs = [];
   for (const s of cfg.segment) {
     if (s.type === "mugshot") { segs.push(s); continue; }
@@ -348,35 +365,56 @@ export function buildBar(cfg, target, spriteFor, tick = 0) {
   const rowcount = (b) => b.metric.reduce((n, m) =>
     n + (m.render === "list" ? (VALUES[m.id] || []).length : (m.render === "scroll" ? 0 : 1)), 0);
   const dataRows = boxes.length ? Math.max(...boxes.map(rowcount)) : 0;
-  const headersExtra = headers ? 1 : 0;
-  const totalRows = Math.max(dataRows + headersExtra, 4); // 4 = mugshot floor
-
+  const totalRows = Math.max(dataRows + (headers ? 1 : 0), 4); // 4 = mugshot floor
   const hp = hpRow();
   const face = loadFace(spriteFor(hp), totalRows);
   const faceW = Math.max(...face.map((r) => r.length));
+  return { bar, style, headers, segs, totalRows, hp, face, faceW };
+}
 
-  const colWidths = (cells) => {
-    const ws = [];
-    let mug = null;
-    segs.forEach((s, i) => {
-      if (s.type === "mugshot") { ws.push(faceW + 2); mug = i; }
-      else ws.push(boxWidth(s, cells) + 2);
-    });
-    return [ws, mug];
-  };
+function colWidthsOf(segs, faceW, cells, textCap) {
+  const ws = [];
+  let mug = null;
+  segs.forEach((s, i) => {
+    if (s.type === "mugshot") { ws.push(faceW + 2); mug = i; }
+    else ws.push(boxWidth(s, cells, textCap) + 2);
+  });
+  return [ws, mug];
+}
 
-  const balancedWidth = (cells) => {
-    const [ws, mug] = colWidths(cells);
-    if (mug === null) return ws.reduce((a, b) => a + b, 0) + (ws.length - 1);
-    const left = ws.slice(0, mug).reduce((a, b) => a + b, 0) + mug;
-    const right = ws.slice(mug + 1).reduce((a, b) => a + b, 0) + (ws.length - 1 - mug);
-    return 2 * Math.max(left, right) + ws[mug];
-  };
+function balancedWidthOf(segs, faceW, cells, textCap) {
+  const [ws, mug] = colWidthsOf(segs, faceW, cells, textCap);
+  if (mug === null) return ws.reduce((a, b) => a + b, 0) + (ws.length - 1);
+  const left = ws.slice(0, mug).reduce((a, b) => a + b, 0) + mug;
+  const right = ws.slice(mug + 1).reduce((a, b) => a + b, 0) + (ws.length - 1 - mug);
+  return 2 * Math.max(left, right) + ws[mug];
+}
 
-  let cells = 4;
+// Largest lockstep scale (bars 14->4, text 24->10) whose balanced layout fits
+// `target`. Returns the minimum scale with fits=false when nothing fits — the
+// caller (statusline) reads `fits` to decide whether to fall back to a smaller
+// preset. Pure: no filesystem, deterministic for a given cfg + VALUES.
+export function planLayout(cfg, target, spriteFor) {
+  const { segs, faceW } = layoutContext(cfg, spriteFor);
   for (let c = 14; c >= 4; c--) {
-    if (balancedWidth(c) <= target) { cells = c; break; }
+    const textCap = textCapFor(c);
+    const width = balancedWidthOf(segs, faceW, c, textCap);
+    if (width <= target) return { cells: c, textCap, width, fits: true };
   }
+  const textCap = textCapFor(4);
+  return { cells: 4, textCap, width: balancedWidthOf(segs, faceW, 4, textCap), fits: false };
+}
+
+export function buildBar(cfg, target, spriteFor, tick = 0) {
+  if (!spriteFor) spriteFor = (hp) => `STFST${hp}1`;
+
+  const { style, headers, segs, totalRows, hp, face, faceW } = layoutContext(cfg, spriteFor);
+  const bar = cfg.bar || {};
+  const boxRgb = rgbOf(bar.box_background ?? "term-bg");
+  const bcol = bar.border_color ?? "term-fg";
+  const mugRgb = rgbOf((cfg.mugshot || {}).background ?? "#000000");
+
+  const { cells, textCap } = planLayout(cfg, target, spriteFor);
 
   const columns = [];
   let mugIdx = null;
@@ -386,7 +424,7 @@ export function buildBar(cfg, target, spriteFor, tick = 0) {
       columns.push(Array.from({ length: totalRows }, (_, r) => faceCell(face[r], faceW, mugRgb)));
       continue;
     }
-    const w = boxWidth(s, cells);
+    const w = boxWidth(s, cells, textCap);
     const col = [];
     if (headers) {
       const t = s.title || "";

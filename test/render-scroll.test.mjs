@@ -71,5 +71,30 @@ ok(r.start === 0 && r.up === 0 && r.down === 0, "boundary all-fit -> top aligned
   ok(frames.size > 1, "marquee: the rendered HUD changes as the tick advances");
 }
 
+// Responsive scale: at a narrow target the layout shrinks (small textCap) yet
+// every HUD row stays equal width across ticks, plain text still marquees, and a
+// hyperlink value (ANSI/OSC) is left intact rather than column-sliced.
+{
+  const cfgRoot2 = path2.dirname(f2u(import.meta.url));
+  const full2 = parseToml(readFileSync(path2.join(cfgRoot2, "..", "presets", "full.toml"), "utf8"));
+  const link = "\x1b]8;;https://example.com/a/very/long/path\x1b\\a-very-long-linked-cwd-name\x1b]8;;\x1b\\";
+  setValues({
+    ...SAMPLE,
+    "loc.cwd": link, // marquee-unsafe (OSC8 hyperlink) -> hard floor, never sliced
+    "act.tasklist": [{ mark: "⏩", markRgb: null, text: "port-PIL-alpha-compositing-into-JS-render" }],
+  });
+  let uniform = true;
+  const frames = new Set();
+  for (let t = 0; t < 18; t++) {
+    const res = buildBar(full2, 120, undefined, t); // 120 < full's ~143 floor -> narrow scale
+    if (new Set(res.lines.map((l) => vlen(l))).size !== 1) uniform = false;
+    frames.add(res.lines.join("\n"));
+  }
+  ok(uniform, "narrow scale: all HUD rows equal width across ticks");
+  ok(frames.size > 1, "narrow scale: plain text still marquees (frames change)");
+  const out0 = buildBar(full2, 120, undefined, 0).lines.join("\n");
+  ok(out0.includes(link), "narrow scale: hyperlink value rendered intact (not column-sliced)");
+}
+
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILED`);
 process.exit(fails === 0 ? 0 : 1);
