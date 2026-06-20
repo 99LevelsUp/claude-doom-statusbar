@@ -1,112 +1,87 @@
 #!/usr/bin/env node
-// Claude Code hook: an event-bus for the DOOM HUD. Port of hooks/mugshot_hook.py.
-// Each invocation reads the shared state file, folds in the lifecycle event, and
-// writes it back atomically. The status line reads that state.
+// Claude Code hook: an APPEND-ONLY event recorder for the DOOM HUD.
 //
-// State carries: face reaction {expr, ts}; activity spans[] [start,end] (geiger),
-// squad{} (running subagents), pending[] (Agent launch labels), tasks{} (id ->
-// {title,status,ts}), tasks_ts (last tasks mutation), errors, mode (permission mode). Always exits 0.
+// Old design did read-modify-write on a shared state file per event; under async hooks that
+// races (lost subagents/tasks). Now each invocation just APPENDS one slim line to a
+// per-session journal — append is atomic, so concurrent async hooks never clobber each
+// other. statusline.js folds the journal into a checkpoint at render time (see fold.js).
 //
-// State file: $MUGSHOT_STATE, else <temp>/mugshot_<session_id>.json.
+// Because the heavy work (folding, git) is off the blocking path, install these hooks with
+// "async": true (see bin/cli.js). This hook never reads the journal and always exits 0.
+//
+// Extra job: git lives here now, not on the render hot path. On write-affecting events (and
+// once per turn on Stop, and at SessionStart) we snapshot git into a `git` journal line,
+// throttled by DOOMBAR_GIT_TTL. statusline no longer spawns git at all -> the Windows MSYS
+// "bash flood" is gone by construction (git runs async, event-driven, rarely).
+//
+// Journal: <checkpoint>.jsonl where checkpoint is $MUGSHOT_STATE or <temp>/mugshot_<sid>.json.
 
-import { readFileSync, writeFileSync, renameSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { appendFileSync, writeFileSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import path from "node:path";
+import os from "node:os";
+import { base, statePaths, sidKey, WRITE_TOOLS } from "./fold.js";
 
-const GEIGER_WINDOW = 30.0; // seconds of tool-run history kept for the sparkline
-const MAX_RUN = 300.0; // drop an unclosed span after this (assume the Post was lost)
-const TASK_LINGER = 10.0; // seconds the TASKS box lingers after all tasks settle
+// Re-export the reducer so existing tests importing from hook.js keep working.
+export { foldActivity, expression } from "./fold.js";
 
-const READ_TOOLS = new Set(["Read", "Grep", "Glob",
-  "ctx_read", "ctx_multi_read", "ctx_search", "ctx_semantic_search", "ctx_tree", "ctx_overview"]);
-const WRITE_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit", "Bash", "ctx_shell", "ctx_edit"]);
+const GIT_TTL = Number.isFinite(Number(process.env.DOOMBAR_GIT_TTL))
+  ? Number(process.env.DOOMBAR_GIT_TTL)
+  : 4000; // ms; DOOMBAR_GIT_TTL=0 disables throttling (0 is a valid TTL)
 
-function statePath(ev) {
-  if (process.env.MUGSHOT_STATE) return process.env.MUGSHOT_STATE;
-  const sid = String(ev.session_id || "default").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 48);
-  return path.join(os.tmpdir(), `mugshot_${sid}.json`);
+// Project an event down to only the fields fold.js consumes. Keeps journal lines tiny and
+// bounded — a raw Write/Edit event carries the whole file body in tool_input, which would
+// bloat the journal and stress append atomicity. We never journal that.
+function slim(ev) {
+  const ti = ev.tool_input || {};
+  const tn = ev.tool_name;
+  let tool_input;
+  if (tn === "TaskUpdate") tool_input = { taskId: ti.taskId, status: ti.status };
+  else if (tn === "Agent") tool_input = { subagent_type: ti.subagent_type, description: ti.description };
+  else if (ti.subject) tool_input = { subject: ti.subject };
+  return {
+    tool_name: tn,
+    tool_input,
+    agent_id: ev.agent_id,
+    agent_type: ev.agent_type,
+    task_id: ev.task_id,
+    task_title: ev.task_title, task_subject: ev.task_subject, subject: ev.subject, title: ev.title,
+    permission_mode: ev.permission_mode,
+  };
 }
 
-function base(tool) {
-  return tool.startsWith("mcp__") ? tool.split("__").pop() : tool;
+function gitCmd(cwd, ...args) {
+  try {
+    const r = spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8", timeout: 1000 });
+    return r.status === 0 ? r.stdout.trim() : null;
+  } catch { return null; }
 }
 
-// Task event subject: the exact key isn't documented, so try the likely ones.
-function taskTitle(ev) {
-  return ev.task_title || ev.task_subject || ev.subject || ev.title ||
-    (ev.tool_input && ev.tool_input.subject) || "task";
+function gitSnapshot(cwd) {
+  return {
+    cwd,
+    br: gitCmd(cwd, "branch", "--show-current"),
+    lr: gitCmd(cwd, "rev-list", "--count", "--left-right", "@{u}...HEAD"),
+    st: gitCmd(cwd, "status", "--porcelain"),
+  };
 }
 
-export function expression(name, tool) {
-  const b = base(tool);
-  if (["PostToolUseFailure", "StopFailure", "PermissionDenied"].includes(name)) return "ouch";
-  if (["Stop", "TaskCompleted"].includes(name)) return "evl";
-  if (name === "PostToolUse") {
-    if (READ_TOOLS.has(b)) return Math.floor((Date.now() / 1000) * 2) % 2 === 0 ? "tl" : "tr";
-    if (WRITE_TOOLS.has(b)) return "kill";
-  }
-  return null;
+// Best-effort per-session throttle (not a lock): a tiny marker holds the last git ts + cwd.
+// Worst case under a race is a redundant concurrent git spawn — harmless and rare.
+function gitMarkerPath(sid) {
+  return path.join(os.tmpdir(), `mugshot_git_${sidKey(sid)}.json`);
 }
 
-export function foldActivity(st, name, ev, now) {
-  st.spans ??= [];
-  st.squad ??= {};
-  st.pending ??= [];
-  st.tasks ??= {};   // keyed map: id -> { title, status, ts }
-  st.errors ??= 0;
-
-  const tool = base(ev.tool_name || "");
-  if (name === "PreToolUse") {
-    st.spans.push([now, null]); // open a run interval
-    if (tool === "Agent") {
-      const ti = ev.tool_input || {};
-      st.pending.push({ type: ti.subagent_type || "", desc: ti.description || "", ts: now });
-      st.pending = st.pending.filter((p) => now - p.ts < 60).slice(-16);
-    }
-  } else if (["PostToolUse", "PostToolUseFailure", "PermissionDenied"].includes(name)) {
-    for (let i = st.spans.length - 1; i >= 0; i--) { // close the most recent open one
-      if (st.spans[i][1] === null) { st.spans[i][1] = now; break; }
-    }
-  }
-
-  if (["PostToolUseFailure", "StopFailure", "PermissionDenied"].includes(name)) {
-    st.errors += 1;
-  } else if (name === "SubagentStart") {
-    const aid = String(ev.agent_id || now);
-    const atype = ev.agent_type || "agent";
-    let desc = "";
-    for (let i = 0; i < st.pending.length; i++) { // FIFO match the launch by agent type
-      if (st.pending[i].type === atype) { desc = st.pending[i].desc; st.pending.splice(i, 1); break; }
-    }
-    st.squad[aid] = { type: atype, start: now, desc };
-  } else if (name === "SubagentStop") {
-    delete st.squad[String(ev.agent_id || "")];
-  } else if (name === "TaskCreated") {
-    const id = String(ev.task_id ?? now);
-    st.tasks[id] = { title: taskTitle(ev), status: "pending", ts: now };
-    st.tasks_ts = now;
-  } else if (name === "TaskCompleted") {
-    const id = String(ev.task_id ?? "");
-    if (st.tasks[id]) st.tasks[id].status = "completed";
-    else st.tasks[id] = { title: taskTitle(ev), status: "completed", ts: now };
-    st.tasks_ts = now;
-  } else if (name === "PostToolUse" && (ev.tool_name === "TaskUpdate") && ev.tool_input) {
-    const id = String(ev.tool_input.taskId ?? "");
-    const s = ev.tool_input.status;
-    if (id && st.tasks[id] && ["pending", "in_progress", "completed", "deleted"].includes(s)) {
-      st.tasks[id].status = s;
-      st.tasks_ts = now;
-    }
-  }
-
-  const win = now - GEIGER_WINDOW; // prune: closed spans out of window, orphaned open spans
-  st.spans = st.spans.filter((s) => (s[1] === null ? s[0] >= now - MAX_RUN : s[1] >= win));
-  st.squad = Object.fromEntries(Object.entries(st.squad).filter(([, v]) => now - v.start < MAX_RUN));
-
-  const taskVals = Object.values(st.tasks || {});
-  const anyOpen = taskVals.some((t) => t.status === "pending" || t.status === "in_progress");
-  if (taskVals.length && !anyOpen && now - (st.tasks_ts || 0) > TASK_LINGER) st.tasks = {};
+function shouldSnapshotGit(name, ev, nowMs, sid) {
+  if (name !== "SessionStart" && name !== "Stop" &&
+      !(name === "PostToolUse" && WRITE_TOOLS.has(base(ev.tool_name || "")))) return false;
+  if (name === "SessionStart") return true; // always prime at start
+  let m = {};
+  try { m = JSON.parse(readFileSync(gitMarkerPath(sid), "utf8")); } catch { /* none */ }
+  const cwd = ev.cwd || (ev.workspace || {}).current_dir;
+  if (m.cwd !== cwd) return true; // cwd changed -> refresh regardless of TTL
+  return nowMs - (m.ts || 0) >= GIT_TTL;
 }
 
 function main() {
@@ -114,19 +89,31 @@ function main() {
     let ev = {};
     try { ev = JSON.parse(readFileSync(0, "utf8")); } catch { ev = {}; }
     const name = ev.hook_event_name || "";
-    const now = Date.now() / 1000;
-    const p = statePath(ev);
+    const now = Date.now() / 1000; // seconds, matches fold's time base
+    const nowMs = Date.now();
+    const sid = ev.session_id || "default";
+    const { journal } = statePaths(sid);
 
-    let st = {};
-    try { st = JSON.parse(readFileSync(p, "utf8")); } catch { st = {}; }
+    // SessionStart resets the journal so each session starts clean (hygiene; sid is already
+    // per-session). At this instant no other hook is appending, so truncation is race-free.
+    if (name === "SessionStart") {
+      try { writeFileSync(journal, ""); } catch { /* ignore */ }
+    }
 
-    foldActivity(st, name, ev, now);
-    const expr = expression(name, ev.tool_name || "");
-    if (expr) { st.expr = expr; st.ts = now; }
-    if (ev.permission_mode) st.mode = ev.permission_mode;
+    // Append the slim event line (atomic). foldEvent ignores names it doesn't know.
+    try {
+      appendFileSync(journal, JSON.stringify({ name, ev: slim(ev), ts: now }) + "\n", { flag: "a" });
+    } catch { /* never block a tool */ }
 
-    const tmp = `${p}.${process.pid}.tmp`;
-    try { writeFileSync(tmp, JSON.stringify(st)); renameSync(tmp, p); } catch { /* never block */ }
+    // Git snapshot on write-affecting events / per-turn Stop / session start, throttled.
+    const cwd = ev.cwd || (ev.workspace || {}).current_dir;
+    if (cwd && shouldSnapshotGit(name, ev, nowMs, sid)) {
+      const snap = gitSnapshot(cwd);
+      try {
+        appendFileSync(journal, JSON.stringify({ name: "git", ev: { git: snap }, ts: now }) + "\n", { flag: "a" });
+      } catch { /* ignore */ }
+      try { writeFileSync(gitMarkerPath(sid), JSON.stringify({ ts: nowMs, cwd })); } catch { /* ignore */ }
+    }
   } catch { /* swallow everything: a hook must never block a tool */ }
   process.exit(0);
 }

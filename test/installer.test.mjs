@@ -35,10 +35,12 @@ const tmpdir = () => mkdtempSync(path.join(os.tmpdir(), "doombar-test-"));
   ok(cfg.statusLine?.refreshInterval === 1, "statusLine refreshInterval is 1");
   ok(cfg.env?.DOOMBAR_PRESET?.includes("full.toml"), "DOOMBAR_PRESET -> full.toml");
   ok(cfg.env?.FORCE_HYPERLINK === "1", "FORCE_HYPERLINK = 1");
-  const EVENTS = ["PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied",
+  const EVENTS = ["SessionStart", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied",
     "Stop", "SubagentStart", "SubagentStop", "TaskCreated", "TaskCompleted"];
   ok(EVENTS.every((e) => Array.isArray(cfg.hooks?.[e]) && cfg.hooks[e].length === 1),
-     "all 9 hook events present with one entry each");
+     "all 10 hook events present (incl. SessionStart) with one entry each");
+  ok(EVENTS.every((e) => cfg.hooks[e][0].hooks[0].async === true),
+     "every hook entry is async:true (off the blocking path)");
   rmSync(tmp, { recursive: true, force: true });
 }
 
