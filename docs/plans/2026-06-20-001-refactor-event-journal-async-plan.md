@@ -187,9 +187,19 @@ and the defensive `try/catch -> null`. Dropped: render-path location, shared per
    Lean toward the marker (O(1), no journal read in the hook).
 2. `SessionStart` is the chosen reset point. Confirm Claude Code fires it once per session
    before other events (it does per docs); fallback: also reset when checkpoint is absent.
-3. Does `PreToolUse` honor `async: true`? Docs treat `async` as a general command-hook
-   field; verify empirically once wired. If it refuses, `PreToolUse` stays blocking but is
-   now trivial (append one line, ~35 ms) — still a big win.
+3. Does `PreToolUse` honor `async: true`? **RESOLVED (2026-06-20, empirical probe):**
+   - `PreToolUse`: async **IGNORED** — it blocks the tool even with `async:true`
+     (probe: tool ran ~3.3s after a 3s busy-wait hook, i.e. after it finished).
+   - `PostToolUse`: async **HONORED** — non-blocking (probe: the next tool ran ~11s into
+     a 25s busy-wait hook, i.e. the loop did not wait for it).
+   - Pattern: pre-action/blocking-capable events (PreToolUse, Stop, SubagentStop,
+     TaskCreated, TaskCompleted) ignore async; post-action events (PostToolUse,
+     PostToolUseFailure, PermissionDenied, SubagentStart) honor it.
+   - **Decision (user, 2026-06-20):** keep `PreToolUse` blocking (~235 ms/tool); do NOT
+     rework geiger to a click model to drop it. The flood — the actual pain — is already
+     fixed independently, and async still takes the post-action events off the critical
+     path. `async:true` is left on every entry: harmless where ignored, forward-compatible
+     if a future version honors it.
 
 ## Out of scope
 
