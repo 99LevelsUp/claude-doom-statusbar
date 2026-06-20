@@ -66,6 +66,28 @@ export function vlen(s) {
   return n;
 }
 
+// OSC8 hyperlink helpers — long hyperlinked labels (cwd, branch) can't be column-sliced
+// as-is (slicing corrupts the escape), so we operate on the visible text and re-wrap it
+// with the same URL. Matches the format emitted by statusline's _link().
+const OSC8_RE = /^\x1b\]8;;([^\x1b\x07]*)(?:\x1b\\|\x07)([\s\S]*?)\x1b\]8;;(?:\x1b\\|\x07)$/;
+function splitLink(s) {
+  const m = String(s).match(OSC8_RE);
+  return m ? { url: m[1], inner: m[2] } : null;
+}
+function wrapLink(text, url) {
+  return `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\`;
+}
+// First `width` visible columns of `text`, no padding, never splitting a 2-col glyph.
+function headCols(text, width) {
+  let col = 0, out = "";
+  for (const ch of [...String(text)]) {
+    const cw = vlen(ch);
+    if (col + cw > width) break;
+    out += ch; col += cw;
+  }
+  return out;
+}
+
 function threshold(pct) {
   return pct < 60 ? OK : pct < 85 ? WARN : CRIT;
 }
@@ -213,7 +235,11 @@ const ESC_RE = /\x1b/;
 function capLen(s, textCap) {
   const str = String(s);
   const w = vlen(str);
-  return ESC_RE.test(str) ? w : Math.min(w, textCap);
+  // plain text and OSC8 hyperlinks are column-sliceable (marquee/clip operate on the
+  // visible text), so cap them to textCap. Other escapes (raw SGR we can't safely slice)
+  // keep their full width as a hard floor.
+  const sliceable = !ESC_RE.test(str) || OSC8_RE.test(str);
+  return sliceable ? Math.min(w, textCap) : w;
 }
 
 export function metricFixedWidth(entry, textCap = TEXTCAP_MAX) {
@@ -304,11 +330,18 @@ function sliceCols(text, off, width) {
 
 // Fit `text` into exactly `width` display columns. Fits -> left-aligned + padded.
 // Overflows -> ping-pong marquee window for the current `tick`.
-export function marquee(text, width, tick = 0) {
+export function marquee(text, width, tick = 0, mode = "scroll") {
   text = String(text);
   if (width <= 0) return "";
+  const link = splitLink(text);                              // hyperlink: fit the visible text, re-wrap
+  if (link) return wrapLink(marquee(link.inner, width, tick, mode), link.url);
   const tw = vlen(text);
   if (tw <= width) return text + " ".repeat(width - tw);
+  if (mode === "clip") {                                     // static truncation with an ellipsis
+    if (width === 1) return "…";
+    const h = headCols(text, width - 1);
+    return h + "…" + " ".repeat(Math.max(0, width - vlen(h) - 1));
+  }
   return sliceCols(text, marqueeOffset(tw - width, tick), width);
 }
 
@@ -428,8 +461,10 @@ export function resolvePreset(chosenCfg, target, loadByName, spriteFor) {
   return last;                             // nothing fit -> smallest reached
 }
 
-export function buildBar(cfg, target, spriteFor, tick = 0) {
+export function buildBar(cfg, target, spriteFor, tick = 0, overflow) {
   if (!spriteFor) spriteFor = (hp) => `STFST${hp}1`;
+  // How overflowing text fits its box: "scroll" (ping-pong marquee) or "clip" (static …).
+  const ovf = overflow || cfg.text_overflow || "scroll";
 
   const { style, headers, segs, totalRows, hp, face, faceW } = layoutContext(cfg, spriteFor);
   const bar = cfg.bar || {};
@@ -464,10 +499,10 @@ export function buildBar(cfg, target, spriteFor, tick = 0) {
           if (Array.isArray(item) && item.length === 2) {
             const right = f(TEXT) + String(item[1]);
             const budget = Math.max(0, w - vlen(lbl) - vlen(String(item[1])) - 1); // 1 = min gap
-            const left = lbl + f(TEXT) + marquee(String(item[0]), budget, tick);
+            const left = lbl + f(TEXT) + marquee(String(item[0]), budget, tick, ovf);
             body = left + " ".repeat(Math.max(0, w - vlen(left) - vlen(String(item[1])))) + right;
           } else {
-            body = lbl + f(TEXT) + marquee(String(item), Math.max(0, w - vlen(lbl)), tick);
+            body = lbl + f(TEXT) + marquee(String(item), Math.max(0, w - vlen(lbl)), tick, ovf);
           }
           col.push(bgsgrBox(boxRgb) + " " + body + " " + RESET);
         }
@@ -492,7 +527,7 @@ export function buildBar(cfg, target, spriteFor, tick = 0) {
             const right = f(TEXT) + String(item[1]) + (marker ? f(TEXT) + tail : "");
             const rightW = vlen(String(item[1])) + tailW;
             const labelMax = Math.max(0, w - vlen(lbl) - rightW - 1); // 1 = min gap
-            const left = lbl + f(TEXT) + marquee(String(item[0]), labelMax, tick);
+            const left = lbl + f(TEXT) + marquee(String(item[0]), labelMax, tick, ovf);
             const room = Math.max(0, w - vlen(left) - rightW);
             body = left + " ".repeat(room) + right;
           } else {                                         // {mark, markRgb, text} (tasks)
@@ -501,7 +536,7 @@ export function buildBar(cfg, target, spriteFor, tick = 0) {
             const mPad = m + (vlen(m) < 2 ? " " : "");      // normalize mark to 2 cols so text aligns
             const head = markCol + mPad + " " + f(TEXT);
             const max = Math.max(0, w - vlen(mPad) - 1 - tailW); // reserve gap + marker on the right
-            body = head + marquee(String(item.text), max, tick);
+            body = head + marquee(String(item.text), max, tick, ovf);
             body += " ".repeat(Math.max(0, w - tailW - vlen(body)));
             if (tail) body += f(TEXT) + tail;
           }
@@ -520,11 +555,12 @@ export function buildBar(cfg, target, spriteFor, tick = 0) {
         const raw = String(VALUES[m.id]);
         const lbl = m.icon ? m.icon + " " : "";
         const budget = w - vlen(lbl) - vlen(rhs);
-        if (!/[\x1b]/.test(raw) && budget > 0 && vlen(raw) > budget) {
+        const sliceable = !ESC_RE.test(raw) || OSC8_RE.test(raw); // plain or hyperlink
+        if (sliceable && budget > 0 && vlen(raw) > budget) {
           let col;
           if (m.color === "threshold") col = threshold(parseInt(raw.replace(/\D/g, "") || "0", 10));
           else col = m.color ? rgbOf(m.color) : TEXT;
-          body = lbl + f(col) + marquee(raw, budget, tick);
+          body = lbl + f(col) + marquee(raw, budget, tick, ovf);
         }
       }
       body += " ".repeat(Math.max(0, w - vlen(body) - vlen(rhs))) + rhs;

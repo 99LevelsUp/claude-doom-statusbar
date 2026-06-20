@@ -1,4 +1,7 @@
 # full — DOOM panel, everything on
+# text_overflow = "scroll"   # how labels longer than their box behave: "scroll" (ping-pong
+                             # marquee, default) or "clip" (static, truncated with …).
+                             # Env override: DOOMBAR_TEXT_OVERFLOW.
 [bar]
 border_style   = "vertical"
 border_color   = "term-bg"      # seamless cuts through the panel

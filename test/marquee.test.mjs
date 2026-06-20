@@ -47,5 +47,43 @@ ok(vlen(marquee("abc", 5, 99)) === 5, "fit result is exactly width cols");
   ok(allExact, "emoji window: exactly 5 cols every tick (no split glyph)");
 }
 
+// Hyperlink-aware marquee: the OSC8 wrapper + URL survive; only the inner text scrolls.
+{
+  const url = "https://x.example/very/long/path";
+  const inner = "a-very-long-branch-name-here"; // 28 cols
+  const link = `\x1b]8;;${url}\x1b\\${inner}\x1b]8;;\x1b\\`;
+  const W = 8;
+  const out0 = marquee(link, W, 0);
+  ok(vlen(out0) === W, `link marquee: exactly ${W} visible cols (got ${vlen(out0)})`);
+  ok(out0.startsWith(`\x1b]8;;${url}\x1b\\`) && out0.endsWith("\x1b]8;;\x1b\\"),
+    "link marquee: OSC8 wrapper + URL intact");
+  const seen = new Set();
+  let allW = true;
+  for (let t = 0; t < 40; t++) { const s = marquee(link, W, t); seen.add(s); if (vlen(s) !== W) allW = false; }
+  ok(seen.size > 2, "link marquee: inner text scrolls (window moves across ticks)");
+  ok(allW, "link marquee: every frame is exactly width visible cols");
+}
+
+// Clip mode: static truncation with an ellipsis, identical across ticks.
+{
+  const text = "0123456789";
+  const W = 6;
+  const c0 = marquee(text, W, 0, "clip");
+  ok(c0 === marquee(text, W, 9, "clip"), "clip mode: static across ticks (no scroll)");
+  ok(c0 === "01234…", `clip mode: head + ellipsis (got ${JSON.stringify(c0)})`);
+  ok(vlen(c0) === W, `clip mode: exactly ${W} cols`);
+}
+
+// Clip mode is hyperlink-aware too: inner truncated with …, URL preserved.
+{
+  const url = "https://x/y";
+  const link = `\x1b]8;;${url}\x1b\\0123456789\x1b]8;;\x1b\\`;
+  const W = 6;
+  const out = marquee(link, W, 0, "clip");
+  ok(vlen(out) === W, "clip link: exactly width visible cols");
+  ok(out.startsWith(`\x1b]8;;${url}\x1b\\`) && out.endsWith("\x1b]8;;\x1b\\"), "clip link: OSC8 + URL intact");
+  ok(out.includes("…"), "clip link: inner truncated with ellipsis");
+}
+
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILED`);
 process.exit(fails === 0 ? 0 : 1);

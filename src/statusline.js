@@ -145,15 +145,17 @@ export function buildValues(data, git) {
   if (repo.host && repo.owner && repo.name) repoUrl = `https://${repo.host}/${repo.owner}/${repo.name}`;
 
   const sname = data.session_name || data.session_id; // session_name only set via /rename or --name
-  if (sname) v["session.name"] = clip(sname, 24);
+  // Clip generously, not to box width: the renderer fits each field to its box (marquee or
+  // clip per text_overflow). A tight clip here would truncate before the renderer ever sees it.
+  if (sname) v["session.name"] = clip(sname, 60);
 
   const cwd = data.cwd || (data.workspace || {}).current_dir;
   if (cwd) {
-    const name = clip(path.basename(cwd.replace(/[/\\]+$/, "")) || cwd, 24);
+    const name = clip(path.basename(cwd.replace(/[/\\]+$/, "")) || cwd, 60);
     try { v["loc.cwd"] = _link(name, pathToFileURL(cwd).href); } catch { v["loc.cwd"] = name; }
     // git fields come from the folded snapshot the async hook wrote, not a live spawn.
     const { br = null, lr = null, st = null } = git || {};
-    if (br) { const brLbl = clip(br, 24); v["git.branch"] = repoUrl ? _link(brLbl, `${repoUrl}/tree/${br}`) : brLbl; }
+    if (br) { const brLbl = clip(br, 60); v["git.branch"] = repoUrl ? _link(brLbl, `${repoUrl}/tree/${br}`) : brLbl; }
     if (lr && lr.includes("\t")) {
       const [behind, ahead] = lr.split("\t");
       v["git.behind"] = `↓${behind}`; v["git.ahead"] = `↑${ahead}`;
@@ -471,7 +473,9 @@ function main() {
     catch { return null; }
   };
   const selected = resolvePreset(cfg, target, loadByName, spriteFor);
-  const res = buildBar(selected, target, spriteFor, tick);
+  // Text overflow behavior: env wins, then the preset's text_overflow, default "scroll".
+  const overflow = process.env.DOOMBAR_TEXT_OVERFLOW || selected.text_overflow || cfg.text_overflow || "scroll";
+  const res = buildBar(selected, target, spriteFor, tick, overflow);
   process.stdout.write(res.lines.join("\n") + "\n");
 }
 
