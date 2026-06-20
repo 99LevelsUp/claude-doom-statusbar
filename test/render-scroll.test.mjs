@@ -71,16 +71,18 @@ ok(r.start === 0 && r.up === 0 && r.down === 0, "boundary all-fit -> top aligned
   ok(frames.size > 1, "marquee: the rendered HUD changes as the tick advances");
 }
 
-// Responsive scale: at a narrow target the layout shrinks (small textCap) yet
-// every HUD row stays equal width across ticks, plain text still marquees, and a
-// hyperlink value (ANSI/OSC) is left intact rather than column-sliced.
+// Responsive scale: at a narrow target the layout shrinks (small textCap) yet every HUD row
+// stays equal width across ticks, plain text marquees, and a hyperlink value (OSC8) now
+// marquees too — its visible text is windowed but the OSC8 structure + URL stay intact.
 {
   const cfgRoot2 = path2.dirname(f2u(import.meta.url));
   const full2 = parseToml(readFileSync(path2.join(cfgRoot2, "..", "presets", "full.toml"), "utf8"));
-  const link = "\x1b]8;;https://example.com/a/very/long/path\x1b\\a-very-long-linked-cwd-name\x1b]8;;\x1b\\";
+  const url = "https://example.com/a/very/long/path";
+  const inner = "a-very-long-linked-cwd-name";
+  const link = `\x1b]8;;${url}\x1b\\${inner}\x1b]8;;\x1b\\`;
   setValues({
     ...SAMPLE,
-    "loc.cwd": link, // marquee-unsafe (OSC8 hyperlink) -> hard floor, never sliced
+    "loc.cwd": link, // OSC8 hyperlink -> hyperlink-aware marquee (inner sliced, URL re-wrapped)
     "act.tasklist": [{ mark: "⏩", markRgb: null, text: "port-PIL-alpha-compositing-into-JS-render" }],
   });
   let uniform = true;
@@ -93,7 +95,11 @@ ok(r.start === 0 && r.up === 0 && r.down === 0, "boundary all-fit -> top aligned
   ok(uniform, "narrow scale: all HUD rows equal width across ticks");
   ok(frames.size > 1, "narrow scale: plain text still marquees (frames change)");
   const out0 = buildBar(full2, 120, undefined, 0).lines.join("\n");
-  ok(out0.includes(link), "narrow scale: hyperlink value rendered intact (not column-sliced)");
+  // The link is now column-sliced (windowed), so the full original is NOT present verbatim,
+  // but the OSC8 wrapper + URL survive intact (the escape is never corrupted).
+  ok(!out0.includes(link), "narrow scale: hyperlink inner text is windowed (now marquees)");
+  ok(out0.includes(`\x1b]8;;${url}\x1b\\`) && out0.includes("\x1b]8;;\x1b\\"),
+    "narrow scale: OSC8 structure + URL preserved after slicing");
 }
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILED`);
