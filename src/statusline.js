@@ -10,15 +10,15 @@
 // Config: $DOOMBAR_PRESET (default presets/standard.toml)  State: $MUGSHOT_STATE
 
 import {
-  readFileSync, writeFileSync, openSync, fstatSync, readSync, closeSync, statfsSync, statSync,
+  readFileSync, writeFileSync, renameSync, openSync, fstatSync, readSync, closeSync, statfsSync, statSync,
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { spawnSync } from "node:child_process";
 import { parse as parseToml } from "smol-toml";
 import { pyround, sgrFg } from "./ansi.js";
 import { buildBar, setValues, resolvePreset, OK, TEXT, CRIT } from "./render.js";
+import { foldBatch, statePaths } from "./fold.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.dirname(HERE);
@@ -32,14 +32,9 @@ const GEIGER_BINS = 14;
 
 const has = (o, k) => Object.prototype.hasOwnProperty.call(o || {}, k);
 
-function git(cwd, ...args) {
-  try {
-    const r = spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8", timeout: 1000 });
-    return r.status === 0 ? r.stdout.trim() : null;
-  } catch {
-    return null;
-  }
-}
+// git is no longer spawned here. The async hook snapshots it into the journal (see hook.js
+// + fold.js); buildValues reads the folded snapshot from state.git. This keeps the render
+// hot path spawn-free — the Windows MSYS "bash flood" cannot happen by construction.
 
 // Clip a display label to at most `n` code points, ending with … when truncated,
 // so an oversized repo or branch name can't blow up the PROJECT box width.
@@ -111,7 +106,7 @@ function godFlash(data, advTs, now) {
 
 const f = sgrFg;
 
-export function buildValues(data) {
+export function buildValues(data, git) {
   const v = {};
   const cw = data.context_window || {};
   if ("used_percentage" in cw) v["context.hp"] = pyround(cw.used_percentage);
@@ -156,14 +151,13 @@ export function buildValues(data) {
   if (cwd) {
     const name = clip(path.basename(cwd.replace(/[/\\]+$/, "")) || cwd, 24);
     try { v["loc.cwd"] = _link(name, pathToFileURL(cwd).href); } catch { v["loc.cwd"] = name; }
-    const br = git(cwd, "branch", "--show-current");
+    // git fields come from the folded snapshot the async hook wrote, not a live spawn.
+    const { br = null, lr = null, st = null } = git || {};
     if (br) { const brLbl = clip(br, 24); v["git.branch"] = repoUrl ? _link(brLbl, `${repoUrl}/tree/${br}`) : brLbl; }
-    const lr = git(cwd, "rev-list", "--count", "--left-right", "@{u}...HEAD");
     if (lr && lr.includes("\t")) {
       const [behind, ahead] = lr.split("\t");
       v["git.behind"] = `↓${behind}`; v["git.ahead"] = `↑${ahead}`;
     }
-    const st = git(cwd, "status", "--porcelain");
     if (st !== null) v["git.status"] = String(st.split("\n").filter((l) => l.trim()).length);
     // Merge changed-file count + pull/push onto one line (icons baked in, like model.mode):
     // "✎ <files>  ⇅ ↓<behind> ↑<ahead>" — files first, then pull/push.
@@ -189,14 +183,54 @@ function _pick(bucket) {
   return x % 3;
 }
 
-function statePath(data) {
-  if (process.env.MUGSHOT_STATE) return process.env.MUGSHOT_STATE;
-  const sid = String(data.session_id || "default").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 48);
-  return path.join(TMP, `mugshot_${sid}.json`);
-}
+// Fold the per-session journal into the checkpoint and return the folded state.
+//
+// Read cost is O(events since last render): we read only journal bytes past the stored
+// offset, so a multi-hour session never re-reads old events. Invariant: checkpoint.state
+// always equals fold(journal[0..offset]); state + offset are persisted together atomically,
+// so the reducer's push/increment ops never double-count across renders.
+export function loadState(data) {
+  const { checkpoint, journal } = statePaths(data.session_id);
 
-function readState(data) {
-  try { return JSON.parse(readFileSync(statePath(data), "utf8")); } catch { return {}; }
+  let size = -1;
+  try { size = statSync(journal).size; } catch { /* no journal yet */ }
+
+  let raw = null;
+  try { raw = readFileSync(checkpoint, "utf8"); } catch { /* no checkpoint */ }
+  let st;
+  if (raw === null) {
+    st = { offset: 0 };                          // no checkpoint -> recompute from journal start
+  } else {
+    try { st = JSON.parse(raw); } catch { st = null; }
+    if (!st || typeof st !== "object") st = { offset: 0 }; // corrupt -> full recompute (journal has full history)
+    else if (typeof st.offset !== "number") st.offset = Math.max(0, size); // externally-supplied state is current
+  }
+
+  if (size < 0) return st;                        // no journal -> state stands as-is
+  if (st.offset > size) st = { offset: 0 };       // journal truncated/reset -> recompute from 0
+
+  if (size > st.offset) {
+    let chunk = "";
+    try {
+      const fd = openSync(journal, "r");
+      const buf = Buffer.alloc(size - st.offset);
+      readSync(fd, buf, 0, buf.length, st.offset);
+      closeSync(fd);
+      chunk = buf.toString("utf8");
+    } catch { chunk = ""; }
+    const lastNl = chunk.lastIndexOf("\n");       // consume complete lines only; keep any partial tail
+    if (lastNl >= 0) {
+      foldBatch(st, chunk.slice(0, lastNl).split("\n"));
+      st.offset += Buffer.byteLength(chunk.slice(0, lastNl + 1), "utf8");
+    }
+  }
+
+  try { // persist state + offset together, atomically
+    const tmp = `${checkpoint}.${process.pid}.tmp`;
+    writeFileSync(tmp, JSON.stringify(st));
+    renameSync(tmp, checkpoint);
+  } catch { /* ignore: next render retries */ }
+  return st;
 }
 
 function ramPercent() {
@@ -394,9 +428,9 @@ function main() {
   const cfg = parseToml(readFileSync(preset, "utf8"));
 
   const now = Date.now() / 1000;
-  const st = readState(data);
+  const st = loadState(data);
   const cwd = data.cwd || (data.workspace || {}).current_dir;
-  const values = { ...buildValues(data), ...activityValues(st, now), ...sysValues(cwd), ...statsValues(data, cwd) };
+  const values = { ...buildValues(data, st.git), ...activityValues(st, now), ...sysValues(cwd), ...statsValues(data, cwd) };
   const [advModel, advTs] = advisorInfo(data.transcript_path || "");
   if (advModel) values["advisor.model"] = advModel;
   const god_until = godFlash(data, advTs, now);

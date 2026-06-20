@@ -29,8 +29,11 @@ const STATUSLINE_CMD = `node "${STATUSLINE}"`;
 const HOOK_CMD = `node "${HOOK}"`;
 
 // Lifecycle events the mugshot hook understands (face reactions, geiger, subagents,
-// tasks, permission mode). PreToolUse has no matcher -> fires for every tool.
+// tasks, permission mode, git snapshots). PreToolUse has no matcher -> fires for every tool.
+// SessionStart resets the journal and primes git so the HUD is populated from the first
+// render. All entries are installed async (see install()) so they never block a tool.
 const HOOK_EVENTS = [
+  "SessionStart",
   "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied",
   "Stop", "SubagentStart", "SubagentStop", "TaskCreated", "TaskCompleted",
 ];
@@ -91,8 +94,9 @@ function install(cfg, preset) {
   for (const ev of HOOK_EVENTS) {
     const lst = (hooks[ev] ??= []);
     if (!lst.some(ours)) {
-      // idempotent: don't double-add
-      lst.push({ hooks: [{ type: "command", command: HOOK_CMD }] });
+      // idempotent: don't double-add. async:true keeps the hook off the blocking path —
+      // it only appends one journal line and returns; statusline folds it at render time.
+      lst.push({ hooks: [{ type: "command", command: HOOK_CMD, async: true }] });
     }
   }
   return notes;
