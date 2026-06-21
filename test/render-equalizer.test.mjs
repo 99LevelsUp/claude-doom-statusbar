@@ -34,11 +34,17 @@ const eq = (vals, extra = {}) => {
   ok(v === " ▄█", `heights map 0->" ", .5->▄, 1->█ (got "${v}")`);
 }
 
-// 2. Per-column colour: each column coloured by its own value.
+// 2. Per-column colour: each column coloured by its OWN value, in column order.
 {
-  const out = eq([0.1, 0.9]);   // 10% -> OK (green), 90% -> CRIT (red)
+  const WARN = [224, 184, 64];
+  const out = eq([0.1, 0.7, 0.9]);   // 10% -> OK, 70% -> WARN, 90% -> CRIT
   ok(out.includes(sgr(OK)), "low column carries the OK (green) colour");
+  ok(out.includes(sgr(WARN)), "mid column carries the WARN (yellow) colour");
   ok(out.includes(sgr(CRIT)), "high column carries the CRIT (red) colour");
+  // Positional: colours appear left-to-right OK < WARN < CRIT, so each column is
+  // coloured by its own value, not just "some red appears somewhere".
+  ok(out.indexOf(sgr(OK)) < out.indexOf(sgr(WARN)) && out.indexOf(sgr(WARN)) < out.indexOf(sgr(CRIT)),
+     "colours map positionally: OK column before WARN before CRIT");
 }
 
 // 3. Boundary .5 maps to ▄ (half height) on the 9-level ramp: pyround(.5*8)=4 -> " ▁▂▃▄"[4].

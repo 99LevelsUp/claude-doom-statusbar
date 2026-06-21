@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`equalizer` render type** — a one-row VU-meter that draws an array of `0..1`
+  values as side-by-side block columns, each coloured by its own value via the
+  threshold ramp (green / yellow / red). Uses its own 9-level height ramp (empty
+  through full block), distinct from the `spark` sparkline. When channels exceed
+  the column cap they densify by averaging, so the rendered width stays fixed.
+- **`sys.cores` metric** — per-core CPU utilisation as a `0..1`-per-core array,
+  surfaced in the `full` preset's SYS box as a per-core equalizer beside the
+  aggregate `sys.cpu`. Reuses the existing CPU snapshot cache.
+
 ## [0.6.0] - 2026-06-15
 
 ### Added

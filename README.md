@@ -19,7 +19,7 @@ The HUD is a row of boxes centred on the mugshot. Each box is configurable; the 
 - **ACTIVITY** — a tool-activity "geiger" sparkline (duty-cycle over the last 30 s), running-agent count, task progress, error count.
 - **AGENTS** — a live list of running subagents (type/description + ticking runtime), always visible. Long lists scroll within the box height, with ↑/↓ markers counting the rows hidden off-screen.
 - **TASKS** — the session's todo list: settled items (✅ done, ❌ removed) on top, open items (⏩ in-progress, 🎯 pending) below. Scrolls like AGENTS, anchored on the open/settled boundary.
-- **SYS** — CPU, disk, session length, wall clock.
+- **SYS** — CPU, a per-core CPU equalizer (one threshold-coloured column per core), disk, session length, wall clock.
 
 Anything the session can't supply is hidden automatically, so the same config degrades cleanly.
 
@@ -71,7 +71,7 @@ $env:FORCE_HYPERLINK = "1"; claude
 - **`standard`** — balanced HUD.
 - **`full`** — every box, the look in the screenshot above.
 
-A preset is TOML: a `[bar]` style block, a `[mugshot]` block, and a list of `[[segment]]` boxes. Each box lists metrics with a render type — `bar`, `number`, `text`, `spark`, `ammo`, `list`, `scroll`, or a `group`. Copy one and rearrange the boxes, swap icons, or change which metrics show.
+A preset is TOML: a `[bar]` style block, a `[mugshot]` block, and a list of `[[segment]]` boxes. Each box lists metrics with a render type — `bar`, `number`, `text`, `spark`, `equalizer`, `ammo`, `list`, `scroll`, or a `group`. (`equalizer` draws an array of `0..1` values as a one-row VU-meter: one block column per channel, each coloured by its own value — e.g. `sys.cores` for per-core CPU.) Copy one and rearrange the boxes, swap icons, or change which metrics show.
 
 ### Responsive width
 
