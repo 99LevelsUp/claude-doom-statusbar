@@ -87,7 +87,8 @@ metric = [
 type  = "box"
 title = "SYS"
 metric = [
-  { id = "sys.cpu",     render = "number", icon = "🔥" },
+  { id = "sys.cpu",     render = "number",    icon = "🔥" },
+  { id = "sys.cores",   render = "equalizer", icon = "🎚", color = "threshold" },
   { id = "sys.disk",    render = "bar",    icon = "💿", color = "threshold" },
   { id = "sys.session", render = "text",   icon = "🕙" },
   { id = "sys.clock",   render = "text",   icon = "🕓" },

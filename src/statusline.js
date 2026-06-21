@@ -239,26 +239,50 @@ function ramPercent() {
   try { return pyround((1 - os.freemem() / os.totalmem()) * 100); } catch { return null; }
 }
 
-function cpuPercent() {
-  let total = 0, idle = 0;
+// Per-core idle fraction over a cumulative-time delta; null when no time elapsed.
+const cpuUtil = (dt, di) => (dt > 0 ? Math.max(0, Math.min(1, 1 - di / dt)) : null);
+
+// Pure: turn two cumulative CPU snapshots into the aggregate percent (sys.cpu, 0..100)
+// and the per-core utilisation array (sys.cores, 0..1 each). Cold start (no prev) or a
+// core-count mismatch (e.g. an old cache without `cores`) yields null for that field, so
+// the metric simply doesn't render that refresh. A core with no elapsed time reads 0.
+export function cpuDeltas(prev, cur) {
+  if (!prev) return { cpu: null, cores: null };
+  const cpu = cpuUtil(cur.total - prev.total, cur.idle - prev.idle);
+  let cores = null;
+  if (Array.isArray(prev.cores) && Array.isArray(cur.cores) && prev.cores.length === cur.cores.length) {
+    cores = cur.cores.map((c, i) => {
+      const u = cpuUtil(c.total - prev.cores[i].total, c.idle - prev.cores[i].idle);
+      return u === null ? 0 : u;
+    });
+  }
+  return { cpu: cpu === null ? null : pyround(cpu * 100), cores };
+}
+
+function cpuMetrics() {
+  let cores;
   try {
-    for (const c of os.cpus()) { for (const k in c.times) total += c.times[k]; idle += c.times.idle; }
-  } catch { return null; }
+    cores = os.cpus().map((c) => {
+      let total = 0; for (const k in c.times) total += c.times[k];
+      return { total, idle: c.times.idle };
+    });
+  } catch { return { cpu: null, cores: null }; }
+  const agg = cores.reduce((a, c) => ({ total: a.total + c.total, idle: a.idle + c.idle }), { total: 0, idle: 0 });
+  const cur = { total: agg.total, idle: agg.idle, cores };
   const cache = path.join(TMP, "mugshot_cpu.json");
   let prev = null;
   try { prev = JSON.parse(readFileSync(cache, "utf8")); } catch { /* none */ }
-  try { writeFileSync(cache, JSON.stringify({ total, idle })); } catch { /* ignore */ }
-  if (!prev) return null;
-  const dt = total - prev.total, di = idle - prev.idle;
-  return dt > 0 ? pyround(Math.max(0, Math.min(100, 100 * (1 - di / dt)))) : null;
+  try { writeFileSync(cache, JSON.stringify(cur)); } catch { /* ignore */ }
+  return cpuDeltas(prev, cur);
 }
 
 function sysValues(cwd) {
   const v = {};
   const ram = ramPercent();
   if (ram !== null) v["sys.ram"] = ram;
-  const cpu = cpuPercent();
+  const { cpu, cores } = cpuMetrics();
   if (cpu !== null) v["sys.cpu"] = `${cpu}%`;
+  if (cores) v["sys.cores"] = cores;
   try {
     const stat = statfsSync(cwd || process.cwd());
     v["sys.disk"] = pyround(((stat.blocks - stat.bfree) / stat.blocks) * 100);
