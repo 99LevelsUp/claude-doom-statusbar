@@ -47,6 +47,8 @@ export const SAMPLE = {
   "act.geiger": [0, .25, .5, 1, .75, 1, .5, .6, .3, .1, .4, 1, .8, .4],
   "act.tasks": "2/5", "act.errors": "0", "sys.ram": 47, "sys.cpu": "12%",
   "sys.disk": 63, "sys.clock": "14:23",
+  "sys.cores": [0.12, 0.30, 0.08, 0.95, 0.45, 0.18, 0.62, 0.22],
+
   "save.leanctx": "8.3k 63%", "save.lingua": "1.2k 1.3x",
 };
 
