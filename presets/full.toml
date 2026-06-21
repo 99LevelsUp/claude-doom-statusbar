@@ -85,10 +85,9 @@ metric = [
 
 [[segment]]
 type  = "box"
-title = "SYS"
+title = "SYSTEM"
 metric = [
-  { id = "sys.cpu",     render = "number",    icon = "🔥" },
-  { id = "sys.cores",   render = "equalizer", icon = "📊", color = "threshold" },
+  { id = "sys.cores",   render = "equalizer", icon = "🔥", color = "threshold", right = "sys.cpu" },
   { id = "sys.disk",    render = "bar",    icon = "💿", color = "threshold" },
   { id = "sys.session", render = "text",   icon = "🕙" },
   { id = "sys.clock",   render = "text",   icon = "🕓" },

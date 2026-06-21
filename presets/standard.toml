@@ -1,4 +1,4 @@
-# standard — full minus SAVE and SYS
+# standard — full minus SAVE and SYSTEM
 [bar]
 border_style   = "vertical"
 border_color   = "term-bg"      # seamless cuts through the panel

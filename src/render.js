@@ -321,7 +321,7 @@ export function metricFixedWidth(entry, textCap = TEXTCAP_MAX) {
     return lw + capLen(entry.group.filter((i) => i in VALUES).map((i) => String(VALUES[i])).join(sep), textCap) + rextra;
   }
   if (r === "spark") return lw + Math.floor(((VALUES[entry.id] || []).length + 1) / 2);
-  if (r === "equalizer") return lw + Math.min((VALUES[entry.id] || []).length, EQ_MAX);
+  if (r === "equalizer") return lw + Math.min((VALUES[entry.id] || []).length, EQ_MAX) + rextra;
   if (r === "ammo") return lw + 5 + vlen(" " + (entry.id in VALUES ? VALUES[entry.id] : 0) + "%");
   if (r === "list") {
     const items = VALUES[entry.id] || [];

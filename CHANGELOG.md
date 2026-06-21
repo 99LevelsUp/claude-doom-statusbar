@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **The SYS box is now SYSTEM**, and the per-core CPU equalizer shares one row with
+  the aggregate CPU %: a 🔥 icon, the per-core equalizer, and the CPU percentage
+  right-aligned beside it (aligned with the disk bar's percentage below).
+- **The scroll overflow marker (↑k/↓k) is now gold**, not the dim body colour, so
+  the count of hidden rows in AGENTS/TASKS stands out.
+
+## [0.8.1] - 2026-06-21
+
 ### Added
 - **Configurable colour gradients.** A metric's `color` now accepts custom gradient
   stops — `[[value, "#hex"], ...]` pairs interpolated smoothly between stops. A single
