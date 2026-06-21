@@ -147,6 +147,12 @@ const SPARK_BRAILLE = [
   "⠀⢀⢠⢰⢸", "⡀⣀⣠⣰⣸", "⡄⣄⣤⣴⣼", "⡆⣆⣦⣶⣾", "⡇⣇⣧⣷⣿",
 ].map((r) => [...r]);
 const BLOCK_RAMP = [..."▁▂▃▄▅▆▇"];
+// The equalizer's OWN 9-level height ramp (empty 0/8 .. full 8/8), so an idle
+// channel reads as empty and a maxed one as a full block -- deliberately wider at
+// both ends than spark's BLOCK_RAMP, which never shows empty or full. Index via
+// pyround(clamp(v,0,1) * 8).
+const EQ_RAMP = [..." ▁▂▃▄▅▆▇█"];
+const EQ_MAX = 16; // column cap: more channels than this densify by averaging
 
 function rSpark(values, style = "block", boxRgb = TERM_RGB, vmax = null) {
   const empty = [0, 1, 2].map((i) => Math.floor((boxRgb[i] + TERM_RGB[i]) / 2));
@@ -178,6 +184,36 @@ function rSpark(values, style = "block", boxRgb = TERM_RGB, vmax = null) {
   return bg + f(SPARK) + body + bgsgrBox(boxRgb);
 }
 
+// Densify N channel values into exactly K = min(N, EQ_MAX) columns by averaging
+// each column's contiguous slice. K columns by construction, so the rendered width
+// always equals metricFixedWidth's min(N, EQ_MAX) -- the box-layout invariant.
+function eqColumns(values) {
+  const n = values.length;
+  const k = Math.min(n, EQ_MAX);
+  const cols = [];
+  for (let i = 0; i < k; i++) {
+    const lo = Math.floor((i * n) / k), hi = Math.floor(((i + 1) * n) / k);
+    let sum = 0;
+    for (let j = lo; j < hi; j++) sum += values[j];
+    cols.push(sum / (hi - lo));
+  }
+  return cols;
+}
+
+// One-row VU-meter: one block column per channel (densified past EQ_MAX), each
+// column coloured by its OWN value via threshold(). Absolute 0..1 scale (no
+// span-normalize), 9-level EQ_RAMP. Fixed-width: takes no `cells` budget.
+function rEqualizer(values, boxRgb) {
+  if (!values || values.length === 0) return f(SPARK);
+  const empty = [0, 1, 2].map((i) => Math.floor((boxRgb[i] + TERM_RGB[i]) / 2));
+  let body = sgrBg(empty);
+  for (const raw of eqColumns(values)) {
+    const v = Math.max(0, Math.min(1, raw));
+    body += f(threshold(v * 100)) + EQ_RAMP[pyround(v * 8)];
+  }
+  return body + bgsgrBox(boxRgb);
+}
+
 export function renderValue(entry, cells, boxRgb) {
   const icon = entry.icon || "";
   const label = icon ? icon + " " : "";
@@ -198,6 +234,7 @@ export function renderValue(entry, cells, boxRgb) {
   }
   if (render === "ammo") return label + rAmmo(val, color || "threshold");
   if (render === "spark") return label + rSpark(val, entry.spark_style || "block", boxRgb, entry.spark_max);
+  if (render === "equalizer") return label + rEqualizer(val, boxRgb);
   if (render === "list") {
     const items = VALUES[entry.id] || [];
     return label + f(TEXT) + items.map((x) => (Array.isArray(x) ? `${x[0]} ${x[1]}` : String(x))).join("  ");
@@ -253,6 +290,7 @@ export function metricFixedWidth(entry, textCap = TEXTCAP_MAX) {
     return lw + capLen(entry.group.filter((i) => i in VALUES).map((i) => String(VALUES[i])).join(sep), textCap) + rextra;
   }
   if (r === "spark") return lw + Math.floor(((VALUES[entry.id] || []).length + 1) / 2);
+  if (r === "equalizer") return lw + Math.min((VALUES[entry.id] || []).length, EQ_MAX);
   if (r === "ammo") return lw + 5 + vlen(" " + (entry.id in VALUES ? VALUES[entry.id] : 0) + "%");
   if (r === "list") {
     const items = VALUES[entry.id] || [];
