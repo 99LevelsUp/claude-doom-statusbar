@@ -242,6 +242,13 @@ function ramPercent() {
 // Minimum interval between CPU snapshots; below this, per-core deltas are tick-quantised noise.
 const CPU_MIN_MS = 1000;
 
+// Pure: should cpuMetrics recompute, or hold the cached result? Recompute on cold start,
+// a legacy snapshot without `ts`, a missing cached result, or once CPU_MIN_MS has elapsed.
+// Holding in between keeps a burst of fast refreshes from sampling a sub-tick interval.
+export function shouldSampleCpu(prev, now) {
+  return !(prev && typeof prev.ts === "number" && now - prev.ts < CPU_MIN_MS && prev.result);
+}
+
 // Per-core idle fraction over a cumulative-time delta; null when no time elapsed.
 const cpuUtil = (dt, di) => (dt > 0 ? Math.max(0, Math.min(1, 1 - di / dt)) : null);
 
@@ -282,9 +289,7 @@ function cpuMetrics() {
   // apart -- so only recompute when >= CPU_MIN_MS has elapsed, holding the last result
   // (and the old snapshot) in between. The interval keeps growing until it's wide
   // enough to be stable, even under a burst of fast refreshes.
-  if (prev && typeof prev.ts === "number" && now - prev.ts < CPU_MIN_MS && prev.result) {
-    return prev.result;
-  }
+  if (!shouldSampleCpu(prev, now)) return prev.result;
   const result = cpuDeltas(prev, cur);
   try { writeFileSync(cache, JSON.stringify({ ...cur, result })); } catch { /* ignore */ }
   return result;
