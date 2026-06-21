@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-06-21
+
 ### Added
 - **`equalizer` render type** — a one-row VU-meter that draws an array of `0..1`
   values as side-by-side block columns, each coloured by its own value via the
