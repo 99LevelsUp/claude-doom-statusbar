@@ -15,7 +15,7 @@
   "scripts": {
     "statusline": "node src/statusline.js",
     "hook": "node src/hook.js",
-    "test": "node test/installer.test.mjs && node test/smoke.test.mjs && node test/hook-tasks.test.mjs && node test/statusline-tasks.test.mjs && node test/render-scroll.test.mjs && node test/render-equalizer.test.mjs && node test/statusline-savings.test.mjs && node test/e2e-tasks.test.mjs && node test/marquee.test.mjs && node test/layout.test.mjs && node test/resolve-preset.test.mjs && node test/preset-bands.test.mjs && node test/journal.test.mjs && node test/git-event.test.mjs",
+    "test": "node test/installer.test.mjs && node test/smoke.test.mjs && node test/hook-tasks.test.mjs && node test/statusline-tasks.test.mjs && node test/render-scroll.test.mjs && node test/render-equalizer.test.mjs && node test/statusline-savings.test.mjs && node test/statusline-cores.test.mjs && node test/e2e-tasks.test.mjs && node test/marquee.test.mjs && node test/layout.test.mjs && node test/resolve-preset.test.mjs && node test/preset-bands.test.mjs && node test/journal.test.mjs && node test/git-event.test.mjs",
     "preversion": "npm test",
     "postversion": "git push --follow-tags",
     "prepublishOnly": "npm test"
