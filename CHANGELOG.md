@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Configurable colour gradients.** A metric's `color` now accepts custom gradient
+  stops — `[[value, "#hex"], ...]` pairs interpolated smoothly between stops. A single
+  pair is a solid colour; adjacent stops (50/51) make a hard step. `color = "threshold"`
+  is now a smooth green→yellow→red gradient (0/50/100) instead of hard 60/85 cutoffs,
+  and applies to all progress visuals (bars, ammo, equalizer, coloured numbers).
+
+### Fixed
+- **`sys.cores` no longer flickers between 0 % and 100 %.** Per-core CPU was sampled
+  over sub-second intervals where Windows' clock-tick quantisation dominates; it now
+  holds the last reading until at least 1 s has elapsed, matching Task Manager.
+- **`sys.cores` equalizer icon alignment.** Swapped the slider glyph (rendered one
+  column wide in most terminals) for a bar-chart emoji that is reliably two columns,
+  so the metric no longer shifts.
+
 ## [0.8.0] - 2026-06-21
 
 ### Added

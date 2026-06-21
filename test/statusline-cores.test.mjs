@@ -5,7 +5,7 @@
 // into the aggregate sys.cpu (0..100) and the per-core sys.cores array (0..1 each),
 // without touching os.cpus() or the disk cache. The I/O wrapper cpuMetrics is left
 // to integration; the delta arithmetic and cold-start/mismatch handling live here.
-import { cpuDeltas } from "../src/statusline.js";
+import { cpuDeltas, shouldSampleCpu } from "../src/statusline.js";
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
@@ -44,6 +44,16 @@ const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fai
   const { cpu, cores } = cpuDeltas(prev, cur);
   ok(cores === null, "missing prev.cores -> cores null (graceful, no throw)");
   ok(cpu === 75, `aggregate still produced from total/idle (got ${cpu})`);
+}
+
+// 5. Sampling guard: recompute only after CPU_MIN_MS (1s); hold the result in between.
+{
+  const now = 10000;
+  ok(shouldSampleCpu(null, now) === true, "cold start -> recompute");
+  ok(shouldSampleCpu({ ts: now - 500, result: { cpu: 1 } }, now) === false, "fresh snapshot (<1s) with result -> hold");
+  ok(shouldSampleCpu({ ts: now - 2000, result: { cpu: 1 } }, now) === true, "stale snapshot (>=1s) -> recompute");
+  ok(shouldSampleCpu({ ts: now - 500, result: null }, now) === true, "no cached result -> recompute (nothing to hold)");
+  ok(shouldSampleCpu({ total: 1, idle: 1, cores: [] }, now) === true, "legacy snapshot without ts -> recompute");
 }
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILED`);

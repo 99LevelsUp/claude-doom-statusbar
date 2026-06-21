@@ -239,6 +239,16 @@ function ramPercent() {
   try { return pyround((1 - os.freemem() / os.totalmem()) * 100); } catch { return null; }
 }
 
+// Minimum interval between CPU snapshots; below this, per-core deltas are tick-quantised noise.
+const CPU_MIN_MS = 1000;
+
+// Pure: should cpuMetrics recompute, or hold the cached result? Recompute on cold start,
+// a legacy snapshot without `ts`, a missing cached result, or once CPU_MIN_MS has elapsed.
+// Holding in between keeps a burst of fast refreshes from sampling a sub-tick interval.
+export function shouldSampleCpu(prev, now) {
+  return !(prev && typeof prev.ts === "number" && now - prev.ts < CPU_MIN_MS && prev.result);
+}
+
 // Per-core idle fraction over a cumulative-time delta; null when no time elapsed.
 const cpuUtil = (dt, di) => (dt > 0 ? Math.max(0, Math.min(1, 1 - di / dt)) : null);
 
@@ -268,12 +278,21 @@ function cpuMetrics() {
     });
   } catch { return { cpu: null, cores: null }; }
   const agg = cores.reduce((a, c) => ({ total: a.total + c.total, idle: a.idle + c.idle }), { total: 0, idle: 0 });
-  const cur = { total: agg.total, idle: agg.idle, cores };
+  const now = Date.now();
+  const cur = { ts: now, total: agg.total, idle: agg.idle, cores };
   const cache = path.join(TMP, "mugshot_cpu.json");
   let prev = null;
   try { prev = JSON.parse(readFileSync(cache, "utf8")); } catch { /* none */ }
-  try { writeFileSync(cache, JSON.stringify(cur)); } catch { /* ignore */ }
-  return cpuDeltas(prev, cur);
+  // Windows updates os.cpus() times only on the ~15.6ms scheduler tick, so a per-core
+  // delta over a sub-second interval is dominated by tick quantisation and explodes
+  // into 0/100 noise. The status bar refreshes on every action, often milliseconds
+  // apart -- so only recompute when >= CPU_MIN_MS has elapsed, holding the last result
+  // (and the old snapshot) in between. The interval keeps growing until it's wide
+  // enough to be stable, even under a burst of fast refreshes.
+  if (!shouldSampleCpu(prev, now)) return prev.result;
+  const result = cpuDeltas(prev, cur);
+  try { writeFileSync(cache, JSON.stringify({ ...cur, result })); } catch { /* ignore */ }
+  return result;
 }
 
 function sysValues(cwd) {

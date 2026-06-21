@@ -73,6 +73,12 @@ $env:FORCE_HYPERLINK = "1"; claude
 
 A preset is TOML: a `[bar]` style block, a `[mugshot]` block, and a list of `[[segment]]` boxes. Each box lists metrics with a render type — `bar`, `number`, `text`, `spark`, `equalizer`, `ammo`, `list`, `scroll`, or a `group`. (`equalizer` draws an array of `0..1` values as a one-row VU-meter: one block column per channel, each coloured by its own value — e.g. `sys.cores` for per-core CPU.) Copy one and rearrange the boxes, swap icons, or change which metrics show.
 
+A value-carrying metric (`bar`, `ammo`, `equalizer`, `number`, `text`) can set `color`:
+
+- `color = "threshold"` — the default heat gradient: green at 0, yellow at 50, red at 100, smoothly interpolated.
+- `color = "#rrggbb"` — a solid colour.
+- `color = [[0, "#60c868"], [50, "#e0b840"], [100, "#e05440"]]` — custom gradient stops as `[value, "#hex"]` pairs, interpolated between stops. A single pair is a solid colour; adjacent stops (e.g. `[50, "#..."], [51, "#..."]`) make a hard step instead of a smooth blend.
+
 ### Responsive width
 
 As the terminal narrows, the HUD shrinks: bars contract and text columns shrink together, and whatever overflows scrolls (the marquee). When even the smallest layout no longer fits, the preset falls back to a smaller one via its `[bar].fallback` key — `full → standard → minimal`. Your chosen preset is the ceiling; widening the terminal recovers it. It's stateless — each refresh re-reads the terminal width (`COLUMNS`), so it follows live resizes.
