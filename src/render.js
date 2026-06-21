@@ -593,7 +593,7 @@ export function buildBar(cfg, target, spriteFor, tick = 0, overflow) {
           const tailW = vlen(tail);
           let body;
           if (Array.isArray(item)) {                       // [left, right] (agents)
-            const right = f(TEXT) + String(item[1]) + (marker ? f(TEXT) + tail : "");
+            const right = f(TEXT) + String(item[1]) + (marker ? f(TITLE) + tail : "");
             const rightW = vlen(String(item[1])) + tailW;
             const labelMax = Math.max(0, w - vlen(lbl) - rightW - 1); // 1 = min gap
             const left = lbl + f(TEXT) + marquee(String(item[0]), labelMax, tick, ovf);
@@ -607,7 +607,7 @@ export function buildBar(cfg, target, spriteFor, tick = 0, overflow) {
             const max = Math.max(0, w - vlen(mPad) - 1 - tailW); // reserve gap + marker on the right
             body = head + marquee(String(item.text), max, tick, ovf);
             body += " ".repeat(Math.max(0, w - tailW - vlen(body)));
-            if (tail) body += f(TEXT) + tail;
+            if (tail) body += f(TITLE) + tail;
           }
           col.push(bgsgrBox(boxRgb) + " " + body + " " + RESET);
         });
