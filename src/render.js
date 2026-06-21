@@ -90,8 +90,42 @@ function headCols(text, width) {
   return out;
 }
 
-function threshold(pct) {
-  return pct < 60 ? OK : pct < 85 ? WARN : CRIT;
+// Default heat gradient: green (0) -> yellow (50) -> red (100). Higher = hotter,
+// the orientation every caller wants (context usage, rate limits, CPU, disk, RAM).
+const DEFAULT_STOPS = [[0, OK], [50, WARN], [100, CRIT]];
+
+const lerp1 = (a, b, t) => Math.round(a + (b - a) * t);
+
+// Interpolate an RGB colour at `pct` (0..100) across sorted [value, rgb] stops.
+// Below the first stop / above the last it clamps to that stop. A single stop is a
+// solid colour; adjacent stops (e.g. 50 then 51) make a near-hard transition.
+function interpStops(stops, pct) {
+  if (pct <= stops[0][0]) return stops[0][1];
+  const last = stops[stops.length - 1];
+  if (pct >= last[0]) return last[1];
+  for (let i = 1; i < stops.length; i++) {
+    const [v0, c0] = stops[i - 1], [v1, c1] = stops[i];
+    if (pct <= v1) {
+      const t = v1 === v0 ? 0 : (pct - v0) / (v1 - v0);
+      return [0, 1, 2].map((j) => lerp1(c0[j], c1[j], t));
+    }
+  }
+  return last[1];
+}
+
+// Resolve a metric's `color` spec to an RGB at `pct` (0..100):
+//   "threshold"        -> the default green->yellow->red gradient
+//   [[v, "#hex"], ...] -> a custom gradient (a single pair = a solid colour)
+//   "#rrggbb"          -> a solid colour
+//   unset / unknown    -> null, so the caller can pick its own default
+function colorFor(spec, pct) {
+  if (spec === "threshold") return interpStops(DEFAULT_STOPS, pct);
+  if (Array.isArray(spec) && spec.length) {
+    const stops = spec.map(([v, c]) => [v, rgbOf(c)]).sort((a, b) => a[0] - b[0]);
+    return interpStops(stops, pct);
+  }
+  if (typeof spec === "string" && spec.startsWith("#")) return rgbOf(spec);
+  return null;
 }
 
 function rgbOf(spec) {
@@ -120,7 +154,7 @@ function rBar(pct, cells, boxRgb, colorSpec, showPct = true) {
   const eighths = pyround((pct / 100) * cells * 8);
   const full = Math.min(cells, Math.floor(eighths / 8));
   const rem = full < cells ? eighths % 8 : 0;
-  const c = colorSpec === "threshold" ? threshold(pct) : colorSpec ? rgbOf(colorSpec) : TEXT;
+  const c = colorFor(colorSpec, pct) ?? TEXT;
   let s = sgrBg(empty) + f(c) + "█".repeat(full);
   if (rem) s += EIGHTHS[rem];
   s += " ".repeat(Math.max(0, cells - full - (rem ? 1 : 0)));
@@ -130,7 +164,7 @@ function rBar(pct, cells, boxRgb, colorSpec, showPct = true) {
 }
 
 function rAmmo(pct, colorSpec, segs = 5) {
-  const c = colorSpec === "threshold" ? threshold(pct) : WARN;
+  const c = colorFor(colorSpec, pct) ?? WARN;
   const filled = pyround((pct / 100) * segs);
   return f(c) + "▮".repeat(filled) + f([90, 95, 120]) + "▯".repeat(segs - filled) +
     f(c) + " " + String(pct).padStart(3) + "%";
@@ -203,15 +237,15 @@ function eqColumns(values) {
 }
 
 // One-row VU-meter: one block column per channel (densified past EQ_MAX), each
-// column coloured by its OWN value via threshold(). Absolute 0..1 scale (no
-// span-normalize), 9-level EQ_RAMP. Fixed-width: takes no `cells` budget.
-function rEqualizer(values, boxRgb) {
+// column coloured by its OWN value via the metric's colour spec (default gradient).
+// Absolute 0..1 scale (no span-normalize), 9-level EQ_RAMP. Fixed-width: no `cells`.
+function rEqualizer(values, boxRgb, colorSpec) {
   if (!values || values.length === 0) return f(SPARK);
   const empty = [0, 1, 2].map((i) => Math.floor((boxRgb[i] + TERM_RGB[i]) / 2));
   let body = sgrBg(empty);
   for (const raw of eqColumns(values)) {
     const v = Math.max(0, Math.min(1, raw));
-    body += f(threshold(v * 100)) + EQ_RAMP[pyround(v * 8)];
+    body += f(colorFor(colorSpec, v * 100) ?? OK) + EQ_RAMP[pyround(v * 8)];
   }
   return body + bgsgrBox(boxRgb);
 }
@@ -236,18 +270,13 @@ export function renderValue(entry, cells, boxRgb) {
   }
   if (render === "ammo") return label + rAmmo(val, color || "threshold");
   if (render === "spark") return label + rSpark(val, entry.spark_style || "block", boxRgb, entry.spark_max);
-  if (render === "equalizer") return label + rEqualizer(val, boxRgb);
+  if (render === "equalizer") return label + rEqualizer(val, boxRgb, color || "threshold");
   if (render === "list") {
     const items = VALUES[entry.id] || [];
     return label + f(TEXT) + items.map((x) => (Array.isArray(x) ? `${x[0]} ${x[1]}` : String(x))).join("  ");
   }
   // number / text
-  let col;
-  if (color === "threshold") {
-    col = threshold(parseInt(String(val).replace(/\D/g, "") || "0", 10));
-  } else {
-    col = color ? rgbOf(color) : TEXT;
-  }
+  const col = colorFor(color, parseInt(String(val).replace(/\D/g, "") || "0", 10)) ?? TEXT;
   return label + f(col) + String(val);
 }
 
@@ -597,9 +626,7 @@ export function buildBar(cfg, target, spriteFor, tick = 0, overflow) {
         const budget = w - vlen(lbl) - vlen(rhs);
         const sliceable = !ESC_RE.test(raw) || OSC8_RE.test(raw); // plain or hyperlink
         if (sliceable && budget > 0 && vlen(raw) > budget) {
-          let col;
-          if (m.color === "threshold") col = threshold(parseInt(raw.replace(/\D/g, "") || "0", 10));
-          else col = m.color ? rgbOf(m.color) : TEXT;
+          const col = colorFor(m.color, parseInt(raw.replace(/\D/g, "") || "0", 10)) ?? TEXT;
           body = lbl + f(col) + marquee(raw, budget, tick, ovf);
         }
       }

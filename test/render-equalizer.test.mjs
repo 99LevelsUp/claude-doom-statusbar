@@ -17,10 +17,11 @@ const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fai
 
 const EQ_MAX = 16;                // column cap, mirrors render.js
 const BOX = [28, 32, 54];         // a non-term box bg, like the standard preset
-const sgr = (rgb) => `\x1b[38;2;${rgb[0]};${rgb[1]};${rgb[2]}m`;
 // Strip ANSI/OSC to count the visible glyph run.
 const ANSI = /\x1b\[[0-9;]*m|\x1b\]8;[^\x07\x1b]*(?:\x1b\\|\x07)/g;
 const visible = (s) => s.replace(ANSI, "");
+// The foreground colour of each column, in order, parsed back out of the SGR runs.
+const fgs = (s) => [...s.matchAll(/38;2;(\d+);(\d+);(\d+)m/g)].map((m) => [+m[1], +m[2], +m[3]]);
 const eq = (vals, extra = {}) => {
   setValues({ "x.cores": vals });
   return renderValue({ id: "x.cores", render: "equalizer", color: "threshold", ...extra }, 0, BOX);
@@ -34,17 +35,18 @@ const eq = (vals, extra = {}) => {
   ok(v === " ▄█", `heights map 0->" ", .5->▄, 1->█ (got "${v}")`);
 }
 
-// 2. Per-column colour: each column coloured by its OWN value, in column order.
+// 2. Per-column colour: smooth green->yellow->red gradient, each column by its OWN value.
 {
   const WARN = [224, 184, 64];
-  const out = eq([0.1, 0.7, 0.9]);   // 10% -> OK, 70% -> WARN, 90% -> CRIT
-  ok(out.includes(sgr(OK)), "low column carries the OK (green) colour");
-  ok(out.includes(sgr(WARN)), "mid column carries the WARN (yellow) colour");
-  ok(out.includes(sgr(CRIT)), "high column carries the CRIT (red) colour");
-  // Positional: colours appear left-to-right OK < WARN < CRIT, so each column is
-  // coloured by its own value, not just "some red appears somewhere".
-  ok(out.indexOf(sgr(OK)) < out.indexOf(sgr(WARN)) && out.indexOf(sgr(WARN)) < out.indexOf(sgr(CRIT)),
-     "colours map positionally: OK column before WARN before CRIT");
+  // Gradient endpoints are exact: 0 -> green (OK), .5 -> yellow (WARN), 1 -> red (CRIT).
+  ok(JSON.stringify(fgs(eq([0]))[0]) === JSON.stringify(OK), "0.0 -> exact green (OK)");
+  ok(JSON.stringify(fgs(eq([0.5]))[0]) === JSON.stringify(WARN), "0.5 -> exact yellow (WARN)");
+  ok(JSON.stringify(fgs(eq([1]))[0]) === JSON.stringify(CRIT), "1.0 -> exact red (CRIT)");
+  // Positional + smooth: as value rises across columns, redness is non-decreasing and
+  // greenness non-increasing -- so each column is coloured by its own value, smoothly.
+  const cols = fgs(eq([0.1, 0.5, 0.9]));
+  ok(cols[0][0] <= cols[1][0] && cols[1][0] <= cols[2][0], "red channel rises (or holds) left-to-right");
+  ok(cols[0][1] >= cols[1][1] && cols[1][1] >= cols[2][1], "green channel falls (or holds) left-to-right");
 }
 
 // 3. Boundary .5 maps to ▄ (half height) on the 9-level ramp: pyround(.5*8)=4 -> " ▁▂▃▄"[4].
@@ -84,6 +86,26 @@ const eq = (vals, extra = {}) => {
     ok(vlen(rendered) === w && w === Math.min(n, EQ_MAX),
        `N=${n}: vlen(${vlen(rendered)}) == fixedWidth(${w}) == min(N,cap)(${Math.min(n, EQ_MAX)})`);
   }
+}
+
+// 8. Configurable colour: custom stops, solid colour, and hard transitions.
+{
+  // Single stop / solid hex -> one colour regardless of value.
+  const solidPair = fgs(eq([0.1, 0.9], { color: [[0, "#ff0000"]] }));
+  ok(solidPair.every((c) => JSON.stringify(c) === JSON.stringify([255, 0, 0])),
+     "single colour stop -> solid (every column the same colour)");
+  const solidHex = fgs(eq([0.1, 0.9], { color: "#00ff00" }));
+  ok(solidHex.every((c) => JSON.stringify(c) === JSON.stringify([0, 255, 0])),
+     "solid #hex string -> every column that colour");
+
+  // Two-stop gradient interpolates: black->white at .5 -> mid grey.
+  const mid = fgs(eq([0.5], { color: [[0, "#000000"], [100, "#ffffff"]] }))[0];
+  ok(mid[0] === 128 && mid[1] === 128 && mid[2] === 128, `black->white at .5 -> [128,128,128] (got ${mid})`);
+
+  // Adjacent stops (50/51) make a near-hard transition: .49 green, .52 yellow.
+  const hard = { color: [[50, "#00ff00"], [51, "#ffff00"]] };
+  ok(JSON.stringify(fgs(eq([0.49], hard))[0]) === JSON.stringify([0, 255, 0]), "hard stop: .49 -> green");
+  ok(JSON.stringify(fgs(eq([0.52], hard))[0]) === JSON.stringify([255, 255, 0]), "hard stop: .52 -> yellow");
 }
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILED`);
