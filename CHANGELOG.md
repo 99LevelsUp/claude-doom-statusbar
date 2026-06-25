@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-06-25
+
+### Changed
+- **Mugshot health is now distance-to-wall weighted by the learned cap ratio**, replacing the
+  time-to-exhaustion model from 0.10.0 (whose health dipped while actively working and rose when
+  idle — unintuitive). Health now declines with how much budget is *consumed* and is flat when
+  idle, like a depleting clip. The rate-limit caps are unknown, but their ratio is recoverable:
+  the same usage is a larger %-step of the smaller cap, so `k = d(5h%)/d(7d%) = cap7d/cap5h`,
+  accumulated from positive per-sample deltas (reset-robust). Health is then the nearer wall in
+  5h-budget units — `min(100 − 5h%, (100 − 7d%) × k)` — which correctly picks the window you'd
+  hit first without any token counts or subscription info. Exhausting the weekly (7d) window
+  reads as dead even while the 5h clip is free, and stays dead until the 7d window resets. Until
+  enough 7d signal exists, `k = 1` (plain min-remaining), so cold start is seamless.
+
 ## [0.10.0] - 2026-06-25
 
 ### Changed
