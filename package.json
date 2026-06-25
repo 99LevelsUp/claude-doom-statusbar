@@ -1,6 +1,6 @@
 {
   "name": "claude-doom-statusbar",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "DOOM-inspired status bar for the Claude Code CLI — a mugshot that tracks session health, plus usage, model, project, system, and a live subagent list.",
   "type": "module",
   "bin": {
