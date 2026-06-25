@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-06-25
+
+### Added
+- **Windows MSYS "bash flood" gauge (`sys.zombies`, 🧟).** On Windows every Claude
+  Code hook and the Bash tool launch through Git Bash, so concurrent `bash.exe`
+  inits can poison the shared MSYS section (`add_item ... errno 1`). The async hook
+  now counts live `bash.exe` via `tasklist` (a direct exe — never through bash,
+  which would feed the very flood being measured), piggybacked on the throttled
+  git-snapshot event so it never runs on a render tick. The SYSTEM box renders the
+  count with a count-tuned gradient (green ≤5, amber ~8, red ≥10). Win32 only —
+  hidden everywhere else.
+- **`tools/fix-msys.cmd`** — a manual, out-of-session repair script for the poisoned
+  state. Pure `cmd.exe` (works even if bash is broken); locates `dash.exe`, refuses
+  to run while any `bash.exe` is alive (rebaseall needs zero live MSYS processes or
+  it corrupts `msys-2.0.dll`), then runs `rebaseall`. Never auto-triggered.
+
 ### Changed
 - **The SYS box is now SYSTEM**, and the per-core CPU equalizer shares one row with
   the aggregate CPU %: a 🔥 icon, the per-core equalizer, and the CPU percentage
