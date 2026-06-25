@@ -462,6 +462,9 @@ export function activityValues(st, now) {
   });
 
   if ("errors" in st) v["act.errors"] = String(st.errors);
+  // MSYS bash-flood gauge: live bash.exe count the async hook snapshotted (win32 only). The
+  // preset colours it by threshold so a forming "zombie horde" reds out before add_item bites.
+  if (st.msys && typeof st.msys.n === "number") v["sys.zombies"] = String(st.msys.n);
   return v;
 }
 

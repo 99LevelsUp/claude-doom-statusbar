@@ -67,6 +67,22 @@ function gitSnapshot(cwd) {
   };
 }
 
+// Windows MSYS "bash flood" pressure gauge. Git Bash backs every hook AND the Bash tool on
+// Windows, so when too many bash.exe inits collide the shared MSYS section corrupts
+// ("add_item errno 1"). We can't repair that from inside a live session (the host keeps
+// spawning bash — see tools/fix-msys.cmd), but we can surface the pressure so the HUD warns
+// before it bites. Counted via tasklist — a direct exe, never through bash, which would feed
+// the very flood we measure. Non-win32 / failure -> null, so the HUD field simply never shows.
+function bashCount() {
+  if (process.platform !== "win32") return null;
+  try {
+    const r = spawnSync("tasklist", ["/fi", "imagename eq bash.exe", "/fo", "csv", "/nh"],
+      { encoding: "utf8", timeout: 1000, windowsHide: true });
+    if (r.status !== 0 || !r.stdout) return 0; // no match -> tasklist prints an INFO line, not a row
+    return r.stdout.split("\n").filter((l) => l.toLowerCase().includes("bash.exe")).length;
+  } catch { return null; }
+}
+
 // Best-effort per-session throttle (not a lock): a tiny marker holds the last git ts + cwd.
 // Worst case under a race is a redundant concurrent git spawn — harmless and rare.
 function gitMarkerPath(sid) {
@@ -113,6 +129,15 @@ function main() {
         appendFileSync(journal, JSON.stringify({ name: "git", ev: { git: snap }, ts: now }) + "\n", { flag: "a" });
       } catch { /* ignore */ }
       try { writeFileSync(gitMarkerPath(sid), JSON.stringify({ ts: nowMs, cwd })); } catch { /* ignore */ }
+
+      // Piggyback the MSYS bash-flood gauge on the same throttled, event-driven path (never a
+      // render tick). win32 only; null elsewhere -> no line, so the HUD field stays hidden.
+      const n = bashCount();
+      if (n !== null) {
+        try {
+          appendFileSync(journal, JSON.stringify({ name: "msys", ev: { msys: { n } }, ts: now }) + "\n", { flag: "a" });
+        } catch { /* ignore */ }
+      }
     }
   } catch { /* swallow everything: a hook must never block a tool */ }
   process.exit(0);

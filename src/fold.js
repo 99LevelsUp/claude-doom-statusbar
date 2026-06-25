@@ -118,6 +118,7 @@ export function foldEvent(st, name, ev, now) {
   if (expr) { st.expr = expr; st.ts = now; }
   if (ev.permission_mode) st.mode = ev.permission_mode;
   if (name === "git" && ev.git) st.git = ev.git; // { br, lr, st, cwd } or { cwd } when no repo
+  if (name === "msys" && ev.msys) st.msys = ev.msys; // { n } — live bash.exe count (win32 only)
 }
 
 // Fold a batch of journal lines (each { name, ev, ts }) into st. Sort by ts first: async
