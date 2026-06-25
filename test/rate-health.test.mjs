@@ -46,6 +46,14 @@ const near = (a, b, eps = 0.5) => Math.abs(a - b) <= eps;
   ok(headroom === 25, `7d binds when its scaled runway is smaller (got ${headroom}, want 25)`);
 }
 
+// 4b. Death by the WEEKLY wall: 7d exhausted (100%) kills health even with the 5h clip totally
+//     free (p5=0). (100 - 100) * k = 0 dominates the min -> health 0. You stay dead through 5h
+//     resets until the 7d window itself resets — exactly "die Monday, heal Sunday".
+{
+  const { headroom } = rateHeadroom({ p5: 0, p7: 100, sum5: 50, sum7: 10 }, { p5: 0, p7: 100 });
+  ok(headroom === 0, `7d exhausted -> dead even with 5h free (got ${headroom}, want 0)`);
+}
+
 // 5. Reset-robust: a percentage DROP (window rollover) is a negative delta that must not pollute
 //    the accumulator. 5h drops 90->5; sum5 unchanged, only 7d's positive step counts.
 {
