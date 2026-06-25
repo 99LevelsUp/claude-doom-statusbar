@@ -30,6 +30,14 @@ const GIT_TTL = Number.isFinite(Number(process.env.DOOMBAR_GIT_TTL))
   ? Number(process.env.DOOMBAR_GIT_TTL)
   : 4000; // ms; DOOMBAR_GIT_TTL=0 disables throttling (0 is a valid TTL)
 
+// The bash count is a VOLATILE signal (unlike git, which only changes on writes), so it can't
+// ride git's write-gated cadence — a captured spike would stick on the HUD until the next write
+// tool ran. It gets its own time-based gate that fires on ANY event, so the gauge tracks reality
+// within MSYS_TTL regardless of which tools run. DOOMBAR_MSYS_TTL=0 disables throttling.
+const MSYS_TTL = Number.isFinite(Number(process.env.DOOMBAR_MSYS_TTL))
+  ? Number(process.env.DOOMBAR_MSYS_TTL)
+  : 4000; // ms
+
 // Project an event down to only the fields fold.js consumes. Keeps journal lines tiny and
 // bounded — a raw Write/Edit event carries the whole file body in tool_input, which would
 // bloat the journal and stress append atomicity. We never journal that.
@@ -100,6 +108,19 @@ function shouldSnapshotGit(name, ev, nowMs, sid) {
   return nowMs - (m.ts || 0) >= GIT_TTL;
 }
 
+function msysMarkerPath(sid) {
+  return path.join(os.tmpdir(), `mugshot_msys_${sidKey(sid)}.json`);
+}
+
+// Fires on any event once MSYS_TTL has elapsed (SessionStart always primes). No tool-type gate:
+// the count must track reality, not just write activity.
+function shouldSnapshotMsys(name, nowMs, sid) {
+  if (name === "SessionStart") return true;
+  let m = {};
+  try { m = JSON.parse(readFileSync(msysMarkerPath(sid), "utf8")); } catch { /* none */ }
+  return nowMs - (m.ts || 0) >= MSYS_TTL;
+}
+
 function main() {
   try {
     let ev = {};
@@ -129,14 +150,17 @@ function main() {
         appendFileSync(journal, JSON.stringify({ name: "git", ev: { git: snap }, ts: now }) + "\n", { flag: "a" });
       } catch { /* ignore */ }
       try { writeFileSync(gitMarkerPath(sid), JSON.stringify({ ts: nowMs, cwd })); } catch { /* ignore */ }
+    }
 
-      // Piggyback the MSYS bash-flood gauge on the same throttled, event-driven path (never a
-      // render tick). win32 only; null elsewhere -> no line, so the HUD field stays hidden.
+    // MSYS bash-flood gauge: its own time-based gate so a volatile count tracks reality on ANY
+    // event (never a render tick). win32 only; null elsewhere -> no line, so the field stays hidden.
+    if (shouldSnapshotMsys(name, nowMs, sid)) {
       const n = bashCount();
       if (n !== null) {
         try {
           appendFileSync(journal, JSON.stringify({ name: "msys", ev: { msys: { n } }, ts: now }) + "\n", { flag: "a" });
         } catch { /* ignore */ }
+        try { writeFileSync(msysMarkerPath(sid), JSON.stringify({ ts: nowMs })); } catch { /* ignore */ }
       }
     }
   } catch { /* swallow everything: a hook must never block a tool */ }

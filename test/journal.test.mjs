@@ -36,9 +36,12 @@ try {
   ok(runHook("not json") === 0, "garbage stdin -> hook exit 0");
   ok(runHook(line({ hook_event_name: "TaskCreated", session_id: "x", task_id: "t1", task_title: "scaffold" })) === 0,
     "TaskCreated -> hook exit 0");
-  const j1 = readFileSync(journal, "utf8").trim().split("\n");
-  ok(j1.length === 2, `journal has 2 appended lines (got ${j1.length})`); // garbage event + task event
-  ok(JSON.parse(j1[1]).name === "TaskCreated", "appended line is the event, parseable");
+  // Count only EVENT lines: the hook also appends throttled git/msys snapshot lines (win32),
+  // which are orthogonal to the append-per-event mechanic under test here.
+  const j1 = readFileSync(journal, "utf8").trim().split("\n")
+    .map((l) => JSON.parse(l)).filter((o) => o.name !== "git" && o.name !== "msys");
+  ok(j1.length === 2, `journal has 2 appended event lines (got ${j1.length})`); // garbage event + task event
+  ok(j1[1].name === "TaskCreated", "appended line is the event, parseable");
 
   // --- loadState folds the journal into the checkpoint and advances offset ---
   let st = loadState({ session_id: "x" });

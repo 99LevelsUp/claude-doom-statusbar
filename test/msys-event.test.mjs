@@ -57,6 +57,26 @@ try {
   } else {
     ok(!msysLine, "non-win32: hook emits no msys line (bashCount returns null)");
   }
+
+  // Regression: the count must refresh on NON-write events too (it has its own time-based gate,
+  // not git's write-tool gate). PowerShell is not a WRITE_TOOL, so before the decoupling this
+  // event produced no msys line and a captured spike would stick on the HUD. MSYS_TTL=0 = no
+  // throttle. Isolated in its own checkpoint/journal so only this event's output is inspected.
+  const checkpoint2 = path.join(tmp, "state-rw.json");
+  const journal2 = checkpoint2 + ".jsonl";
+  const sid3 = "msysrw-" + process.pid;
+  const env0 = { ...process.env, MUGSHOT_STATE: checkpoint2, DOOMBAR_MSYS_TTL: "0" };
+  execFileSync(process.execPath, [HOOK], {
+    input: JSON.stringify({ hook_event_name: "PostToolUse", session_id: sid3, tool_name: "PowerShell", cwd: tmp }),
+    encoding: "utf8", env: env0,
+  });
+  const rwLines = readFileSync(journal2, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  const rwMsys = rwLines.find((l) => l.name === "msys");
+  if (process.platform === "win32") {
+    ok(!!rwMsys, "win32: msys snapshot fires on a non-write event (decoupled from git's write gate)");
+  } else {
+    ok(!rwMsys, "non-win32: still no msys line on a non-write event");
+  }
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }
