@@ -18,7 +18,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { parse as parseToml } from "smol-toml";
 import { pyround, sgrFg } from "./ansi.js";
 import { buildBar, setValues, resolvePreset, OK, TEXT, CRIT } from "./render.js";
-import { foldBatch, statePaths } from "./fold.js";
+import { foldBatch, statePaths, sidKey } from "./fold.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.dirname(HERE);
@@ -468,6 +468,79 @@ export function activityValues(st, now) {
   return v;
 }
 
+// --- Rate-based mugshot health -------------------------------------------------------------
+// The face should track which rate-limit window you hit FIRST, not which is proportionally
+// fullest. Anthropic exposes only used_percentage per window (no caps, no absolutes), so we
+// derive time-to-exhaustion from the RATE at which each percentage climbs:
+//
+//   T_window = (100 - used%) / d(used%)/dt        // seconds until this window hits 100
+//
+// The absolute cap cancels — numerator and denominator are both in % of the SAME cap — so this
+// needs no token counts and no knowledge of the subscription tier. The binding window is the
+// smaller T; health is that runway normalised to one 5-hour clip (>= 5h runway reads as full
+// health). A percentage DROP means the window rolled over / reset -> fresh budget -> healthy. A
+// window that resets_at before it would exhaust never binds. Rate is averaged over RATE_WINDOW
+// (cheap smoothing against per-response steps); below that we hold the last value, and with no
+// baseline yet we return null so hpRow falls back to the snapshot metric.
+const FIVE_HOURS_SEC = 5 * 3600;
+const RATE_EPS = 1e-9;
+const RATE_WINDOW = Number.isFinite(Number(process.env.DOOMBAR_RATE_WINDOW))
+  ? Number(process.env.DOOMBAR_RATE_WINDOW)
+  : 60; // seconds of consumption history per rate estimate
+
+// Pure: prev baseline { p5, p7, ts, headroom } | null, cur { p5, p7, reset5, reset7 } (percents
+// 0..100 or null; resets epoch seconds or null), now (epoch seconds). Returns the headroom
+// (0..100, or null on cold start -> caller falls back) plus the baseline to persist.
+export function rateHeadroom(prev, cur, now, window = RATE_WINDOW) {
+  const fresh = { p5: cur.p5, p7: cur.p7, ts: now, headroom: null };
+  if (!prev || typeof prev.ts !== "number") return { headroom: null, state: fresh };
+
+  const dt = now - prev.ts;
+  if (dt < window) return { headroom: prev.headroom ?? null, state: { ...prev } }; // hold
+
+  // A percentage drop = the window rolled over / reset -> you just got fresh budget.
+  const dropped = (cur.p5 != null && prev.p5 != null && cur.p5 < prev.p5) ||
+                  (cur.p7 != null && prev.p7 != null && cur.p7 < prev.p7);
+  if (dropped) return { headroom: 100, state: { p5: cur.p5, p7: cur.p7, ts: now, headroom: 100 } };
+
+  const tte = (p, p0, resets) => {
+    if (p == null || p0 == null) return Infinity;       // window absent -> not binding
+    const r = (p - p0) / dt;                            // percentage-points per second (>= 0 here)
+    if (r <= RATE_EPS) return Infinity;                 // not consuming -> not binding
+    const t = (100 - p) / r;                            // seconds until this window hits 100%
+    if (resets != null) {                               // resets before exhaustion -> never binds
+      const untilReset = resets - now;
+      if (untilReset > 0 && untilReset <= t) return Infinity;
+    }
+    return t;
+  };
+
+  const t = Math.min(tte(cur.p5, prev.p5, cur.reset5), tte(cur.p7, prev.p7, cur.reset7));
+  const headroom = Number.isFinite(t) ? Math.max(0, Math.min(100, 100 * t / FIVE_HOURS_SEC)) : 100;
+  return { headroom, state: { p5: cur.p5, p7: cur.p7, ts: now, headroom } };
+}
+
+// I/O wrapper: pull the rate-limit percentages from the statusline payload, fold the persisted
+// baseline through rateHeadroom, persist the new baseline, and return the headroom (or null when
+// there are no rate limits / still cold -> hpRow uses its snapshot fallback).
+function rateHealthValue(data, now) {
+  const rl = data.rate_limits || {};
+  const f = rl.five_hour, s = rl.seven_day;
+  const cur = {
+    p5: f && "used_percentage" in f ? f.used_percentage : null,
+    p7: s && "used_percentage" in s ? s.used_percentage : null,
+    reset5: f && f.resets_at != null ? f.resets_at : null,
+    reset7: s && s.resets_at != null ? s.resets_at : null,
+  };
+  if (cur.p5 == null && cur.p7 == null) return null; // no rate limits -> context fallback
+  const file = path.join(TMP, `mugshot_ratehealth_${sidKey(data.session_id)}.json`);
+  let prev = null;
+  try { prev = JSON.parse(readFileSync(file, "utf8")); } catch { /* no baseline yet */ }
+  const { headroom, state } = rateHeadroom(prev, cur, now);
+  try { writeFileSync(file, JSON.stringify(state)); } catch { /* ignore */ }
+  return headroom;
+}
+
 function main() {
   let data = {};
   try { data = JSON.parse(readFileSync(0, "utf8")); } catch { data = {}; }
@@ -482,6 +555,9 @@ function main() {
   const [advModel, advTs] = advisorInfo(data.transcript_path || "");
   if (advModel) values["advisor.model"] = advModel;
   const god_until = godFlash(data, advTs, now);
+  // Rate-based mugshot health: when present, hpRow prefers it over the snapshot headroom.
+  const headroom = rateHealthValue(data, now);
+  if (headroom !== null) values["health.headroom"] = headroom;
   setValues(values);
 
   let exhausted;
