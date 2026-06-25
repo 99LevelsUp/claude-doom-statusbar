@@ -439,9 +439,9 @@ function boxWidth(box, cells, textCap = TEXTCAP_MAX) {
 function hpRow(thresholds = HP_THRESHOLDS) {
   let headroom;
   if ("health.headroom" in VALUES) {
-    // Rate-limit health (statusline.js): floor of the rate runway (which window binds first,
-    // normalised to a 5h clip) and the level (tightest remaining %), so the face warns on
-    // burning fast OR simply being near a wall. Already incorporates the snapshot metric.
+    // Rate-limit health (statusline.js): distance to the first wall in 5h-budget units, where
+    // the binding window is weighted by the learned cap ratio (k = how much faster 5h% climbs
+    // than 7d%). Declines with consumption, flat when idle. Already in 0..100.
     headroom = VALUES["health.headroom"];
   } else if ("ratelimit.5h" in VALUES || "ratelimit.7d" in VALUES) {
     // Defensive fallback (only if health.headroom is somehow absent): tightest remaining budget.

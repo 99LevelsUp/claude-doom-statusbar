@@ -469,100 +469,62 @@ export function activityValues(st, now) {
 }
 
 // --- Rate-based mugshot health -------------------------------------------------------------
-// The face should track which rate-limit window you hit FIRST, not which is proportionally
-// fullest. Anthropic exposes only used_percentage per window (no caps, no absolutes), so we
-// derive time-to-exhaustion from the RATE at which each percentage climbs:
+// Health = distance to the FIRST rate-limit wall, in units of the 5h budget. Anthropic exposes
+// only used_percentage per window (no caps, no absolutes), but we don't need them: the ratio of
+// how fast the two percentages climb IS the ratio of their caps.
 //
-//   T_window = (100 - used%) / d(used%)/dt        // seconds until this window hits 100
+//   the same usage is a bigger %-step of the smaller cap, so   k = d(p5)/d(p7) = cap7d / cap5h
 //
-// The absolute cap cancels — numerator and denominator are both in % of the SAME cap — so this
-// needs no token counts and no knowledge of the subscription tier. The binding window is the
-// smaller T; health is that runway normalised to one 5-hour clip (>= 5h runway reads as full
-// health). A percentage DROP means the window rolled over / reset -> fresh budget -> healthy. A
-// window that resets_at before it would exhaust never binds. Rate is averaged over RATE_WINDOW
-// (cheap smoothing against per-response steps); below that we hold the last value, and with no
-// baseline yet we return null so hpRow falls back to the snapshot metric.
-const FIVE_HOURS_SEC = 5 * 3600;
-const RATE_EPS = 1e-9;
-const RATE_WINDOW = Number.isFinite(Number(process.env.DOOMBAR_RATE_WINDOW))
-  ? Number(process.env.DOOMBAR_RATE_WINDOW)
-  : 60; // seconds of consumption history per rate estimate
-
-// Pure: prev baseline { p5, p7, ts, rateComp } | null, cur { p5, p7, reset5, reset7 } (percents
-// 0..100 or null; resets epoch seconds or null), now (epoch seconds). Returns the headroom
-// (0..100) plus the baseline to persist.
+// k is a stable property of the plan (not of how hard you're working), so summing positive
+// per-sample deltas converges on it within a few measurements — and summing only positive steps
+// is reset-robust (a window rollover is a negative step we skip; the positive climbs already sum
+// to total consumption). With cap5h normalised to 100 "health points", the 7d window holds
+// k*100, so remaining 7d budget in 5h-units is (100 - p7) * k. Health is the nearer wall:
 //
-// Health is the FLOOR of two lenses, so the face warns on either failure mode:
-//   - level  (instantaneous): tightest remaining headroom now, min(100 - used%). Catches
-//             "near a wall" even while idle.
-//   - rate   (windowed):      time-to-exhaustion normalised to a 5h clip — which window binds
-//             first at the current consumption rate. Catches "burning fast" before the level is
-//             alarming. Unknown until a baseline spans `window`; reset/idle -> non-binding (100).
-// headroom = min(level, rate). The absolute caps cancel in the rate term, so no token counts or
-// subscription info are needed. With no rate baseline yet, rate = 100 -> headroom == the level
-// metric (identical to the old snapshot behaviour), so cold start is seamless.
-export function rateHeadroom(prev, cur, now, window = RATE_WINDOW) {
-  // Level lens — always fresh, always available.
-  const rem = [];
-  if (cur.p5 != null) rem.push(100 - cur.p5);
-  if (cur.p7 != null) rem.push(100 - cur.p7);
-  const levelRem = rem.length ? Math.max(0, Math.min(100, Math.min(...rem))) : 100;
+//   health = min( 100 - p5 ,  (100 - p7) * k )        (clamped 0..100)
+//
+// This DECLINES as you consume (p rises) and is flat when idle — it depends on how much budget
+// is gone, not how fast it went, which is the intuitive "distance to the wall". Until there's
+// enough 7d signal, k = 1, so health == the plain min-remaining metric (seamless cold start).
+const K_MIN_SIGNAL = 1.0;        // percentage-points of 7d movement before the cap ratio is trusted
+const K_LO = 0.2, K_HI = 100;    // clamp the cap-ratio estimate against early-sample noise
 
-  const hasBase = prev && typeof prev.ts === "number";
-  const hold = hasBase && (now - prev.ts < window);
-  const dropped = hasBase &&
-    ((cur.p5 != null && prev.p5 != null && cur.p5 < prev.p5) ||
-     (cur.p7 != null && prev.p7 != null && cur.p7 < prev.p7));
+// Pure: prev { p5, p7, sum5, sum7 } | null (last percents + accumulated positive deltas),
+// cur { p5, p7 } (percents 0..100 or null). Returns headroom (0..100) + the state to persist.
+export function rateHeadroom(prev, cur) {
+  // Accumulate positive per-sample deltas of each window's used%. Their ratio is the cap ratio.
+  let sum5 = (prev && prev.sum5) || 0;
+  let sum7 = (prev && prev.sum7) || 0;
+  if (prev && prev.p5 != null && cur.p5 != null) { const d = cur.p5 - prev.p5; if (d > 0) sum5 += d; }
+  if (prev && prev.p7 != null && cur.p7 != null) { const d = cur.p7 - prev.p7; if (d > 0) sum7 += d; }
 
-  // Rate lens — windowed runway, or 100 (non-binding) when unknown/idle/just-reset.
-  let rateComp;
-  if (!hasBase || dropped) {
-    rateComp = 100;                                     // no baseline / window reset -> unknown
-  } else if (hold) {
-    rateComp = prev.rateComp ?? 100;                    // hold the last measured rate
-  } else {
-    const dt = now - prev.ts;
-    const tte = (p, p0, resets) => {
-      if (p == null || p0 == null) return Infinity;     // window absent -> not binding
-      const r = (p - p0) / dt;                          // percentage-points per second (>= 0 here)
-      if (r <= RATE_EPS) return Infinity;               // not consuming -> not binding
-      const t = (100 - p) / r;                          // seconds until this window hits 100%
-      if (resets != null) {                             // resets before exhaustion -> never binds
-        const untilReset = resets - now;
-        if (untilReset > 0 && untilReset <= t) return Infinity;
-      }
-      return t;
-    };
-    const t = Math.min(tte(cur.p5, prev.p5, cur.reset5), tte(cur.p7, prev.p7, cur.reset7));
-    rateComp = Number.isFinite(t) ? Math.max(0, Math.min(100, 100 * t / FIVE_HOURS_SEC)) : 100;
-  }
+  // k = how many times faster 5h% climbs than 7d% = cap7d / cap5h. Until there's enough 7d
+  // signal, k = 1 -> health == plain distance-to-wall. Clamp against early noise.
+  let k = 1;
+  if (sum7 >= K_MIN_SIGNAL && sum5 > 0) k = Math.max(K_LO, Math.min(K_HI, sum5 / sum7));
 
-  const headroom = Math.min(rateComp, levelRem);
-  // Advance the baseline except while holding (let the window grow to a full `window`).
-  const base = hold ? { p5: prev.p5, p7: prev.p7, ts: prev.ts } : { p5: cur.p5, p7: cur.p7, ts: now };
-  return { headroom, state: { ...base, rateComp } };
+  // Distance to the nearer wall, in 5h-budget units (cap5h = 100 health points; cap7d = k*100).
+  const rem5 = cur.p5 != null ? 100 - cur.p5 : 100;
+  const rem7 = cur.p7 != null ? (100 - cur.p7) * k : 100;
+  const headroom = Math.max(0, Math.min(100, Math.min(rem5, rem7)));
+
+  return { headroom, state: { p5: cur.p5, p7: cur.p7, sum5, sum7 } };
 }
 
-// I/O wrapper: pull the rate-limit percentages from the statusline payload, fold the persisted
-// baseline through rateHeadroom, persist the new baseline, and return the headroom (or null when
-// there are no rate limits / still cold -> hpRow uses its snapshot fallback).
-function rateHealthValue(data, now) {
+// I/O wrapper: pull the rate-limit percentages from the payload, fold the persisted accumulator
+// through rateHeadroom, persist it, return the headroom (or null when there are no rate limits
+// -> hpRow uses its context fallback).
+function rateHealthValue(data) {
   const rl = data.rate_limits || {};
-  // Throw-proof extraction: this runs on the render hot path, and a malformed payload (e.g. a
-  // non-object window) must never blank the HUD — main() has no top-level catch. Accept only
-  // real numbers; anything else reads as null (absent window) -> fallback.
+  // Throw-proof extraction: this runs on the render hot path and main() has no top-level catch,
+  // so a malformed payload (e.g. a non-object window) must never blank the HUD. Numbers only.
   const num = (o, k) => (o && typeof o === "object" && typeof o[k] === "number") ? o[k] : null;
-  const cur = {
-    p5: num(rl.five_hour, "used_percentage"),
-    p7: num(rl.seven_day, "used_percentage"),
-    reset5: num(rl.five_hour, "resets_at"),
-    reset7: num(rl.seven_day, "resets_at"),
-  };
+  const cur = { p5: num(rl.five_hour, "used_percentage"), p7: num(rl.seven_day, "used_percentage") };
   if (cur.p5 == null && cur.p7 == null) return null; // no rate limits -> context fallback
   const file = path.join(TMP, `mugshot_ratehealth_${sidKey(data.session_id)}.json`);
   let prev = null;
-  try { prev = JSON.parse(readFileSync(file, "utf8")); } catch { /* no baseline yet */ }
-  const { headroom, state } = rateHeadroom(prev, cur, now);
+  try { prev = JSON.parse(readFileSync(file, "utf8")); } catch { /* no accumulator yet */ }
+  const { headroom, state } = rateHeadroom(prev, cur);
   try { writeFileSync(file, JSON.stringify(state)); } catch { /* ignore */ }
   return headroom;
 }
@@ -582,7 +544,7 @@ function main() {
   if (advModel) values["advisor.model"] = advModel;
   const god_until = godFlash(data, advTs, now);
   // Rate-based mugshot health: when present, hpRow prefers it over the snapshot headroom.
-  const headroom = rateHealthValue(data, now);
+  const headroom = rateHealthValue(data);
   if (headroom !== null) values["health.headroom"] = headroom;
   setValues(values);
 
