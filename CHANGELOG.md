@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Mugshot health is now consistent across concurrent sessions.** The cap-ratio accumulator
+  (`k = cap7d/cap5h`) was stored per session, so each session re-learned `k` from scratch and —
+  because the 7d window barely moves within one session — almost always stalled at `k = 1`. Two
+  sessions on the *same account* could therefore show wildly different health (e.g. 24 vs 93).
+  Rate limits are account-wide, so the accumulator is now a single global file: one shared `k`,
+  identical health everywhere, and it also captures movement that happened while a given session
+  wasn't sampling.
+
+### Changed
+- **Cold-start health now uses the 5h clip alone instead of `k = 1` min-remaining.** Before the
+  cap ratio is known, guessing `k = 1` wrongly scaled the slow 7d window 1:1 and dragged health
+  down (e.g. 7d at 76% pinned health to 24 from the first render). Health now ignores the 7d
+  window until `k` is actually measured: `health = rem5` when the ratio is unknown,
+  `min(rem7 × k, rem5)` once it's known. The one exception is death — a fully exhausted window
+  (`rem == 0`) reads as dead regardless of `k`.
+
 ## [0.11.0] - 2026-06-25
 
 ### Changed

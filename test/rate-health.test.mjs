@@ -2,11 +2,13 @@
 // Rate-based mugshot health (rateHeadroom): distance to the FIRST rate-limit wall, in 5h-budget
 // units. We can't read caps/absolutes, but the ratio of how fast the two used% climb IS the cap
 // ratio (k = d(p5)/d(p7) = cap7d/cap5h) — accumulated from positive per-sample deltas. Then
-//   health = min( 100 - p5 , (100 - p7) * k )
-// which declines with CONSUMPTION (not speed) and is flat when idle.
+//   rem5 = 100 - p5 ,  rem7 = 100 - p7
+//   health = (rem5==0 || rem7==0) ? 0 : k known ? min(rem7*k, rem5) : rem5
+// i.e. either wall hit -> death; ratio known -> nearer scaled wall; ratio unknown -> 5h clip only.
+// It declines with CONSUMPTION (not speed) and is flat when idle.
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, existsSync, rmSync, readdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,10 +20,11 @@ let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 const near = (a, b, eps = 0.5) => Math.abs(a - b) <= eps;
 
-// 1. Cold start: no accumulator -> k = 1 -> health == plain min-remaining. min(80, 70) = 70.
+// 1. Cold start: no accumulator -> ratio UNKNOWN -> health = 5h clip alone (7d ignored until k is
+//    learned, so the long window doesn't wrongly drag health down). rem5 = 100 - 20 = 80.
 {
   const { headroom, state } = rateHeadroom(null, { p5: 20, p7: 30 });
-  ok(headroom === 70, `cold start -> plain distance-to-wall (got ${headroom}, want 70)`);
+  ok(headroom === 80, `cold start -> 5h clip only (got ${headroom}, want 80)`);
   ok(state.sum5 === 0 && state.sum7 === 0, "cold start seeds empty accumulators");
 }
 
@@ -76,45 +79,73 @@ const near = (a, b, eps = 0.5) => Math.abs(a - b) <= eps;
   ok(b.state.sum5 === 50 && b.state.sum7 === 10, "idle does not accumulate ratio signal");
 }
 
-// 8. Before enough 7d signal (sum7 < 1pp), k = 1 -> plain min-remaining (uncorrected). 7d at 80%
-//    drives health to 20 until the ratio is learned.
+// 8. Before enough 7d signal (sum7 < 1pp), ratio is UNKNOWN -> health = 5h clip only; 7d at 80%
+//    is ignored until k is learned. rem5 = 100 - 20 = 80 (not 20).
 {
   const { headroom } = rateHeadroom({ p5: 20, p7: 80, sum5: 0.4, sum7: 0.2 }, { p5: 20, p7: 80 });
-  ok(headroom === 20, `pre-signal falls back to plain level (got ${headroom}, want 20)`);
+  ok(headroom === 80, `pre-signal -> 5h clip only, 7d ignored (got ${headroom}, want 80)`);
+}
+
+// 8b. Death overrides the unknown-ratio fallback: even before k is learned, a fully exhausted 7d
+//     window (rem7 = 0) kills health. "die Monday, heal Sunday" doesn't wait for the ratio.
+{
+  const { headroom } = rateHeadroom({ p5: 0, p7: 100, sum5: 0, sum7: 0 }, { p5: 0, p7: 100 });
+  ok(headroom === 0, `7d exhausted -> dead even with ratio unknown (got ${headroom}, want 0)`);
 }
 
 // 9. Integration: the live wiring (rateHealthValue -> values["health.headroom"] -> hpRow) must
 //    render without crashing and persist the accumulator. Sole end-to-end coverage of the path.
+//    The accumulator is GLOBAL (one file, not keyed by session_id) because rate limits are
+//    account-wide; we point os.tmpdir() at an isolated dir (TEMP/TMP/TMPDIR) so the test never
+//    touches the real shared file.
 {
   const tmp = mkdtempSync(path.join(os.tmpdir(), "doombar-ratewire-"));
-  const sid = "ratewire-" + process.pid;
-  const healthFile = path.join(os.tmpdir(), `mugshot_ratehealth_${sid}.json`);
+  const healthFile = path.join(tmp, "mugshot_ratehealth_global.json");
   const env = {
     ...process.env,
     DOOMBAR_PRESET: path.join(HERE, "..", "presets", "standard.toml"),
     MUGSHOT_STATE: path.join(tmp, "state.json"),
+    TEMP: tmp, TMP: tmp, TMPDIR: tmp, // isolate os.tmpdir() -> the global accumulator lands here
     COLUMNS: "100",
   };
-  const payload = (p5) => JSON.stringify({
+  const payload = (sid, p5) => JSON.stringify({
     session_id: sid,
     context_window: { used_percentage: 20, context_window_size: 200000 },
     rate_limits: { five_hour: { used_percentage: p5 }, seven_day: { used_percentage: 30 } },
     model: { display_name: "Test" },
   });
-  const run = (p5) => execFileSync(process.execPath, [STATUSLINE], { input: payload(p5), encoding: "utf8", env });
+  const run = (sid, p5) => execFileSync(process.execPath, [STATUSLINE], { input: payload(sid, p5), encoding: "utf8", env });
   try {
-    const out1 = run(20);
+    const out1 = run("session-A", 20);
     ok(out1.trim().length > 0, "render 1 produced output, no crash");
-    ok(existsSync(healthFile), "accumulator file written on first render");
-    const out2 = run(45); // 5h climbed -> a positive delta accumulates
+    ok(existsSync(healthFile), "global accumulator file written on first render");
+    const out2 = run("session-A", 45); // 5h climbed -> a positive delta accumulates
     ok(out2.trim().length > 0, "render 2 produced output, no crash");
     const st = JSON.parse(readFileSync(healthFile, "utf8"));
     ok(st.p5 === 45 && typeof st.sum5 === "number" && st.sum5 > 0,
       `accumulator advanced + recorded the climb (got ${JSON.stringify(st)})`);
+
+    // The whole point of going global: a DIFFERENT session shares the same accumulator. It does
+    // not start over — it reads session-A's learned state from the one global file.
+    run("session-B", 50);
+    const files = readdirSync(tmp).filter((f) => f.startsWith("mugshot_ratehealth_"));
+    ok(files.length === 1 && files[0] === "mugshot_ratehealth_global.json",
+      `both sessions share one global file, not per-session (got ${JSON.stringify(files)})`);
+    const stB = JSON.parse(readFileSync(healthFile, "utf8"));
+    ok(stB.sum5 > st.sum5, `session-B folded into session-A's accumulator (got sum5=${stB.sum5}, was ${st.sum5})`);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
-    try { rmSync(healthFile, { force: true }); } catch { /* ignore */ }
   }
+}
+
+// 10. Convergence (the bug this fixes): two sessions that observe the SAME account-wide movement
+//     must report identical health. Because k is account-level, feeding the same delta sequence
+//     through the shared accumulator yields the same headroom — no per-session k divergence.
+{
+  const seed = { p5: 0, p7: 0, sum5: 0, sum7: 0 };
+  const sA = rateHeadroom(seed, { p5: 8, p7: 1 });   // session A samples the climb
+  const sB = rateHeadroom(sA.state, { p5: 8, p7: 1 }); // session B reads A's shared state, same input
+  ok(near(sA.headroom, sB.headroom), `shared accumulator -> identical health (A=${sA.headroom}, B=${sB.headroom})`);
 }
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILED`);

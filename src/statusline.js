@@ -18,7 +18,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { parse as parseToml } from "smol-toml";
 import { pyround, sgrFg } from "./ansi.js";
 import { buildBar, setValues, resolvePreset, OK, TEXT, CRIT } from "./render.js";
-import { foldBatch, statePaths, sidKey } from "./fold.js";
+import { foldBatch, statePaths } from "./fold.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.dirname(HERE);
@@ -481,11 +481,16 @@ export function activityValues(st, now) {
 // to total consumption). With cap5h normalised to 100 "health points", the 7d window holds
 // k*100, so remaining 7d budget in 5h-units is (100 - p7) * k. Health is the nearer wall:
 //
-//   health = min( 100 - p5 ,  (100 - p7) * k )        (clamped 0..100)
+//   rem5 = 100 - p5 ,  rem7 = 100 - p7
+//   health = rem5 === 0 || rem7 === 0  ? 0                      // either wall hit -> death
+//          : k known                   ? min( rem7 * k , rem5 ) // nearer wall in 5h-units
+//          :                             rem5                   // k unknown -> 5h only
 //
 // This DECLINES as you consume (p rises) and is flat when idle — it depends on how much budget
-// is gone, not how fast it went, which is the intuitive "distance to the wall". Until there's
-// enough 7d signal, k = 1, so health == the plain min-remaining metric (seamless cold start).
+// is gone, not how fast it went, which is the intuitive "distance to the wall". Until enough 7d
+// signal is seen, k is UNKNOWN and we fall back to the 5h clip alone: guessing k=1 would wrongly
+// penalise the long window during cold start. The one exception is death — if 7d (or 5h) is fully
+// exhausted (rem == 0) you're dead regardless of k: "die Monday, heal Sunday".
 const K_MIN_SIGNAL = 1.0;        // percentage-points of 7d movement before the cap ratio is trusted
 const K_LO = 0.2, K_HI = 100;    // clamp the cap-ratio estimate against early-sample noise
 
@@ -498,15 +503,22 @@ export function rateHeadroom(prev, cur) {
   if (prev && prev.p5 != null && cur.p5 != null) { const d = cur.p5 - prev.p5; if (d > 0) sum5 += d; }
   if (prev && prev.p7 != null && cur.p7 != null) { const d = cur.p7 - prev.p7; if (d > 0) sum7 += d; }
 
-  // k = how many times faster 5h% climbs than 7d% = cap7d / cap5h. Until there's enough 7d
-  // signal, k = 1 -> health == plain distance-to-wall. Clamp against early noise.
-  let k = 1;
-  if (sum7 >= K_MIN_SIGNAL && sum5 > 0) k = Math.max(K_LO, Math.min(K_HI, sum5 / sum7));
-
-  // Distance to the nearer wall, in 5h-budget units (cap5h = 100 health points; cap7d = k*100).
+  // Plain distance-to-wall per window (cap5h normalised to 100 health points).
   const rem5 = cur.p5 != null ? 100 - cur.p5 : 100;
-  const rem7 = cur.p7 != null ? (100 - cur.p7) * k : 100;
-  const headroom = Math.max(0, Math.min(100, Math.min(rem5, rem7)));
+  const rem7 = cur.p7 != null ? 100 - cur.p7 : 100;
+
+  // k = how many times faster 5h% climbs than 7d% = cap7d / cap5h. "Known" only once there's
+  // enough 7d signal AND some 5h movement; clamp the estimate against early-sample noise.
+  const known = sum7 >= K_MIN_SIGNAL && sum5 > 0;
+  const k = known ? Math.max(K_LO, Math.min(K_HI, sum5 / sum7)) : 1;
+
+  // Either wall exhausted -> death. Else: ratio known -> nearer wall in 5h-units; ratio unknown
+  // -> 5h clip alone (don't penalise the long window before k is measured).
+  let headroom;
+  if (rem5 === 0 || rem7 === 0) headroom = 0;
+  else if (known) headroom = Math.min(rem7 * k, rem5);
+  else headroom = rem5;
+  headroom = Math.max(0, Math.min(100, headroom));
 
   return { headroom, state: { p5: cur.p5, p7: cur.p7, sum5, sum7 } };
 }
@@ -521,7 +533,12 @@ function rateHealthValue(data) {
   const num = (o, k) => (o && typeof o === "object" && typeof o[k] === "number") ? o[k] : null;
   const cur = { p5: num(rl.five_hour, "used_percentage"), p7: num(rl.seven_day, "used_percentage") };
   if (cur.p5 == null && cur.p7 == null) return null; // no rate limits -> context fallback
-  const file = path.join(TMP, `mugshot_ratehealth_${sidKey(data.session_id)}.json`);
+  // Rate limits (and therefore the cap ratio k) are ACCOUNT-wide, not per-session: every session
+  // samples the same used_percentage. A per-session accumulator made each session re-learn k from
+  // scratch and almost always stall at k=1 (7d moves <1pp per session), so identical accounts
+  // showed different health. One global file -> one shared k -> identical health everywhere, and
+  // it captures movement that happened while any given session wasn't sampling.
+  const file = path.join(TMP, "mugshot_ratehealth_global.json");
   let prev = null;
   try { prev = JSON.parse(readFileSync(file, "utf8")); } catch { /* no accumulator yet */ }
   const { headroom, state } = rateHeadroom(prev, cur);
