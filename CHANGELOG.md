@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-06-25
+
+### Fixed
+- **`sys.zombies` no longer sticks at a stale spike.** The bash-count snapshot rode
+  git's write-gated cadence, so non-write activity (PowerShell, Read, Grep) never
+  refreshed it and a captured spike lingered on the HUD long after the real count
+  dropped. It now has its own time-based gate (`DOOMBAR_MSYS_TTL`, default 4 s) that
+  fires on any event, so the gauge tracks reality regardless of which tools run.
+
 ## [0.9.0] - 2026-06-25
 
 ### Added
