@@ -525,12 +525,15 @@ export function rateHeadroom(prev, cur, now, window = RATE_WINDOW) {
 // there are no rate limits / still cold -> hpRow uses its snapshot fallback).
 function rateHealthValue(data, now) {
   const rl = data.rate_limits || {};
-  const f = rl.five_hour, s = rl.seven_day;
+  // Throw-proof extraction: this runs on the render hot path, and a malformed payload (e.g. a
+  // non-object window) must never blank the HUD — main() has no top-level catch. Accept only
+  // real numbers; anything else reads as null (absent window) -> fallback.
+  const num = (o, k) => (o && typeof o === "object" && typeof o[k] === "number") ? o[k] : null;
   const cur = {
-    p5: f && "used_percentage" in f ? f.used_percentage : null,
-    p7: s && "used_percentage" in s ? s.used_percentage : null,
-    reset5: f && f.resets_at != null ? f.resets_at : null,
-    reset7: s && s.resets_at != null ? s.resets_at : null,
+    p5: num(rl.five_hour, "used_percentage"),
+    p7: num(rl.seven_day, "used_percentage"),
+    reset5: num(rl.five_hour, "resets_at"),
+    reset7: num(rl.seven_day, "resets_at"),
   };
   if (cur.p5 == null && cur.p7 == null) return null; // no rate limits -> context fallback
   const file = path.join(TMP, `mugshot_ratehealth_${sidKey(data.session_id)}.json`);

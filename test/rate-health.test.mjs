@@ -3,8 +3,15 @@
 // from the RATE its used_percentage climbs, pick the window that binds first, normalise to a
 // 5h clip. The absolute caps cancel, so this needs no token counts or subscription info.
 
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, existsSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { rateHeadroom } from "../src/statusline.js";
 
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const STATUSLINE = path.join(HERE, "..", "src", "statusline.js");
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 const near = (a, b, eps = 0.5) => Math.abs(a - b) <= eps;
@@ -67,6 +74,46 @@ const W = 60; // explicit window for deterministic tests
   const prev = { p5: 0, p7: 0, ts: 0, headroom: null };
   const { headroom } = rateHeadroom(prev, { p5: 0.1, p7: 0, reset5: null, reset7: null }, 120, W);
   ok(headroom === 100, `>5h runway clamps to full health (got ${headroom})`);
+}
+
+// 9. Integration: the live wiring (rateHealthValue -> values["health.headroom"] -> hpRow) must
+//    not crash the render and must persist a numeric headroom once a baseline exists. Every other
+//    render/smoke test only hits the fallback branch (no baseline file), so this is the sole
+//    coverage of the rate path end-to-end. DOOMBAR_RATE_WINDOW=0 forces compute on the 2nd render.
+{
+  const tmp = mkdtempSync(path.join(os.tmpdir(), "doombar-ratewire-"));
+  const sid = "ratewire-" + process.pid;
+  const healthFile = path.join(os.tmpdir(), `mugshot_ratehealth_${sid}.json`);
+  const env = {
+    ...process.env,
+    DOOMBAR_PRESET: path.join(HERE, "..", "presets", "standard.toml"),
+    DOOMBAR_RATE_WINDOW: "0",
+    MUGSHOT_STATE: path.join(tmp, "state.json"),
+    COLUMNS: "100",
+  };
+  const nowSec = Math.floor(Date.now() / 1000);
+  const payload = (p5) => JSON.stringify({
+    session_id: sid,
+    context_window: { used_percentage: 20, context_window_size: 200000 },
+    rate_limits: {
+      five_hour: { used_percentage: p5, resets_at: nowSec + 9000 },
+      seven_day: { used_percentage: 30, resets_at: nowSec + 500000 },
+    },
+    model: { display_name: "Test" },
+  });
+  const run = (p5) => execFileSync(process.execPath, [STATUSLINE], { input: payload(p5), encoding: "utf8", env });
+  try {
+    const out1 = run(20);
+    ok(out1.trim().length > 0, "render 1 (cold start) produced output, no crash");
+    ok(existsSync(healthFile), "rate-health baseline file written on first render");
+    const out2 = run(45); // 5h climbed -> rate path computes (window 0)
+    ok(out2.trim().length > 0, "render 2 (rate path) produced output, no crash");
+    const st = JSON.parse(readFileSync(healthFile, "utf8"));
+    ok(typeof st.headroom === "number", `rate path persisted a numeric headroom (got ${JSON.stringify(st.headroom)})`);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+    try { rmSync(healthFile, { force: true }); } catch { /* ignore */ }
+  }
 }
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILED`);
