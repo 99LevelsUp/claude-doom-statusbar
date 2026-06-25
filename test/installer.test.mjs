@@ -41,6 +41,10 @@ const tmpdir = () => mkdtempSync(path.join(os.tmpdir(), "doombar-test-"));
      "all 10 hook events present (incl. SessionStart) with one entry each");
   ok(EVENTS.every((e) => cfg.hooks[e][0].hooks[0].async === true),
      "every hook entry is async:true (off the blocking path)");
+  ok(EVENTS.every((e) => {
+    const h = cfg.hooks[e][0].hooks[0];
+    return h.command === "node" && Array.isArray(h.args) && h.args.some((a) => a.includes("src/hook.js"));
+  }), "every hook entry is exec form (command:node + args, no shell wrapper)");
   rmSync(tmp, { recursive: true, force: true });
 }
 

@@ -26,7 +26,6 @@ const slash = (p) => p.replace(/\\/g, "/");
 const STATUSLINE = slash(path.join(ROOT, "src", "statusline.js"));
 const HOOK = slash(path.join(ROOT, "src", "hook.js"));
 const STATUSLINE_CMD = `node "${STATUSLINE}"`;
-const HOOK_CMD = `node "${HOOK}"`;
 
 // Lifecycle events the mugshot hook understands (face reactions, geiger, subagents,
 // tasks, permission mode, git snapshots). PreToolUse has no matcher -> fires for every tool.
@@ -75,7 +74,11 @@ function save(p, data) {
   writeFileSync(p, JSON.stringify(data, null, 2) + "\n", "utf-8");
 }
 
-const ours = (entry) => (entry.hooks || []).some((h) => hasMark(h.command, HOOK_MARKS));
+// Match our entry in either form: shell form keeps the script path in `command`, exec form
+// (current) keeps it in `args`. Joining both lets `uninstall` and the idempotency guard find
+// installs written by any version.
+const ours = (entry) => (entry.hooks || [])
+  .some((h) => hasMark([h.command, ...(h.args || [])].join(" "), HOOK_MARKS));
 
 function install(cfg, preset) {
   const notes = [];
@@ -96,7 +99,12 @@ function install(cfg, preset) {
     if (!lst.some(ours)) {
       // idempotent: don't double-add. async:true keeps the hook off the blocking path —
       // it only appends one journal line and returns; statusline folds it at render time.
-      lst.push({ hooks: [{ type: "command", command: HOOK_CMD, async: true }] });
+      // EXEC FORM (command + args): Claude Code spawns node directly, with no shell wrapper.
+      // On Windows this avoids the `bash -c "node ..."` launcher, so wiring the hook into many
+      // events no longer floods Git Bash's shared MSYS section (the "add_item errno 1" crash).
+      // statusLine has no exec form, so it stays shell-form below — one sequential spawn per
+      // tick, not a concurrent burst.
+      lst.push({ hooks: [{ type: "command", command: "node", args: [HOOK], async: true }] });
     }
   }
   return notes;
