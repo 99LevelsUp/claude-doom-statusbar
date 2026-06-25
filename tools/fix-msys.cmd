@@ -60,9 +60,12 @@ if not errorlevel 1 (
 )
 
 rem --- 3. Run rebaseall through dash (the one shell allowed to be live) -------
+rem dash launched bare from cmd does NOT source a profile, so its PATH is the
+rem inherited Windows PATH and may lack the MSYS bin dirs. rebaseall shells out
+rem to find/rebase/sed internally, so we set PATH explicitly inside the command.
 echo No live bash detected. Running rebaseall ^(this can take a minute^)...
 echo.
-"%DASH%" -c "/usr/bin/rebaseall -v"
+"%DASH%" -c "PATH=/usr/bin:/bin:$PATH; /usr/bin/rebaseall"
 set "RC=%ERRORLEVEL%"
 echo.
 

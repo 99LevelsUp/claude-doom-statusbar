@@ -89,7 +89,7 @@ title = "SYSTEM"
 metric = [
   { id = "sys.cores",   render = "equalizer", icon = "🔥", color = "threshold", right = "sys.cpu" },
   { id = "sys.disk",    render = "bar",    icon = "💿", color = "threshold" },
-  { id = "sys.zombies", render = "number", icon = "🧟", color = [[5, "#7fae6a"], [8, "#e8c34a"], [12, "#e25555"]] },  # win32 MSYS bash-flood gauge (hidden elsewhere)
+  { id = "sys.zombies", render = "number", icon = "🧟", color = [[5, "#7fae6a"], [8, "#e8c34a"], [10, "#e25555"]] },  # win32 MSYS bash-flood gauge (red >=10: the add_item poison hit ~11); hidden elsewhere
   { id = "sys.session", render = "text",   icon = "🕙" },
   { id = "sys.clock",   render = "text",   icon = "🕓" },
 ]
