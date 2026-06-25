@@ -488,36 +488,59 @@ const RATE_WINDOW = Number.isFinite(Number(process.env.DOOMBAR_RATE_WINDOW))
   ? Number(process.env.DOOMBAR_RATE_WINDOW)
   : 60; // seconds of consumption history per rate estimate
 
-// Pure: prev baseline { p5, p7, ts, headroom } | null, cur { p5, p7, reset5, reset7 } (percents
+// Pure: prev baseline { p5, p7, ts, rateComp } | null, cur { p5, p7, reset5, reset7 } (percents
 // 0..100 or null; resets epoch seconds or null), now (epoch seconds). Returns the headroom
-// (0..100, or null on cold start -> caller falls back) plus the baseline to persist.
+// (0..100) plus the baseline to persist.
+//
+// Health is the FLOOR of two lenses, so the face warns on either failure mode:
+//   - level  (instantaneous): tightest remaining headroom now, min(100 - used%). Catches
+//             "near a wall" even while idle.
+//   - rate   (windowed):      time-to-exhaustion normalised to a 5h clip — which window binds
+//             first at the current consumption rate. Catches "burning fast" before the level is
+//             alarming. Unknown until a baseline spans `window`; reset/idle -> non-binding (100).
+// headroom = min(level, rate). The absolute caps cancel in the rate term, so no token counts or
+// subscription info are needed. With no rate baseline yet, rate = 100 -> headroom == the level
+// metric (identical to the old snapshot behaviour), so cold start is seamless.
 export function rateHeadroom(prev, cur, now, window = RATE_WINDOW) {
-  const fresh = { p5: cur.p5, p7: cur.p7, ts: now, headroom: null };
-  if (!prev || typeof prev.ts !== "number") return { headroom: null, state: fresh };
+  // Level lens — always fresh, always available.
+  const rem = [];
+  if (cur.p5 != null) rem.push(100 - cur.p5);
+  if (cur.p7 != null) rem.push(100 - cur.p7);
+  const levelRem = rem.length ? Math.max(0, Math.min(100, Math.min(...rem))) : 100;
 
-  const dt = now - prev.ts;
-  if (dt < window) return { headroom: prev.headroom ?? null, state: { ...prev } }; // hold
+  const hasBase = prev && typeof prev.ts === "number";
+  const hold = hasBase && (now - prev.ts < window);
+  const dropped = hasBase &&
+    ((cur.p5 != null && prev.p5 != null && cur.p5 < prev.p5) ||
+     (cur.p7 != null && prev.p7 != null && cur.p7 < prev.p7));
 
-  // A percentage drop = the window rolled over / reset -> you just got fresh budget.
-  const dropped = (cur.p5 != null && prev.p5 != null && cur.p5 < prev.p5) ||
-                  (cur.p7 != null && prev.p7 != null && cur.p7 < prev.p7);
-  if (dropped) return { headroom: 100, state: { p5: cur.p5, p7: cur.p7, ts: now, headroom: 100 } };
+  // Rate lens — windowed runway, or 100 (non-binding) when unknown/idle/just-reset.
+  let rateComp;
+  if (!hasBase || dropped) {
+    rateComp = 100;                                     // no baseline / window reset -> unknown
+  } else if (hold) {
+    rateComp = prev.rateComp ?? 100;                    // hold the last measured rate
+  } else {
+    const dt = now - prev.ts;
+    const tte = (p, p0, resets) => {
+      if (p == null || p0 == null) return Infinity;     // window absent -> not binding
+      const r = (p - p0) / dt;                          // percentage-points per second (>= 0 here)
+      if (r <= RATE_EPS) return Infinity;               // not consuming -> not binding
+      const t = (100 - p) / r;                          // seconds until this window hits 100%
+      if (resets != null) {                             // resets before exhaustion -> never binds
+        const untilReset = resets - now;
+        if (untilReset > 0 && untilReset <= t) return Infinity;
+      }
+      return t;
+    };
+    const t = Math.min(tte(cur.p5, prev.p5, cur.reset5), tte(cur.p7, prev.p7, cur.reset7));
+    rateComp = Number.isFinite(t) ? Math.max(0, Math.min(100, 100 * t / FIVE_HOURS_SEC)) : 100;
+  }
 
-  const tte = (p, p0, resets) => {
-    if (p == null || p0 == null) return Infinity;       // window absent -> not binding
-    const r = (p - p0) / dt;                            // percentage-points per second (>= 0 here)
-    if (r <= RATE_EPS) return Infinity;                 // not consuming -> not binding
-    const t = (100 - p) / r;                            // seconds until this window hits 100%
-    if (resets != null) {                               // resets before exhaustion -> never binds
-      const untilReset = resets - now;
-      if (untilReset > 0 && untilReset <= t) return Infinity;
-    }
-    return t;
-  };
-
-  const t = Math.min(tte(cur.p5, prev.p5, cur.reset5), tte(cur.p7, prev.p7, cur.reset7));
-  const headroom = Number.isFinite(t) ? Math.max(0, Math.min(100, 100 * t / FIVE_HOURS_SEC)) : 100;
-  return { headroom, state: { p5: cur.p5, p7: cur.p7, ts: now, headroom } };
+  const headroom = Math.min(rateComp, levelRem);
+  // Advance the baseline except while holding (let the window grow to a full `window`).
+  const base = hold ? { p5: prev.p5, p7: prev.p7, ts: prev.ts } : { p5: cur.p5, p7: cur.p7, ts: now };
+  return { headroom, state: { ...base, rateComp } };
 }
 
 // I/O wrapper: pull the rate-limit percentages from the statusline payload, fold the persisted

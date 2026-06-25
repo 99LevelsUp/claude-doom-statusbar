@@ -439,11 +439,12 @@ function boxWidth(box, cells, textCap = TEXTCAP_MAX) {
 function hpRow(thresholds = HP_THRESHOLDS) {
   let headroom;
   if ("health.headroom" in VALUES) {
-    // Rate-based runway (statusline.js): which rate-limit window binds first, normalised to a
-    // 5h clip. Preferred over the snapshot because it tracks consumption rate, not just level.
+    // Rate-limit health (statusline.js): floor of the rate runway (which window binds first,
+    // normalised to a 5h clip) and the level (tightest remaining %), so the face warns on
+    // burning fast OR simply being near a wall. Already incorporates the snapshot metric.
     headroom = VALUES["health.headroom"];
   } else if ("ratelimit.5h" in VALUES || "ratelimit.7d" in VALUES) {
-    // Fallback (cold start, before a rate baseline exists): proportionally tightest budget.
+    // Defensive fallback (only if health.headroom is somehow absent): tightest remaining budget.
     const rem5 = 100 - (VALUES["ratelimit.5h"] ?? 0);
     const rem7 = "ratelimit.7d" in VALUES ? 100 - VALUES["ratelimit.7d"] : 100;
     headroom = Math.min(rem5, rem7);
