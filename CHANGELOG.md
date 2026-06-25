@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-06-25
+
+### Changed
+- **The mugshot's health now tracks which rate-limit window you hit _first_, not which is
+  proportionally fullest.** Anthropic exposes only `used_percentage` per window (no caps, no
+  absolutes), so the binding window is derived from the _rate_ each percentage climbs —
+  `time-to-exhaustion = (100 − used%) / d(used%)/dt`, normalised to a 5-hour clip. The absolute
+  caps cancel, so this needs no token counts or subscription info. Health is the floor of that
+  rate runway and the instantaneous level (tightest remaining %), so the face warns when you're
+  burning fast _or_ simply near a wall — and a window that resets before it would exhaust, or a
+  percentage drop (window rollover), no longer drags the face down. Rate is averaged over
+  `DOOMBAR_RATE_WINDOW` (default 60s); before a baseline exists, health equals the previous
+  snapshot metric, so cold start and context-only (API-key) setups are unchanged.
+
 ## [0.9.2] - 2026-06-25
 
 ### Changed
