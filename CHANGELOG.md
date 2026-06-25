@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-06-25
+
+### Changed
+- **The installer now writes hooks in exec form** (`"command": "node", "args": [hook]`)
+  instead of shell form (`"command": "node \"...\""`). On Windows, Claude Code launches
+  shell-form hooks through Git Bash (`bash -c "node ..."`); wiring the hook into ~10
+  events then spawns a bash per event, and concurrent bursts (especially at SessionStart
+  across multiple instances) poison the shared MSYS section — the `add_item ... errno 1`
+  flood. Exec form spawns node directly with no shell on any platform, so the hooks no
+  longer create bash at all. `statusLine` has no exec form and stays shell-form (one
+  sequential spawn per tick, not a concurrent burst). Existing installs are matched in
+  either form, so `uninstall` still cleans up hooks written by older versions.
+
 ## [0.9.1] - 2026-06-25
 
 ### Fixed
