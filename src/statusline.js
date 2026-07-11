@@ -492,7 +492,15 @@ export function activityValues(st, now) {
 // penalise the long window during cold start. The one exception is death — if 7d (or 5h) is fully
 // exhausted (rem == 0) you're dead regardless of k: "die Monday, heal Sunday".
 const K_MIN_SIGNAL = 1.0;        // percentage-points of 7d movement before the cap ratio is trusted
-const K_LO = 0.2, K_HI = 100;    // clamp the cap-ratio estimate against early-sample noise
+// k = cap7d / cap5h is physically >= 1: the weekly allowance must exceed a single 5h session's,
+// else the 7d cap would never bind. So K_LO is a HARD physical floor, not just noise-clamping.
+// Enforcing it also masks a structural flaw in the gross-sum estimator: 5h resets ~33x more often
+// than 7d, and each reset that straddles two samples drops the new window's initial climb as a
+// skipped negative delta -> sum5 is systematically deflated -> raw ratio can fall below 1 (observed
+// 489/1469 = 0.33), which the floor corrects back to a conservative min(rem7, rem5).
+// See docs/ideation/2026-07-11-cap-ratio-accumulator-fix.md for the estimator redesign (paired
+// instantaneous deltas + EWMA/median, decay/TTL, atomic writes).
+const K_LO = 1.0, K_HI = 100;    // clamp the cap-ratio estimate; K_LO is a physical floor (k >= 1)
 
 // Pure: prev { p5, p7, sum5, sum7 } | null (last percents + accumulated positive deltas),
 // cur { p5, p7 } (percents 0..100 or null). Returns headroom (0..100) + the state to persist.

@@ -93,6 +93,17 @@ const near = (a, b, eps = 0.5) => Math.abs(a - b) <= eps;
   ok(headroom === 0, `7d exhausted -> dead even with ratio unknown (got ${headroom}, want 0)`);
 }
 
+// 8c. Physical floor k >= 1 (the bloodied-at-24% bug): the gross-sum estimator can learn k < 1
+//     (5h resets ~33x more often than 7d, and each reset straddling two samples drops the new
+//     window's initial climb as a skipped negative delta -> sum5 deflated). k < 1 is physically
+//     impossible (cap7d >= cap5h), so K_LO floors it at 1. Live data that triggered this:
+//     p5=24 (rem5=76), p7=34 (rem7=66), raw ratio 489/1469=0.33. Without the floor: min(66*0.33,
+//     76)=22 -> near-bloodied. With k floored to 1: min(66*1, 76)=66 -> healthy.
+{
+  const { headroom } = rateHeadroom({ p5: 24, p7: 34, sum5: 489, sum7: 1469 }, { p5: 24, p7: 34 });
+  ok(headroom === 66, `k<1 floored to physical minimum 1 (got ${headroom}, want 66, not 22)`);
+}
+
 // 9. Integration: the live wiring (rateHealthValue -> values["health.headroom"] -> hpRow) must
 //    render without crashing and persist the accumulator. Sole end-to-end coverage of the path.
 //    The accumulator is GLOBAL (one file, not keyed by session_id) because rate limits are

@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Mugshot no longer reads bloodied at low usage from a physically impossible cap ratio.** The
+  gross-sum estimator could learn `k = cap7d/cap5h < 1` — the 5h window resets ~33× more often
+  than the 7d one, and every reset straddling two samples drops the new window's initial climb as a
+  skipped negative delta, systematically deflating `sum5`. A `k < 1` (observed live at
+  `489/1469 = 0.33`) then discounted the ample 7d budget and pinned health low (e.g. 5h at 24%,
+  7d at 34% → health 22, near-bloodied). `k` is now floored at its physical minimum of 1
+  (`cap7d ≥ cap5h`), so that case reads `min(rem7 × 1, rem5) = 66` — healthy. See
+  `docs/ideation/2026-07-11-cap-ratio-accumulator-fix.md` for the estimator redesign (paired
+  instantaneous deltas + EWMA/median, decay/TTL, atomic writes) that removes the underlying bias.
 - **Mugshot health is now consistent across concurrent sessions.** The cap-ratio accumulator
   (`k = cap7d/cap5h`) was stored per session, so each session re-learned `k` from scratch and —
   because the 7d window barely moves within one session — almost always stalled at `k = 1`. Two
