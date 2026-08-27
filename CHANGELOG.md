@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.6] - 2026-08-27
+
+### Fixed
+- **The journal sweep now cleans the directory it actually writes to.** 0.11.5 read `os.tmpdir()`
+  directly while honouring `MUGSHOT_STATE` for the files it created, so a run with the checkpoint
+  relocated deleted from the real temp directory instead of the relocated one. The test suite does
+  exactly that, which means `npm test` was quietly sweeping the developer's own temp directory.
+  The sweep is now scoped to the checkpoint's own directory — identical in normal use, correct
+  when relocated.
+
 ## [0.11.5] - 2026-08-27
 
 ### Fixed

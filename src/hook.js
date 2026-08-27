@@ -225,10 +225,14 @@ export function staleStateFiles(names, ageOf, { ttl = JOURNAL_TTL, keep = [] } =
 
 function sweepState(sid) {
   if (process.env.DOOMBAR_JOURNAL_TTL === "off") return 0;
-  const dir = os.tmpdir();
+  const { checkpoint, journal } = statePaths(sid);
+  // Sweep the directory our state actually lives in, not os.tmpdir() blindly. They are the same
+  // in normal use, but MUGSHOT_STATE relocates the checkpoint — and a sweep that ignored it would
+  // delete from the real temp dir while writing to a sandbox. That bit the test suite: firing a
+  // SessionStart with MUGSHOT_STATE set swept the developer's actual temp directory.
+  const dir = path.dirname(checkpoint);
   let names;
   try { names = readdirSync(dir); } catch { return 0; }
-  const { checkpoint, journal } = statePaths(sid);
   const keep = [checkpoint, journal, gitMarkerPath(sid), msysMarkerPath(sid)];
   const ageOf = (n) => {
     try { return Date.now() - statSync(path.join(dir, n)).mtimeMs; } catch { return null; }

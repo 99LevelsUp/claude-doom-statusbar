@@ -118,5 +118,39 @@ const TTL = 7 * DAY;
   rmSync(tmp, { recursive: true, force: true });
 }
 
+// --- The sweep follows MUGSHOT_STATE, it does not sweep os.tmpdir() blindly -----------------
+// Regression: the first cut read os.tmpdir() directly, so a run with MUGSHOT_STATE pointing at a
+// sandbox still deleted from the developer's REAL temp dir. That is exactly what the rest of this
+// suite does, so `npm test` was quietly sweeping the machine's temp directory.
+{
+  const sandbox = mkdtempSync(path.join(os.tmpdir(), "doombar-sandbox-"));
+  const elsewhere = mkdtempSync(path.join(os.tmpdir(), "doombar-elsewhere-"));
+  const old = (dir, name) => {
+    const p = path.join(dir, name);
+    writeFileSync(p, "{}");
+    const t = (Date.now() - 30 * DAY) / 1000;
+    utimesSync(p, t, t);
+  };
+  old(sandbox, "mugshot_cold-here.json");
+  old(elsewhere, "mugshot_cold-elsewhere.json");
+
+  const sid = "scopetest";
+  execFileSync(process.execPath, [HOOK], {
+    input: JSON.stringify({ hook_event_name: "SessionStart", session_id: sid, cwd: sandbox }),
+    encoding: "utf8",
+    // MUGSHOT_STATE lives in `sandbox`, while TMPDIR still points at `elsewhere`.
+    env: { ...process.env, TMPDIR: elsewhere, TMP: elsewhere, TEMP: elsewhere,
+      MUGSHOT_STATE: path.join(sandbox, `mugshot_${sid}.json`), DOOMBAR_MSYS_REAP: "0" },
+  });
+
+  ok(!readdirSync(sandbox).includes("mugshot_cold-here.json"),
+    "sweeps the directory MUGSHOT_STATE points at");
+  ok(readdirSync(elsewhere).includes("mugshot_cold-elsewhere.json"),
+    "leaves os.tmpdir() alone when the checkpoint lives elsewhere");
+
+  rmSync(sandbox, { recursive: true, force: true });
+  rmSync(elsewhere, { recursive: true, force: true });
+}
+
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILED`);
 process.exit(fails === 0 ? 0 : 1);
