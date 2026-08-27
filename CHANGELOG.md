@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.4] - 2026-08-27
+
+### Fixed
+- **Upgrading no longer leaves the hooks on the previous version's code.** The installer skipped
+  any hook entry it recognised as its own, so an install whose package path had moved — a fresh
+  `npx` cache directory, or switching from `npx` to a global install — kept the *old* path in
+  `hooks` while `statusLine` was replaced unconditionally with the new one. The result was a
+  split install: the render ran the new version, every hook ran the previous one, and anything
+  shipped in `hook.js` silently never took effect. Found while deploying 0.11.3, where it would
+  have left the MSYS reaper active in the render and missing from the hook. Entries of ours that
+  point somewhere else (or use the legacy shell form) are now re-pointed instead of skipped, and
+  the install reports how many. A second run is still a genuine no-op.
+
 ## [0.11.3] - 2026-08-27
 
 ### Fixed

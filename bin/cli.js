@@ -5,7 +5,7 @@
 //   claude-doom-statusbar install              # install into ~/.claude/settings.json
 //   claude-doom-statusbar install --preset full # pick a preset (full | standard | minimal)
 //   claude-doom-statusbar install --project     # install into ./.claude/settings.json instead
-//   claude-doom-statusbar install --refresh 5   # re-render on a 5s timer too (0 = events only)
+//   claude-doom-statusbar install --refresh 0   # events only; default is a 1s timer + events
 //   claude-doom-statusbar uninstall             # remove everything this installer added
 //
 // It merges into your existing settings (other hooks / statusline are preserved or
@@ -121,19 +121,31 @@ function install(cfg, preset, refresh) {
   env.FORCE_HYPERLINK ??= "1"; // clickable links (Windows Terminal needs this)
 
   const hooks = (cfg.hooks ??= {});
+  let repointed = 0;
   for (const ev of HOOK_EVENTS) {
     const lst = (hooks[ev] ??= []);
-    if (!lst.some(ours)) {
-      // idempotent: don't double-add. async:true keeps the hook off the blocking path —
-      // it only appends one journal line and returns; statusline folds it at render time.
-      // EXEC FORM (command + args): Claude Code spawns node directly, with no shell wrapper.
-      // On Windows this avoids the `bash -c "node ..."` launcher, so wiring the hook into many
-      // events no longer floods Git Bash's shared MSYS section (the "add_item errno 1" crash).
-      // statusLine has no exec form and cannot be moved off the shell, so instead we stop
-      // driving it on a timer (see DEFAULT_REFRESH) and let the hook reap the wrappers Claude
-      // Code leaks when one hangs (see reapStaleShells in src/hook.js).
-      lst.push({ hooks: [{ type: "command", command: "node", args: [HOOK], async: true }] });
+    // async:true keeps the hook off the blocking path — it only appends one journal line and
+    // returns; statusline folds it at render time.
+    // EXEC FORM (command + args): Claude Code spawns node directly, with no shell wrapper.
+    // On Windows this avoids the `bash -c "node ..."` launcher, so wiring the hook into many
+    // events no longer floods Git Bash's shared MSYS section (the "add_item errno 1" crash).
+    // statusLine has no exec form and cannot be moved off the shell, so the flood from ABOVE
+    // is handled by the hook's reaper instead (see reapStaleShells in src/hook.js).
+    const desired = { hooks: [{ type: "command", command: "node", args: [HOOK], async: true }] };
+    const at = lst.findIndex(ours);
+    if (at === -1) { lst.push(desired); continue; }
+    // Idempotent, but NOT blindly: an entry of ours that points at a different path is stale —
+    // an upgrade that moved the package (a fresh npx cache dir, npx -> global install) or an
+    // install written in the old shell form. Skipping it used to leave the statusLine upgraded
+    // (it is replaced unconditionally) while the hook still ran the previous version's code, so
+    // a fix shipped in the hook silently never took effect. Re-point it instead.
+    if (!lst[at].hooks?.some((h) => h.command === "node" && (h.args || []).includes(HOOK))) {
+      lst[at] = desired;
+      repointed++;
     }
+  }
+  if (repointed) {
+    notes.push(`re-pointed ${repointed} hook event(s) from a previous install's path`);
   }
   return notes;
 }

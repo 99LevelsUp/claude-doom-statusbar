@@ -88,6 +88,37 @@ const tmpdir = () => mkdtempSync(path.join(os.tmpdir(), "doombar-test-"));
   rmSync(tmp, { recursive: true, force: true });
 }
 
+// 2d. UPGRADE PATH: an entry of ours pointing at a PREVIOUS install's path must be re-pointed,
+// not skipped as "already installed". Skipping it left statusLine on the new version (it is
+// replaced unconditionally) while the hook still ran the old code — so a fix shipped in the hook
+// silently never took effect. Covers both a moved path and the legacy shell form.
+{
+  const tmp = tmpdir();
+  mkdirSync(path.join(tmp, ".claude"), { recursive: true });
+  writeFileSync(settingsPath(tmp), JSON.stringify({
+    hooks: {
+      // stale exec form: our marker, someone else's (older) path
+      SessionStart: [{ hooks: [{ type: "command", command: "node", args: ["C:/old/cache/claude-doom-statusbar/src/hook.js"], async: true }] }],
+      // legacy shell form: our marker, no args array at all
+      Stop: [{ hooks: [{ type: "command", command: 'node "C:/old/cache/claude-doom-statusbar/src/hook.js"' }] }],
+    },
+  }, null, 2));
+  const out = run(tmp, "install", "--project");
+  const cfg = read(tmp);
+  ok(/re-pointed 2 hook event/.test(out), `install reports the re-pointing (got: ${out.match(/note.*/)?.[0]})`);
+  for (const ev of ["SessionStart", "Stop"]) {
+    ok(cfg.hooks[ev].length === 1, `${ev}: still exactly one entry (no double-add)`);
+    const h = cfg.hooks[ev][0].hooks[0];
+    ok(h.command === "node" && Array.isArray(h.args), `${ev}: now exec form`);
+    ok(!h.args.some((a) => a.includes("old/cache")), `${ev}: stale path is gone`);
+    ok(h.args.some((a) => a.includes("src/hook.js")), `${ev}: points at this install's hook.js`);
+  }
+  // A second run must now be a genuine no-op.
+  const out2 = run(tmp, "install", "--project");
+  ok(!/re-pointed/.test(out2), "re-running does not re-point again (converged)");
+  rmSync(tmp, { recursive: true, force: true });
+}
+
 // 3. foreign existing statusLine -> backup note + .bak written, user content preserved in .bak
 {
   const tmp = tmpdir();
