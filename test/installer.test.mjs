@@ -32,14 +32,9 @@ const tmpdir = () => mkdtempSync(path.join(os.tmpdir(), "doombar-test-"));
   const cfg = read(tmp);
   ok(cfg.statusLine?.command?.includes("src/statusline.js".replace(/\//g, path.sep === "\\" ? "/" : "/")) ||
      cfg.statusLine?.command?.includes("src/statusline.js"), "statusLine points at src/statusline.js");
-  // No refresh timer on Windows: each tick would cost two Git Bash / MSYS inits, because
-  // statusLine has no exec form and Claude Code wraps the command in a shell. Elsewhere the 1 s
-  // tick is cheap and keeps the clock and the read-tool blink live.
-  if (process.platform === "win32") {
-    ok(!("refreshInterval" in cfg.statusLine), "win32: no refreshInterval (events only)");
-  } else {
-    ok(cfg.statusLine?.refreshInterval === 1, "statusLine refreshInterval is 1");
-  }
+  // 1 s on EVERY platform, Windows included. The Git Bash / MSYS cost of a 1 Hz tick on Windows
+  // is paid by the reaper, not by slowing the HUD down — a live clock is the point of this thing.
+  ok(cfg.statusLine?.refreshInterval === 1, "statusLine refreshInterval is 1 on all platforms");
   ok(cfg.env?.DOOMBAR_PRESET?.includes("full.toml"), "DOOMBAR_PRESET -> full.toml");
   ok(cfg.env?.FORCE_HYPERLINK === "1", "FORCE_HYPERLINK = 1");
   const EVENTS = ["SessionStart", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied",
@@ -79,8 +74,8 @@ const tmpdir = () => mkdtempSync(path.join(os.tmpdir(), "doombar-test-"));
   rmSync(tmp, { recursive: true, force: true });
 }
 
-// 2c. UPGRADE PATH: a stale refreshInterval from an older install must not survive on Windows.
-// This is the regression that poisoned Git Bash — a 1 s timer spawning two MSYS inits per tick.
+// 2c. --refresh=0 on an install that already had a timer: the key goes away and it is reported,
+// so anyone who deliberately wants a strictly event-driven HUD can see that it took effect.
 {
   const tmp = tmpdir();
   mkdirSync(path.join(tmp, ".claude"), { recursive: true });
@@ -88,7 +83,7 @@ const tmpdir = () => mkdtempSync(path.join(os.tmpdir(), "doombar-test-"));
     statusLine: { type: "command", command: 'node "/old/src/statusline.js"', refreshInterval: 1 },
   }, null, 2));
   const out = run(tmp, "install", "--project", "--refresh=0");
-  ok(!("refreshInterval" in read(tmp).statusLine), "stale refreshInterval dropped on re-install");
+  ok(!("refreshInterval" in read(tmp).statusLine), "--refresh=0 drops an existing timer");
   ok(/dropped refreshInterval/.test(out), "install reports that it dropped the timer");
   rmSync(tmp, { recursive: true, force: true });
 }

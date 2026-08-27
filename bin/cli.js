@@ -29,20 +29,24 @@ const HOOK = slash(path.join(ROOT, "src", "hook.js"));
 const STATUSLINE_CMD = `node "${STATUSLINE}"`;
 
 // refreshInterval re-runs the render command every N seconds ON TOP of the event-driven updates.
-// On Windows that timer is expensive in a way it is nowhere else: statusLine has no exec form
-// (its whole schema is type/command/padding/refreshInterval), so Claude Code wraps our command in
-// a shell, and on Windows that shell is Git Bash whenever Git for Windows is installed —
-// CLAUDE_CODE_GIT_BASH_PATH, CLAUDE_CODE_USE_POWERSHELL_TOOL and defaultShell do not redirect it.
-// Git\bin\bash.exe is a stub that re-execs Git\usr\bin\bash.exe, so a 1 s timer means TWO MSYS
-// inits every second for the whole session. That is enough to poison Git Bash's shared MSYS
-// section ("add_item errno 1"), after which each render hangs ~15 s instead of ~0.3 s and the
-// pile-up accelerates itself.
+// 1 s is the documented minimum and the default here on every platform: a live clock and a
+// responsive HUD are the point of this thing, so the tick is a requirement, not a tunable to be
+// traded away for an easier life on Windows.
 //
-// So: no timer on Windows — the HUD is event-driven anyway, and every tool call already renders
-// it. The cost is that the clock and the read-tool blink hold still while the session is idle.
-// Elsewhere `sh -c` is cheap, so keep the 1 s tick. `--refresh=N` overrides either way;
-// `--refresh=0` turns the timer off explicitly.
-const DEFAULT_REFRESH = process.platform === "win32" ? 0 : 1;
+// It IS expensive on Windows, and that cost is handled elsewhere rather than by slowing the tick.
+// statusLine has no exec form (its whole schema is type/command/padding/refreshInterval), so
+// Claude Code wraps our command in a shell, and on Windows that shell is Git Bash whenever Git
+// for Windows is installed — CLAUDE_CODE_GIT_BASH_PATH, CLAUDE_CODE_USE_POWERSHELL_TOOL and
+// defaultShell do not redirect it. Git\bin\bash.exe is a stub that re-execs Git\usr\bin\bash.exe,
+// so 1 Hz means two MSYS inits per second. Healthy, each costs ~0.15 s and nothing accumulates;
+// the danger is that ONE hung init poisons the shared MSYS section ("add_item errno 1"), after
+// which every render hangs ~15 s and the pile-up sustains itself forever.
+//
+// The cure is the reaper (see reapStaleShells in src/hook.js, driven from both the hook and the
+// render), which kills hung wrappers and lets the section heal within seconds. That keeps 1 Hz
+// survivable. `--refresh=N` still overrides, and `--refresh=0` drops the timer for anyone who
+// wants a strictly event-driven HUD.
+const DEFAULT_REFRESH = 1;
 
 // Lifecycle events the mugshot hook understands (face reactions, geiger, subagents,
 // tasks, permission mode, git snapshots). PreToolUse has no matcher -> fires for every tool.

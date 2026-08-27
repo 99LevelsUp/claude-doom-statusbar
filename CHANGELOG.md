@@ -8,28 +8,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
-- **Windows: the statusline no longer poisons Git Bash.** The installer wrote
-  `refreshInterval: 1`, and on Windows every render is wrapped in Git Bash — `statusLine` has no
-  exec form (its whole schema is `type`/`command`/`padding`/`refreshInterval`), so Claude Code
-  always hands the command to a shell, and that shell is Git Bash whenever Git for Windows is
-  installed. Neither `CLAUDE_CODE_GIT_BASH_PATH`, nor `CLAUDE_CODE_USE_POWERSHELL_TOOL`, nor
-  `defaultShell` redirects it (all three measured with no effect; `defaultShell` governs only the
-  `!` shell-mode prefix). Because `Git\bin\bash.exe` is a stub that re-execs
-  `Git\usr\bin\bash.exe`, a 1 s timer meant **two MSYS initialisations per second for the whole
-  session** — enough to corrupt Git Bash's shared MSYS section
-  (`add_item ("\??\C:\Program Files\Git", "/", ...) failed, errno 1`). The failure then sustains
-  itself: a healthy `bash -c` returns in ~0.3 s, a poisoned one hangs ~15 s before dying with
-  `0xC0000005`, so the wrapper population never reaches zero and the section never heals. Git Bash
-  ends up unusable machine-wide — `bash --version` included — with a perfectly intact install.
-  Two changes: **no refresh timer on Windows** (the HUD renders on events, which every tool call
-  already triggers; `--refresh N` opts back in, and the timer stays at 1 s on POSIX where `sh -c`
-  is cheap), and **the hook now reaps hung wrappers** — once live `bash.exe` reaches
-  `DOOMBAR_MSYS_REAP_MIN` (default 4) it kills only the shells running this package's
-  `statusline.js` that have outlived `DOOMBAR_MSYS_REAP_AGE` (default 10 000 ms, vs ~300 ms for a
-  healthy render), which measurably restores the section (15 233 ms + `0xC0000005` → 277 ms +
-  exit 0). `DOOMBAR_MSYS_REAP=0` disables it. Re-installing drops a stale `refreshInterval` left
-  by an earlier version. The old claim that the render path made this flood "impossible by
-  construction" was only ever true of the render's *children*, not of the wrapper above it.
+- **Windows: a 1-second refresh no longer poisons Git Bash.** On Windows every render is wrapped
+  in Git Bash — `statusLine` has no exec form (its whole schema is
+  `type`/`command`/`padding`/`refreshInterval`), so Claude Code always hands the command to a
+  shell, and that shell is Git Bash whenever Git for Windows is installed. Neither
+  `CLAUDE_CODE_GIT_BASH_PATH`, nor `CLAUDE_CODE_USE_POWERSHELL_TOOL`, nor `defaultShell` redirects
+  it (all three measured with no effect; `defaultShell` governs only the `!` shell-mode prefix).
+  Because `Git\bin\bash.exe` is a stub that re-execs `Git\usr\bin\bash.exe`, each render costs two
+  MSYS initialisations. Healthy that is ~0.15 s apiece and nothing accumulates; the failure starts
+  from a single **hung** init, which corrupts the shared MSYS section
+  (`add_item ("\??\C:\Program Files\Git", "/", ...) failed, errno 1`) and then sustains itself — a
+  poisoned `bash -c` hangs ~15 s before dying with `0xC0000005`, so at 1 Hz the wrapper population
+  never reaches zero, the section never gets an instant with no holder, and it cannot heal. Git
+  Bash ends up unusable machine-wide, `bash --version` included, on an intact install.
+  **The refresh interval stays at 1 s on every platform**; the fix is a reaper that kills hung
+  wrappers so the section can heal. It targets only `bash.exe` running this package's
+  `statusline.js` past `DOOMBAR_MSYS_REAP_AGE` (default 10 000 ms, against ~300 ms healthy) — such
+  a shell is already hung and its render lost. Measured effect: 15 233 ms + `0xC0000005` → 277 ms +
+  exit 0. It runs from the hook on any event once live `bash.exe` reaches `DOOMBAR_MSYS_REAP_MIN`
+  (default 4), **and** from the render, throttled to `DOOMBAR_REAP_TICK` (default 15 000 ms),
+  because an idle session produces no hook events and idle is exactly when the 1 Hz timer is the
+  only thing spawning shells. The render's kick is detached and unref'd, so it never delays a
+  render (measured 207 ms with the reaper armed). `DOOMBAR_MSYS_REAP=0` disables both.
+  The old claim that the render path made this flood "impossible by construction" was only ever
+  true of the render's *children*, not of the wrapper Claude Code spawns above it.
 - **Mugshot no longer reads bloodied at low usage from a physically impossible cap ratio.** The
   gross-sum estimator could learn `k = cap7d/cap5h < 1` — the 5h window resets ~33× more often
   than the 7d one, and every reset straddling two samples drops the new window's initial climb as a
@@ -49,7 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **`--refresh N` on the installer.** Sets `statusLine.refreshInterval` explicitly; `0` omits the
-  key so the HUD renders on events only. Defaults to `0` on Windows and `1` elsewhere.
+  key so the HUD renders on events only. Defaults to `1` on every platform.
 
 ### Changed
 - **Cold-start health now uses the 5h clip alone instead of `k = 1` min-remaining.** Before the

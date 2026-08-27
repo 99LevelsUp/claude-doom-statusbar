@@ -118,6 +118,34 @@ try {
   ok(rows[0].pid === 1234 && rows[0].ageMs === 45678, "pid and age parsed as numbers");
   ok(stalePids(rows, 10000).length === 1 && stalePids(rows, 10000)[0] === 1234,
     "the piped statusline wrapper is still recognised as reapable");
+
+  // --- Render-side reaping must never slow the 1 Hz tick down. -------------------------
+  // The refresh interval is 1 s on every platform, so idle sessions rely on the RENDER to reap
+  // (no hook events arrive when idle). That kick has to be detached and throttled: if a render
+  // ever waited on the reaper, a 1 s tick would be impossible on Windows.
+  const renderOnce = (extraEnv) => {
+    const t0 = Date.now();
+    const r = execFileSync(process.execPath,
+      [path.join(HERE, "..", "src", "statusline.js")], {
+      input: JSON.stringify({ session_id: "reaptick-" + process.pid, cwd: tmp,
+        model: { id: "claude-opus-5" }, context_window: { context_window_size: 1000000, used_tokens: 1000 } }),
+      encoding: "utf8",
+      env: { ...process.env, MUGSHOT_STATE: path.join(tmp, "rt.json"), COLUMNS: "120", ...extraEnv },
+    });
+    return { ms: Date.now() - t0, out: r };
+  };
+
+  const first = renderOnce({ DOOMBAR_REAP_TICK: "0" }); // throttle open -> a reap IS kicked off
+  ok(first.out.trim().length > 0, "render still produces output with the reaper armed");
+  ok(first.ms < 3000, `render did not wait for the reaper (${first.ms} ms, must stay well under 1 s tick)`);
+
+  // Throttled: a huge tick means the second render must skip the kick entirely.
+  const second = renderOnce({ DOOMBAR_REAP_TICK: "999999" });
+  ok(second.out.trim().length > 0, "render output unaffected when the reap throttle is closed");
+
+  // And it must be switchable off outright.
+  const off = renderOnce({ DOOMBAR_MSYS_REAP: "0", DOOMBAR_REAP_TICK: "0" });
+  ok(off.out.trim().length > 0, "DOOMBAR_MSYS_REAP=0 leaves rendering intact");
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }

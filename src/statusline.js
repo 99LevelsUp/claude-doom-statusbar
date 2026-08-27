@@ -12,6 +12,7 @@
 import {
   readFileSync, writeFileSync, renameSync, openSync, fstatSync, readSync, closeSync, statfsSync, statSync,
 } from "node:fs";
+import { spawn } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -33,13 +34,12 @@ const GEIGER_BINS = 14;
 const has = (o, k) => Object.prototype.hasOwnProperty.call(o || {}, k);
 
 // git is no longer spawned here. The async hook snapshots it into the journal (see hook.js
-// + fold.js); buildValues reads the folded snapshot from state.git. This keeps the render
-// hot path spawn-free, so this process contributes nothing to the Windows MSYS "bash flood".
+// + fold.js); buildValues reads the folded snapshot from state.git. The render path stays free of
+// blocking spawns, so this process adds nothing to the Windows MSYS "bash flood".
 //
 // It does NOT make the flood impossible: on Windows Claude Code wraps this very command in
 // Git Bash (statusLine has no exec form), so each render costs two MSYS inits before node even
-// starts. That half is handled by not installing a refresh timer and by the hook's reaper —
-// see reapStaleShells in hook.js.
+// starts. That half is handled by the reaper — see maybeReap below and reapStaleShells in hook.js.
 
 // Clip a display label to at most `n` code points, ending with … when truncated,
 // so an oversized repo or branch name can't blow up the PROJECT box width.
@@ -559,6 +559,38 @@ function rateHealthValue(data) {
   return headroom;
 }
 
+// --- Idle-time MSYS reaping -----------------------------------------------------------------
+// The hook reaps hung Git Bash wrappers on every event, but while the session sits idle no events
+// arrive — and idle is precisely when the 1 s refresh timer is the ONLY thing spawning shells. So
+// the render kicks the reaper too. Two rules keep this off the hot path:
+//
+//   * detached + unref'd + stdio ignored — we never wait for it, so a render costs one ~1 ms
+//     spawn call regardless of how long the reap takes;
+//   * throttled by a marker file, so at 1 Hz this fires once per REAP_TICK, not 60× a minute.
+//
+// This is the one spawn on the render path, and it is the cure rather than a cause: it launches
+// node directly (never a shell), and only when the throttle has elapsed.
+const REAP_TICK = Number.isFinite(Number(process.env.DOOMBAR_REAP_TICK))
+  ? Number(process.env.DOOMBAR_REAP_TICK)
+  : 15000; // ms
+
+function maybeReap() {
+  if (process.platform !== "win32") return;
+  if (process.env.DOOMBAR_MSYS_REAP === "0") return;
+  const marker = path.join(os.tmpdir(), "mugshot_reap_tick.json");
+  try {
+    const m = JSON.parse(readFileSync(marker, "utf8"));
+    if (Date.now() - (m.ts || 0) < REAP_TICK) return;
+  } catch { /* no marker yet -> reap now */ }
+  try { writeFileSync(marker, JSON.stringify({ ts: Date.now() })); } catch { return; }
+  try {
+    const hook = path.join(path.dirname(fileURLToPath(import.meta.url)), "hook.js");
+    const child = spawn(process.execPath, [hook, "--reap"],
+      { detached: true, stdio: "ignore", windowsHide: true });
+    child.unref();
+  } catch { /* the HUD is already rendered; a failed reap is not worth a crash */ }
+}
+
 function main() {
   let data = {};
   try { data = JSON.parse(readFileSync(0, "utf8")); } catch { data = {}; }
@@ -617,6 +649,7 @@ function main() {
   const overflow = process.env.DOOMBAR_TEXT_OVERFLOW || selected.text_overflow || cfg.text_overflow || "scroll";
   const res = buildBar(selected, target, spriteFor, tick, overflow);
   process.stdout.write(res.lines.join("\n") + "\n");
+  maybeReap(); // after the write: the HUD is already out, this only cleans up behind it
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

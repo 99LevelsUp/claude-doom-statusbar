@@ -157,7 +157,7 @@ export function listBashShells() {
 
 // Kill via taskkill: a direct exe that always exists, so the cure never spawns a shell.
 // Returns how many PIDs we asked to die (best effort — a PID that exited on its own is fine).
-function reapStaleShells() {
+export function reapStaleShells() {
   if (process.platform !== "win32" || !REAP_ON) return 0;
   const pids = stalePids(listBashShells());
   if (pids.length === 0) return 0;
@@ -256,5 +256,13 @@ function main() {
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+  // `node hook.js --reap` is the reaper on its own, with no journal and no stdin. The render path
+  // fires it detached (see maybeReap in statusline.js) so hung wrappers are still cleaned up while
+  // the session sits idle and no hook events are arriving — which is exactly when a 1 s refresh
+  // timer is the only thing spawning shells.
+  if (process.argv.includes("--reap")) {
+    try { reapStaleShells(); } catch { /* best effort */ }
+    process.exit(0);
+  }
   main();
 }

@@ -56,30 +56,37 @@ npm i -g claude-doom-statusbar@latest    # global install
 npx claude-doom-statusbar@latest install
 ```
 
-### Windows: Git Bash and the refresh timer
+### Windows: Git Bash and the 1-second tick
 
-On Windows this HUD renders **on events only** — no refresh timer. That is deliberate, and worth knowing about if you wonder why the clock holds still while the session sits idle.
+The refresh interval is **1 second on every platform, Windows included**. On Windows that costs something, and this section explains what and how it's paid — the answer is not a slower tick.
 
 Claude Code's `statusLine` has no exec form. Its entire schema is `type`, `command`, `padding`, `refreshInterval`, so there is no `args` array and the command is always handed to a shell. On Windows that shell is **Git Bash whenever Git for Windows is installed** — and nothing in your settings redirects it. `CLAUDE_CODE_GIT_BASH_PATH`, `CLAUDE_CODE_USE_POWERSHELL_TOOL` and `defaultShell` were all measured with no effect on it; renders still came from `C:\Program Files\Git\bin\bash.exe`. (`defaultShell` governs only the `!` shell-mode prefix.)
 
-Each render therefore costs **two** MSYS initialisations, because `Git\bin\bash.exe` is a stub that re-execs `Git\usr\bin\bash.exe`. With a 1-second `refreshInterval` that is two per second for the whole session, which is enough to poison Git Bash's shared MSYS section:
+Each render therefore costs **two** MSYS initialisations, because `Git\bin\bash.exe` is a stub that re-execs `Git\usr\bin\bash.exe`. Healthy, each pair takes ~0.15 s and nothing accumulates — 1 Hz is comfortably sustainable. The danger is not the rate but a single **hung** init, which poisons Git Bash's shared MSYS section:
 
 ```
 bash.exe: *** fatal error - add_item ("\??\C:\Program Files\Git", "/", ...) failed, errno 1
 ```
 
-Once poisoned the failure sustains itself: a healthy `bash -c` returns in ~0.3 s, a poisoned one hangs ~15 s before dying with `0xC0000005`. The wrapper population never falls to zero, so the section never gets an instant with no holder and cannot heal. Git Bash then looks broken machine-wide — `bash --version` included — even though the install is fine.
+From then on the failure sustains itself. A healthy `bash -c` returns in ~0.3 s; a poisoned one hangs ~15 s before dying with `0xC0000005`. At 1 Hz a new wrapper starts long before the last one dies, so the population never reaches zero, the section never gets an instant with no holder, and it cannot heal on its own. Git Bash then looks broken machine-wide — `bash --version` included — on a perfectly intact install.
 
-Two things keep that from happening:
+**The reaper is what makes 1 Hz safe.** It kills hung wrappers so the section gets its empty instant and heals. Measured on Win11 26200: a Git Bash spawn went from 15 233 ms + `0xC0000005` to **277 ms + exit 0** the moment the accumulated wrappers were killed.
 
-- **No refresh timer on Windows.** Every tool call already re-renders the HUD; the timer only bought a live clock and the read-tool blink. Opt back in with `--refresh 5` if you want them and your Git Bash is healthy.
-- **The hook reaps hung wrappers.** Once live `bash.exe` reaches `DOOMBAR_MSYS_REAP_MIN` (default 4), the async hook kills the ones running *this package's* `statusline.js` that have been alive past `DOOMBAR_MSYS_REAP_AGE` (default 10 000 ms — a healthy render is ~300 ms). Those shells are already hung and their render is lost either way; nothing else is ever touched. Set `DOOMBAR_MSYS_REAP=0` to disable.
+It only ever targets `bash.exe` whose command line runs *this package's* `statusline.js` and which has outlived `DOOMBAR_MSYS_REAP_AGE` (default 10 000 ms, against ~300 ms for a healthy render). Such a shell is already hung and its render is lost either way; nothing else is ever touched.
 
-The `sys.zombies` metric shows the live `bash.exe` count so a forming pile is visible before it bites.
+It runs from two places, because neither alone covers a whole session:
 
-If Git Bash is *already* poisoned, close Claude Code and every Git Bash window, then run [`tools/fix-msys.cmd`](tools/fix-msys.cmd) (a pure `cmd.exe` script, since bash is what's broken). It refuses to run while any MSYS process is alive, because `rebaseall` can corrupt `msys-2.0.dll` if one is.
+- **From the hook**, on any Claude Code event, once live `bash.exe` reaches `DOOMBAR_MSYS_REAP_MIN` (default 4). This covers active work and reports the count into the HUD.
+- **From the render**, throttled to once per `DOOMBAR_REAP_TICK` (default 15 000 ms). This covers **idle** sessions — no events arrive when you're not working, and idle is exactly when the 1 Hz timer is the only thing spawning shells. The kick is detached and unref'd, so a render never waits on it (measured: 207 ms with the reaper armed).
 
-**Statusline commands are not the only shell-form spawner.** Any hook in your `settings.json` written as a `"command"` string rather than `"command"` + `"args"` also launches through Git Bash. This package's own hooks are exec form, but third-party ones frequently aren't — if the flood persists after this, that's where to look.
+Set `DOOMBAR_MSYS_REAP=0` to disable both. The `sys.zombies` metric shows the live `bash.exe` count, so a forming pile is visible before it bites.
+
+If Git Bash is *already* poisoned and you'd rather rebase than wait for the reaper, close Claude Code and every Git Bash window, then run [`tools/fix-msys.cmd`](tools/fix-msys.cmd) (pure `cmd.exe`, since bash is what's broken). It refuses to run while any MSYS process is alive, because `rebaseall` can corrupt `msys-2.0.dll` if one is.
+
+Two things worth knowing beyond this package:
+
+- **Statusline commands are not the only shell-form spawner.** Any hook in your `settings.json` written as a `"command"` string rather than `"command"` + `"args"` also launches through Git Bash — a single `Read` can fire three of them. This package's hooks are all exec form; third-party ones frequently aren't. If a flood persists, that's where to look.
+- **Removing Git Bash removes the problem entirely.** Per Claude Code's docs, statusline commands run "through Git Bash when Git Bash is installed, or through PowerShell when Git Bash is absent". Making Git Bash genuinely absent is the only way to get a shell-free-of-MSYS 1 Hz tick — at the cost of the Bash tool.
 
 ### Clickable links
 
