@@ -8,6 +8,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Windows: the statusline no longer poisons Git Bash.** The installer wrote
+  `refreshInterval: 1`, and on Windows every render is wrapped in Git Bash — `statusLine` has no
+  exec form (its whole schema is `type`/`command`/`padding`/`refreshInterval`), so Claude Code
+  always hands the command to a shell, and that shell is Git Bash whenever Git for Windows is
+  installed. Neither `CLAUDE_CODE_GIT_BASH_PATH`, nor `CLAUDE_CODE_USE_POWERSHELL_TOOL`, nor
+  `defaultShell` redirects it (all three measured with no effect; `defaultShell` governs only the
+  `!` shell-mode prefix). Because `Git\bin\bash.exe` is a stub that re-execs
+  `Git\usr\bin\bash.exe`, a 1 s timer meant **two MSYS initialisations per second for the whole
+  session** — enough to corrupt Git Bash's shared MSYS section
+  (`add_item ("\??\C:\Program Files\Git", "/", ...) failed, errno 1`). The failure then sustains
+  itself: a healthy `bash -c` returns in ~0.3 s, a poisoned one hangs ~15 s before dying with
+  `0xC0000005`, so the wrapper population never reaches zero and the section never heals. Git Bash
+  ends up unusable machine-wide — `bash --version` included — with a perfectly intact install.
+  Two changes: **no refresh timer on Windows** (the HUD renders on events, which every tool call
+  already triggers; `--refresh N` opts back in, and the timer stays at 1 s on POSIX where `sh -c`
+  is cheap), and **the hook now reaps hung wrappers** — once live `bash.exe` reaches
+  `DOOMBAR_MSYS_REAP_MIN` (default 4) it kills only the shells running this package's
+  `statusline.js` that have outlived `DOOMBAR_MSYS_REAP_AGE` (default 10 000 ms, vs ~300 ms for a
+  healthy render), which measurably restores the section (15 233 ms + `0xC0000005` → 277 ms +
+  exit 0). `DOOMBAR_MSYS_REAP=0` disables it. Re-installing drops a stale `refreshInterval` left
+  by an earlier version. The old claim that the render path made this flood "impossible by
+  construction" was only ever true of the render's *children*, not of the wrapper above it.
 - **Mugshot no longer reads bloodied at low usage from a physically impossible cap ratio.** The
   gross-sum estimator could learn `k = cap7d/cap5h < 1` — the 5h window resets ~33× more often
   than the 7d one, and every reset straddling two samples drops the new window's initial climb as a
@@ -24,6 +46,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Rate limits are account-wide, so the accumulator is now a single global file: one shared `k`,
   identical health everywhere, and it also captures movement that happened while a given session
   wasn't sampling.
+
+### Added
+- **`--refresh N` on the installer.** Sets `statusLine.refreshInterval` explicitly; `0` omits the
+  key so the HUD renders on events only. Defaults to `0` on Windows and `1` elsewhere.
 
 ### Changed
 - **Cold-start health now uses the 5h clip alone instead of `k = 1` min-remaining.** Before the

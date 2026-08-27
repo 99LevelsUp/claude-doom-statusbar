@@ -40,6 +40,7 @@ That writes the `statusLine`, the lifecycle hooks, and the preset into `~/.claud
 ```bash
 npx claude-doom-statusbar install --preset full   # full | standard | minimal (default: full)
 npx claude-doom-statusbar install --project       # write ./.claude/settings.json instead of ~/.claude
+npx claude-doom-statusbar install --refresh 5     # also re-render on a 5s timer (0 = events only)
 npx claude-doom-statusbar uninstall                # remove everything the installer added
 ```
 
@@ -54,6 +55,31 @@ npm i -g claude-doom-statusbar@latest    # global install
 # or just run the latest on demand:
 npx claude-doom-statusbar@latest install
 ```
+
+### Windows: Git Bash and the refresh timer
+
+On Windows this HUD renders **on events only** — no refresh timer. That is deliberate, and worth knowing about if you wonder why the clock holds still while the session sits idle.
+
+Claude Code's `statusLine` has no exec form. Its entire schema is `type`, `command`, `padding`, `refreshInterval`, so there is no `args` array and the command is always handed to a shell. On Windows that shell is **Git Bash whenever Git for Windows is installed** — and nothing in your settings redirects it. `CLAUDE_CODE_GIT_BASH_PATH`, `CLAUDE_CODE_USE_POWERSHELL_TOOL` and `defaultShell` were all measured with no effect on it; renders still came from `C:\Program Files\Git\bin\bash.exe`. (`defaultShell` governs only the `!` shell-mode prefix.)
+
+Each render therefore costs **two** MSYS initialisations, because `Git\bin\bash.exe` is a stub that re-execs `Git\usr\bin\bash.exe`. With a 1-second `refreshInterval` that is two per second for the whole session, which is enough to poison Git Bash's shared MSYS section:
+
+```
+bash.exe: *** fatal error - add_item ("\??\C:\Program Files\Git", "/", ...) failed, errno 1
+```
+
+Once poisoned the failure sustains itself: a healthy `bash -c` returns in ~0.3 s, a poisoned one hangs ~15 s before dying with `0xC0000005`. The wrapper population never falls to zero, so the section never gets an instant with no holder and cannot heal. Git Bash then looks broken machine-wide — `bash --version` included — even though the install is fine.
+
+Two things keep that from happening:
+
+- **No refresh timer on Windows.** Every tool call already re-renders the HUD; the timer only bought a live clock and the read-tool blink. Opt back in with `--refresh 5` if you want them and your Git Bash is healthy.
+- **The hook reaps hung wrappers.** Once live `bash.exe` reaches `DOOMBAR_MSYS_REAP_MIN` (default 4), the async hook kills the ones running *this package's* `statusline.js` that have been alive past `DOOMBAR_MSYS_REAP_AGE` (default 10 000 ms — a healthy render is ~300 ms). Those shells are already hung and their render is lost either way; nothing else is ever touched. Set `DOOMBAR_MSYS_REAP=0` to disable.
+
+The `sys.zombies` metric shows the live `bash.exe` count so a forming pile is visible before it bites.
+
+If Git Bash is *already* poisoned, close Claude Code and every Git Bash window, then run [`tools/fix-msys.cmd`](tools/fix-msys.cmd) (a pure `cmd.exe` script, since bash is what's broken). It refuses to run while any MSYS process is alive, because `rebaseall` can corrupt `msys-2.0.dll` if one is.
+
+**Statusline commands are not the only shell-form spawner.** Any hook in your `settings.json` written as a `"command"` string rather than `"command"` + `"args"` also launches through Git Bash. This package's own hooks are exec form, but third-party ones frequently aren't — if the flood persists after this, that's where to look.
 
 ### Clickable links
 
@@ -85,7 +111,7 @@ As the terminal narrows, the HUD shrinks: bars contract and text columns shrink 
 
 ## How it works
 
-- **`src/statusline.js`** is the statusLine command. Claude Code pipes session JSON on stdin; it maps that (plus git via shell, system metrics from Node built-ins, and the hook state file) to metric values, picks the mugshot sprite, and renders the preset.
+- **`src/statusline.js`** is the statusLine command. Claude Code pipes session JSON on stdin; it maps that (plus the hook's git snapshot, system metrics from Node built-ins, and the hook state file) to metric values, picks the mugshot sprite, and renders the preset. It spawns nothing — git moved into the hook precisely to keep the render path free of child processes.
 - **`src/hook.js`** is an event bus. Lifecycle hooks write a small state file (face reaction with decay, tool-run intervals for the geiger, the running-subagent squad). The status line reads it on each refresh — the two never block each other.
 - **`src/render.js`** is the rendering engine; **`src/face.js`** rasterises the mugshot via chafa (with pre-baked transparent sprites as the fallback). **`bin/cli.js`** is the installer.
 

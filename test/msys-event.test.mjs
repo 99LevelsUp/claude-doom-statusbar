@@ -14,6 +14,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadState, activityValues } from "../src/statusline.js";
+import { stalePids, parseBashShells } from "../src/hook.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const HOOK = path.join(HERE, "..", "src", "hook.js");
@@ -42,7 +43,10 @@ try {
 
   // --- Real hook path: win32 snapshots a count; other platforms emit nothing. ---
   const sid2 = "msyshook-" + process.pid;
-  const env = { ...process.env, MUGSHOT_STATE: checkpoint, DOOMBAR_GIT_TTL: "0" };
+  // DOOMBAR_MSYS_REAP=0 throughout: these subprocesses are real hooks, and on a Windows dev box
+  // with a pile already forming they would reap the developer's own live statusLine wrappers.
+  // The reaper's selection rule is covered purely below instead.
+  const env = { ...process.env, MUGSHOT_STATE: checkpoint, DOOMBAR_GIT_TTL: "0", DOOMBAR_MSYS_REAP: "0" };
   execFileSync(process.execPath, [HOOK], {
     input: JSON.stringify({ hook_event_name: "SessionStart", session_id: sid2, cwd: tmp }),
     encoding: "utf8", env,
@@ -65,7 +69,7 @@ try {
   const checkpoint2 = path.join(tmp, "state-rw.json");
   const journal2 = checkpoint2 + ".jsonl";
   const sid3 = "msysrw-" + process.pid;
-  const env0 = { ...process.env, MUGSHOT_STATE: checkpoint2, DOOMBAR_MSYS_TTL: "0" };
+  const env0 = { ...process.env, MUGSHOT_STATE: checkpoint2, DOOMBAR_MSYS_TTL: "0", DOOMBAR_MSYS_REAP: "0" };
   execFileSync(process.execPath, [HOOK], {
     input: JSON.stringify({ hook_event_name: "PostToolUse", session_id: sid3, tool_name: "PowerShell", cwd: tmp }),
     encoding: "utf8", env: env0,
@@ -77,6 +81,43 @@ try {
   } else {
     ok(!rwMsys, "non-win32: still no msys line on a non-write event");
   }
+  // --- Reaper selection: pure and cross-platform, so it is tested everywhere. ------------
+  // The reaper is the only thing in this package that kills a process, so its selection rule
+  // has to be provably narrow: OUR statusline wrapper, and only once it has outlived a healthy
+  // render (~300 ms) many times over. Everything else must survive untouched.
+  const procs = [
+    { pid: 101, ageMs: 30000, cmd: 'C:\\Program Files\\Git\\bin\\bash.exe -c "node \\"C:/x/claude-doom-statusbar/src/statusline.js\\""' },
+    { pid: 102, ageMs: 30000, cmd: 'C:\\Program Files\\Git\\usr\\bin\\bash.exe -c "node \\"C:/x/claude-doom-statusbar/src/statusline.js\\""' },
+    { pid: 103, ageMs: 200, cmd: 'C:\\Program Files\\Git\\bin\\bash.exe -c "node \\"C:/x/src/statusline.js\\""' },
+    { pid: 104, ageMs: 99999, cmd: 'C:\\Program Files\\Git\\bin\\bash.exe -c "npm test"' },
+    { pid: 105, ageMs: 99999, cmd: "" },
+  ];
+  const picked = stalePids(procs, 10000);
+  ok(picked.length === 2 && picked.includes(101) && picked.includes(102),
+    `reaper picks both hung statusline wrappers, nothing else (got ${JSON.stringify(picked)})`);
+  ok(!stalePids(procs, 10000).includes(103), "a young statusline wrapper is left alone (still rendering)");
+  ok(!stalePids(procs, 10000).includes(104), "an unrelated long-running bash is never killed");
+  ok(stalePids([], 10000).length === 0 && stalePids(null, 10000).length === 0,
+    "empty / missing process list yields nothing to reap");
+  ok(stalePids([{ pid: 0, ageMs: 99999, cmd: "statusline.js" }], 10000).length === 0,
+    "pid 0 is rejected (never taskkill a bogus pid)");
+  ok(stalePids([{ pid: 106, ageMs: NaN, cmd: "statusline.js" }], 10000).length === 0,
+    "an unparsable age is treated as not-yet-stale");
+
+  // --- Enumerator parse: only the first two "|" are structural. -------------------------
+  // The wrapper we reap is literally `bash -c "node …"`, so a piped inner command is normal
+  // and must not truncate the command line we match `statusline.js` against.
+  const rows = parseBashShells([
+    '1234|45678|"C:\\Program Files\\Git\\bin\\bash.exe" -c "node statusline.js | grep foo"',
+    "5678|10|C:\\x\\bash.exe -c \"npm test\"",
+    "not-a-row",
+    "",
+  ].join("\r\n"));
+  ok(rows.length === 2, `parses 2 rows, skips garbage and blanks (got ${rows.length})`);
+  ok(rows[0].cmd.endsWith('| grep foo"'), "a pipe inside the command line survives the split");
+  ok(rows[0].pid === 1234 && rows[0].ageMs === 45678, "pid and age parsed as numbers");
+  ok(stalePids(rows, 10000).length === 1 && stalePids(rows, 10000)[0] === 1234,
+    "the piped statusline wrapper is still recognised as reapable");
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }

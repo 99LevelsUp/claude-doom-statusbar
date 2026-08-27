@@ -34,7 +34,12 @@ const has = (o, k) => Object.prototype.hasOwnProperty.call(o || {}, k);
 
 // git is no longer spawned here. The async hook snapshots it into the journal (see hook.js
 // + fold.js); buildValues reads the folded snapshot from state.git. This keeps the render
-// hot path spawn-free — the Windows MSYS "bash flood" cannot happen by construction.
+// hot path spawn-free, so this process contributes nothing to the Windows MSYS "bash flood".
+//
+// It does NOT make the flood impossible: on Windows Claude Code wraps this very command in
+// Git Bash (statusLine has no exec form), so each render costs two MSYS inits before node even
+// starts. That half is handled by not installing a refresh timer and by the hook's reaper —
+// see reapStaleShells in hook.js.
 
 // Clip a display label to at most `n` code points, ending with … when truncated,
 // so an oversized repo or branch name can't blow up the PROJECT box width.

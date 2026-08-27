@@ -5,6 +5,7 @@
 //   claude-doom-statusbar install              # install into ~/.claude/settings.json
 //   claude-doom-statusbar install --preset full # pick a preset (full | standard | minimal)
 //   claude-doom-statusbar install --project     # install into ./.claude/settings.json instead
+//   claude-doom-statusbar install --refresh 5   # re-render on a 5s timer too (0 = events only)
 //   claude-doom-statusbar uninstall             # remove everything this installer added
 //
 // It merges into your existing settings (other hooks / statusline are preserved or
@@ -26,6 +27,22 @@ const slash = (p) => p.replace(/\\/g, "/");
 const STATUSLINE = slash(path.join(ROOT, "src", "statusline.js"));
 const HOOK = slash(path.join(ROOT, "src", "hook.js"));
 const STATUSLINE_CMD = `node "${STATUSLINE}"`;
+
+// refreshInterval re-runs the render command every N seconds ON TOP of the event-driven updates.
+// On Windows that timer is expensive in a way it is nowhere else: statusLine has no exec form
+// (its whole schema is type/command/padding/refreshInterval), so Claude Code wraps our command in
+// a shell, and on Windows that shell is Git Bash whenever Git for Windows is installed —
+// CLAUDE_CODE_GIT_BASH_PATH, CLAUDE_CODE_USE_POWERSHELL_TOOL and defaultShell do not redirect it.
+// Git\bin\bash.exe is a stub that re-execs Git\usr\bin\bash.exe, so a 1 s timer means TWO MSYS
+// inits every second for the whole session. That is enough to poison Git Bash's shared MSYS
+// section ("add_item errno 1"), after which each render hangs ~15 s instead of ~0.3 s and the
+// pile-up accelerates itself.
+//
+// So: no timer on Windows — the HUD is event-driven anyway, and every tool call already renders
+// it. The cost is that the clock and the read-tool blink hold still while the session is idle.
+// Elsewhere `sh -c` is cheap, so keep the 1 s tick. `--refresh=N` overrides either way;
+// `--refresh=0` turns the timer off explicitly.
+const DEFAULT_REFRESH = process.platform === "win32" ? 0 : 1;
 
 // Lifecycle events the mugshot hook understands (face reactions, geiger, subagents,
 // tasks, permission mode, git snapshots). PreToolUse has no matcher -> fires for every tool.
@@ -80,13 +97,19 @@ function save(p, data) {
 const ours = (entry) => (entry.hooks || [])
   .some((h) => hasMark([h.command, ...(h.args || [])].join(" "), HOOK_MARKS));
 
-function install(cfg, preset) {
+function install(cfg, preset, refresh) {
   const notes = [];
   const existing = cfg.statusLine;
   if (existing && !hasMark(JSON.stringify(existing), SL_MARKS)) {
     notes.push("replaced your existing statusLine (the old one is in settings.json.bak)");
   }
-  cfg.statusLine = { type: "command", command: STATUSLINE_CMD, refreshInterval: 1 };
+  // Assigning a fresh object (rather than patching) also drops a refreshInterval left behind by
+  // an older install — which is the whole point of this change on Windows.
+  cfg.statusLine = { type: "command", command: STATUSLINE_CMD };
+  if (refresh > 0) cfg.statusLine.refreshInterval = refresh;
+  else if (existing?.refreshInterval) {
+    notes.push("dropped refreshInterval — the HUD now renders on events only (see --refresh)");
+  }
 
   const env = (cfg.env ??= {});
   const presetFile = preset.endsWith(".toml") ? preset : preset + ".toml";
@@ -102,8 +125,9 @@ function install(cfg, preset) {
       // EXEC FORM (command + args): Claude Code spawns node directly, with no shell wrapper.
       // On Windows this avoids the `bash -c "node ..."` launcher, so wiring the hook into many
       // events no longer floods Git Bash's shared MSYS section (the "add_item errno 1" crash).
-      // statusLine has no exec form, so it stays shell-form below — one sequential spawn per
-      // tick, not a concurrent burst.
+      // statusLine has no exec form and cannot be moved off the shell, so instead we stop
+      // driving it on a timer (see DEFAULT_REFRESH) and let the hook reap the wrappers Claude
+      // Code leaks when one hangs (see reapStaleShells in src/hook.js).
       lst.push({ hooks: [{ type: "command", command: "node", args: [HOOK], async: true }] });
     }
   }
@@ -126,7 +150,7 @@ function uninstall(cfg) {
 }
 
 function parseArgs(argv) {
-  const out = { cmd: "install", preset: "full", project: false };
+  const out = { cmd: "install", preset: "full", project: false, refresh: DEFAULT_REFRESH };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "install" || a === "uninstall") out.cmd = a;
@@ -134,10 +158,19 @@ function parseArgs(argv) {
     else if (a === "--project") out.project = true;
     else if (a === "--preset") out.preset = argv[++i];
     else if (a.startsWith("--preset=")) out.preset = a.slice("--preset=".length);
+    else if (a === "--refresh") out.refresh = refreshValue(argv[++i]);
+    else if (a.startsWith("--refresh=")) out.refresh = refreshValue(a.slice("--refresh=".length));
     else die(`! unknown argument: ${a}`);
   }
   if (out.cmd === "install" && !out.preset) die("! --preset needs a value (full | standard | minimal)");
   return out;
+}
+
+// Claude Code's documented minimum is 1 s; 0 is our own "no timer at all" (the key is omitted).
+function refreshValue(v) {
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 0) die("! --refresh needs a whole number of seconds (0 = off)");
+  return n;
 }
 
 function main() {
@@ -156,11 +189,12 @@ function main() {
   if (!existsSync(fileURLToPath(new URL("../src/statusline.js", import.meta.url)))) {
     die(`! can't find ${STATUSLINE} — reinstall the package.`);
   }
-  const notes = install(cfg, args.preset);
+  const notes = install(cfg, args.preset, args.refresh);
   save(p, cfg);
 
   console.log(`✓ installed claude-doom-statusbar into ${p}`);
   console.log(`  statusline : ${STATUSLINE_CMD}`);
+  console.log(`  refresh    : ${args.refresh > 0 ? `every ${args.refresh}s + events` : "events only"}`);
   console.log(`  preset     : ${args.preset}`);
   console.log(`  hooks      : ${HOOK_EVENTS.join(", ")}`);
   for (const n of notes) console.log(`  note       : ${n}`);

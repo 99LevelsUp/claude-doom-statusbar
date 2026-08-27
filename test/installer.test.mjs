@@ -32,7 +32,14 @@ const tmpdir = () => mkdtempSync(path.join(os.tmpdir(), "doombar-test-"));
   const cfg = read(tmp);
   ok(cfg.statusLine?.command?.includes("src/statusline.js".replace(/\//g, path.sep === "\\" ? "/" : "/")) ||
      cfg.statusLine?.command?.includes("src/statusline.js"), "statusLine points at src/statusline.js");
-  ok(cfg.statusLine?.refreshInterval === 1, "statusLine refreshInterval is 1");
+  // No refresh timer on Windows: each tick would cost two Git Bash / MSYS inits, because
+  // statusLine has no exec form and Claude Code wraps the command in a shell. Elsewhere the 1 s
+  // tick is cheap and keeps the clock and the read-tool blink live.
+  if (process.platform === "win32") {
+    ok(!("refreshInterval" in cfg.statusLine), "win32: no refreshInterval (events only)");
+  } else {
+    ok(cfg.statusLine?.refreshInterval === 1, "statusLine refreshInterval is 1");
+  }
   ok(cfg.env?.DOOMBAR_PRESET?.includes("full.toml"), "DOOMBAR_PRESET -> full.toml");
   ok(cfg.env?.FORCE_HYPERLINK === "1", "FORCE_HYPERLINK = 1");
   const EVENTS = ["SessionStart", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied",
@@ -56,6 +63,33 @@ const tmpdir = () => mkdtempSync(path.join(os.tmpdir(), "doombar-test-"));
   const cfg = read(tmp);
   const sizes = Object.values(cfg.hooks).map((a) => a.length);
   ok(sizes.every((n) => n === 1), `re-install did not double-add (hook sizes = ${sizes.join(",")})`);
+  rmSync(tmp, { recursive: true, force: true });
+}
+
+// 2b. --refresh is an explicit override in both directions, and 0 omits the key entirely
+{
+  const tmp = tmpdir();
+  run(tmp, "install", "--project", "--refresh", "5");
+  ok(read(tmp).statusLine?.refreshInterval === 5, "--refresh 5 sets refreshInterval to 5");
+  run(tmp, "install", "--project", "--refresh=0");
+  ok(!("refreshInterval" in read(tmp).statusLine), "--refresh=0 omits refreshInterval");
+  let rejected = false;
+  try { run(tmp, "install", "--project", "--refresh", "-2"); } catch { rejected = true; }
+  ok(rejected, "--refresh rejects a negative value");
+  rmSync(tmp, { recursive: true, force: true });
+}
+
+// 2c. UPGRADE PATH: a stale refreshInterval from an older install must not survive on Windows.
+// This is the regression that poisoned Git Bash — a 1 s timer spawning two MSYS inits per tick.
+{
+  const tmp = tmpdir();
+  mkdirSync(path.join(tmp, ".claude"), { recursive: true });
+  writeFileSync(settingsPath(tmp), JSON.stringify({
+    statusLine: { type: "command", command: 'node "/old/src/statusline.js"', refreshInterval: 1 },
+  }, null, 2));
+  const out = run(tmp, "install", "--project", "--refresh=0");
+  ok(!("refreshInterval" in read(tmp).statusLine), "stale refreshInterval dropped on re-install");
+  ok(/dropped refreshInterval/.test(out), "install reports that it dropped the timer");
   rmSync(tmp, { recursive: true, force: true });
 }
 
