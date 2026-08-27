@@ -119,7 +119,7 @@ As the terminal narrows, the HUD shrinks: bars contract and text columns shrink 
 ## How it works
 
 - **`src/statusline.js`** is the statusLine command. Claude Code pipes session JSON on stdin; it maps that (plus the hook's git snapshot, system metrics from Node built-ins, and the hook state file) to metric values, picks the mugshot sprite, and renders the preset. It spawns nothing — git moved into the hook precisely to keep the render path free of child processes.
-- **`src/hook.js`** is an event bus. Lifecycle hooks write a small state file (face reaction with decay, tool-run intervals for the geiger, the running-subagent squad). The status line reads it on each refresh — the two never block each other.
+- **`src/hook.js`** is an event bus. Lifecycle hooks write a small state file (face reaction with decay, tool-run intervals for the geiger, the running-subagent squad). The status line reads it on each refresh — the two never block each other. Those files live in the temp directory keyed by session id; `SessionStart` sweeps ones older than `DOOMBAR_JOURNAL_TTL` (default 7 days, `off` to disable), never touching shared state or a live session's files.
 - **`src/render.js`** is the rendering engine; **`src/face.js`** rasterises the mugshot via chafa (with pre-baked transparent sprites as the fallback). **`bin/cli.js`** is the installer.
 
 See [`docs/ideation/`](docs/ideation/) for the full design write-up.

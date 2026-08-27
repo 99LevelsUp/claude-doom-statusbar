@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.5] - 2026-08-27
+
+### Fixed
+- **Per-session state files are now cleaned up instead of accumulating forever.** Each session
+  left a checkpoint, a journal and two markers in the temp directory, keyed by session id, and
+  nothing ever removed them — a real box had **12 395 files / 10 MB**, including orphaned
+  `<checkpoint>.<pid>.tmp` files from interrupted atomic writes. They are pure scratch (once a
+  session ends its journal can never be read again), so `SessionStart` now sweeps the ones older
+  than `DOOMBAR_JOURNAL_TTL` (default 7 days) alongside the journal reset it already did. The
+  sweep is deliberately narrow: only our own `mugshot_` prefix, only the temp directory,
+  non-recursive, never this session's own files, and never the cross-session shared state (the
+  rate-health accumulator and the reap throttle are keyed by fixed names and excluded). A file
+  whose mtime can't be read is kept, not guessed at. `DOOMBAR_JOURNAL_TTL=off` disables it.
+  Runs in the async `SessionStart` hook, so the directory scan delays nothing.
+
 ## [0.11.4] - 2026-08-27
 
 ### Fixed
