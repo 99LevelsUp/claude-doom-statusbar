@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.3] - 2026-08-27
+
 ### Fixed
 - **Windows: a 1-second refresh no longer poisons Git Bash.** On Windows every render is wrapped
   in Git Bash — `statusLine` has no exec form (its whole schema is
