@@ -134,7 +134,9 @@ ok(hearts === "♥♥♥♡♡♡♡♡♡♡", `icons: 70% used -> 3 of 10 hear
 // End to end: `theme` writes the choice, the statusline picks it up on the next render.
 const tmp = mkdtempSync(path.join(os.tmpdir(), "doombar-theme-"));
 try {
-  const env = { ...process.env, DOOMBAR_THEME_FILE: path.join(tmp, "theme.json"), COLUMNS: "220" };
+  // TEMP/TMP/TMPDIR -> tmp: the render's state files land here, not in the real temp dir.
+  const env = { ...process.env, DOOMBAR_THEME_FILE: path.join(tmp, "theme.json"), COLUMNS: "220",
+    TEMP: tmp, TMP: tmp, TMPDIR: tmp, DOOMBAR_MSYS_REAP: "0" };
   delete env.DOOMBAR_THEME;
   const cli = (...a) => execFileSync(process.execPath, [path.join(ROOT, "bin", "cli.js"), "theme", ...a], { env, encoding: "utf8" });
   const render = () => strip(execFileSync(process.execPath, [path.join(ROOT, "src", "statusline.js")], {

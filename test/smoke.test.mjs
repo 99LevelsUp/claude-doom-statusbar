@@ -43,7 +43,9 @@ try {
   const out = execSync(cmd, {
     input: sample,
     encoding: "utf-8",
-    env: { ...process.env, DOOMBAR_PRESET: preset, COLUMNS: "100", FORCE_HYPERLINK: "1" },
+    // TEMP/TMP/TMPDIR -> tmp: the render's state files land here, not in the real temp dir.
+    env: { ...process.env, DOOMBAR_PRESET: preset, COLUMNS: "100", FORCE_HYPERLINK: "1",
+      TEMP: tmp, TMP: tmp, TMPDIR: tmp, DOOMBAR_MSYS_REAP: "0" },
   });
 
   ok(out.length > 0, `wired command produced output (${out.length} bytes)`);

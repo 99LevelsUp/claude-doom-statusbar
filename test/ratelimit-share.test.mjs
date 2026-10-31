@@ -32,7 +32,8 @@ ok(m.five_hour.used_percentage === 40 && m.seven_day.used_percentage === 16, "wi
 const tmp = mkdtempSync(path.join(os.tmpdir(), "doombar-rl-"));
 try {
   const env = { ...process.env, DOOMBAR_THEME: "minecraft", COLUMNS: "120",
-    DOOMBAR_RATELIMITS: path.join(tmp, "shared.json"), MUGSHOT_STATE: path.join(tmp, "state.json") };
+    DOOMBAR_RATELIMITS: path.join(tmp, "shared.json"), MUGSHOT_STATE: path.join(tmp, "state.json"),
+    TEMP: tmp, TMP: tmp, TMPDIR: tmp, DOOMBAR_MSYS_REAP: "0" }; // state files stay in tmp
   delete env.DOOMBAR_RATELIMITS_SHARE;
   const render = (sid, rl, extraEnv = {}) => strip(execFileSync(process.execPath, [path.join(ROOT, "src", "statusline.js")], {
     env: { ...env, ...extraEnv }, encoding: "utf8",

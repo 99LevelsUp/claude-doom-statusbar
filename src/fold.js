@@ -28,6 +28,23 @@ export function statePaths(sessionId) {
   return { checkpoint: base, journal: base + ".jsonl" };
 }
 
+// Every per-session file, next to the checkpoint, so MUGSHOT_STATE relocates all of them and
+// the sweep (which scans the checkpoint's directory) sees all of them. The writers, the sweep
+// and end-of-session cleanup all name files through here, so they always agree.
+export function sessionPaths(sessionId) {
+  const { checkpoint, journal } = statePaths(sessionId);
+  const dir = path.dirname(checkpoint);
+  const key = sidKey(sessionId);
+  return {
+    checkpoint,
+    journal,
+    git: path.join(dir, `mugshot_git_${key}.json`),     // git probe throttle marker
+    msys: path.join(dir, `mugshot_msys_${key}.json`),   // bash-count probe throttle marker
+    adv: path.join(dir, `mugshot_adv_${key}.json`),     // advisor consult cache
+    savings: path.join(dir, `savings_${key}.json`),     // lean-ctx savings accumulator
+  };
+}
+
 export function base(tool) {
   return tool.startsWith("mcp__") ? tool.split("__").pop() : tool;
 }

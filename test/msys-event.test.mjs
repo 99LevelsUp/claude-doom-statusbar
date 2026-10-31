@@ -136,7 +136,8 @@ try {
       input: JSON.stringify({ session_id: "reaptick-" + process.pid, cwd: tmp,
         model: { id: "claude-opus-5" }, context_window: { context_window_size: 1000000, used_tokens: 1000 } }),
       encoding: "utf8",
-      env: { ...process.env, MUGSHOT_STATE: path.join(tmp, "rt.json"), COLUMNS: "120", ...extraEnv },
+      env: { ...process.env, MUGSHOT_STATE: path.join(tmp, "rt.json"), COLUMNS: "120",
+        TEMP: tmp, TMP: tmp, TMPDIR: tmp, ...extraEnv },
     });
     return { ms: Date.now() - t0, out: r };
   };

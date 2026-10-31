@@ -1,15 +1,22 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import path from "node:path"; import { fileURLToPath } from "node:url";
+import os from "node:os"; import { mkdtempSync, rmSync } from "node:fs";
 import { foldActivity } from "../src/hook.js";
 const HOOK = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src", "hook.js");
 let fails = 0;
 const ok = (c, m) => { console.log((c?"  ok   ":"  FAIL ")+m); if(!c) fails++; };
 
+// The hook writes its journal and markers to the system temp dir; point that at a dir this
+// test owns so a run leaves nothing in the machine's real temp directory.
+const TMP = mkdtempSync(path.join(os.tmpdir(), "doombar-hooktasks-"));
+process.on("exit", () => rmSync(TMP, { recursive: true, force: true }));
+
 // Malformed event must not crash the hook (would block tools in a live session).
 function runHook(input, env = {}) {
   try {
-    execFileSync(process.execPath, [HOOK], { input, encoding: "utf8", env: { ...process.env, ...env } });
+    execFileSync(process.execPath, [HOOK], { input, encoding: "utf8",
+      env: { ...process.env, TEMP: TMP, TMP, TMPDIR: TMP, DOOMBAR_MSYS_REAP: "0", ...env } });
     return 0;
   } catch (e) { return e.status ?? 1; }
 }

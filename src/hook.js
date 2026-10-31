@@ -23,8 +23,7 @@ import { appendFileSync, writeFileSync, readFileSync, readdirSync, statSync, unl
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import os from "node:os";
-import { base, statePaths, sidKey, WRITE_TOOLS } from "./fold.js";
+import { base, statePaths, sessionPaths, WRITE_TOOLS } from "./fold.js";
 
 // Re-export the reducer so existing tests importing from hook.js keep working.
 export { foldActivity, expression } from "./fold.js";
@@ -170,9 +169,7 @@ export function reapStaleShells() {
 
 // Best-effort per-session throttle (not a lock): a tiny marker holds the last git ts + cwd.
 // Worst case under a race is a redundant concurrent git spawn — harmless and rare.
-function gitMarkerPath(sid) {
-  return path.join(os.tmpdir(), `mugshot_git_${sidKey(sid)}.json`);
-}
+const gitMarkerPath = (sid) => sessionPaths(sid).git;
 
 function shouldSnapshotGit(name, ev, nowMs, sid) {
   if (name !== "SessionStart" && name !== "Stop" &&
@@ -185,21 +182,21 @@ function shouldSnapshotGit(name, ev, nowMs, sid) {
   return nowMs - (m.ts || 0) >= GIT_TTL;
 }
 
-function msysMarkerPath(sid) {
-  return path.join(os.tmpdir(), `mugshot_msys_${sidKey(sid)}.json`);
-}
+const msysMarkerPath = (sid) => sessionPaths(sid).msys;
 
 // --- Journal housekeeping -------------------------------------------------------------------
-// Every session leaves a checkpoint, a journal and two markers in the temp dir, keyed by session
+// Every session leaves a checkpoint, a journal, probe markers, an advisor cache and a savings file
+// next to its checkpoint (see sessionPaths), keyed by session
 // id, and nothing ever removed them: a real box accumulated 12 395 files / 10 MB. They are all
 // per-session scratch — once a session is over its journal can never be read again — so at
 // SessionStart we drop the ones that have gone cold.
 //
 // Deliberately narrow, because this deletes files:
-//   * only names matching our own `mugshot_` prefix, in the temp dir, non-recursively;
-//   * never SHARED state: the rate-health accumulator is cross-session by design (see
-//     statusline.js) and the reap throttle is process-wide, so both are keyed by a fixed name
-//     with no session id and are excluded by name;
+//   * only names matching our own `mugshot_` / `savings_` prefixes, in the checkpoint's
+//     directory, non-recursively;
+//   * never SHARED state: the rate-health accumulator, the rate-limit pool and the CPU sample
+//     are cross-session by design (see statusline.js) and the reap throttle is process-wide, so
+//     they are keyed by a fixed name with no session id and are excluded by name;
 //   * never this session's own files;
 //   * only when mtime is older than DOOMBAR_JOURNAL_TTL (default 7 days), so a session that is
 //     merely idle — or a concurrent one — is never touched.
@@ -208,14 +205,16 @@ function msysMarkerPath(sid) {
 const JOURNAL_TTL = envNum(process.env.DOOMBAR_JOURNAL_TTL, 7 * 24 * 60 * 60 * 1000); // ms
 
 // Fixed-name files shared across sessions — deleting these would lose real state.
-const SHARED_STATE = new Set(["mugshot_ratehealth_global.json", "mugshot_reap_tick.json"]);
+const SHARED_STATE = new Set([
+  "mugshot_ratehealth_global.json", "mugshot_ratelimits_global.json", "mugshot_cpu.json", "mugshot_reap_tick.json",
+]);
 
 // Pure: which of `names` are cold scratch files? Exported so the delete rule is tested without
 // touching a real temp dir. `ageOf` returns mtime age in ms, or null when it can't be read.
 export function staleStateFiles(names, ageOf, { ttl = JOURNAL_TTL, keep = [] } = {}) {
   const mine = new Set(keep.map((p) => path.basename(p)));
   return (names || []).filter((n) => {
-    if (!/^mugshot_/.test(n)) return false;      // not ours
+    if (!/^(mugshot|savings)_/.test(n)) return false; // not ours
     if (SHARED_STATE.has(n)) return false;       // cross-session state, no session id in the name
     if (mine.has(n)) return false;               // this session's own files
     const age = ageOf(n);
@@ -225,7 +224,7 @@ export function staleStateFiles(names, ageOf, { ttl = JOURNAL_TTL, keep = [] } =
 
 function sweepState(sid) {
   if (process.env.DOOMBAR_JOURNAL_TTL === "off") return 0;
-  const { checkpoint, journal } = statePaths(sid);
+  const { checkpoint } = statePaths(sid);
   // Sweep the directory our state actually lives in, not os.tmpdir() blindly. They are the same
   // in normal use, but MUGSHOT_STATE relocates the checkpoint — and a sweep that ignored it would
   // delete from the real temp dir while writing to a sandbox. That bit the test suite: firing a
@@ -233,7 +232,7 @@ function sweepState(sid) {
   const dir = path.dirname(checkpoint);
   let names;
   try { names = readdirSync(dir); } catch { return 0; }
-  const keep = [checkpoint, journal, gitMarkerPath(sid), msysMarkerPath(sid)];
+  const keep = Object.values(sessionPaths(sid));
   const ageOf = (n) => {
     try { return Date.now() - statSync(path.join(dir, n)).mtimeMs; } catch { return null; }
   };

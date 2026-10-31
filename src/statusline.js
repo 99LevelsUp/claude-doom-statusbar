@@ -20,7 +20,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { parse as parseToml } from "smol-toml";
 import { pyround, sgrFg } from "./ansi.js";
 import { buildBar, setValues, resolvePreset, OK, TEXT, CRIT } from "./render.js";
-import { foldBatch, statePaths } from "./fold.js";
+import { foldBatch, statePaths, sessionPaths } from "./fold.js";
 import { currentTheme, themePreset } from "./theme.js";
 import { buildHotbar } from "./hotbar.js";
 
@@ -100,8 +100,7 @@ function advisorInfo(p) {
 }
 
 function godFlash(data, advTs, now) {
-  const sid = String(data.session_id || "default").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 48);
-  const cache = path.join(TMP, `mugshot_adv_${sid}.json`);
+  const cache = sessionPaths(data.session_id).adv;
   let c = {};
   try { c = JSON.parse(readFileSync(cache, "utf8")); } catch { c = {}; }
   if (advTs && advTs !== c.seen) {
@@ -346,7 +345,7 @@ function fmtSaved(st) {
 }
 
 const savingsStatePath = (sid) =>
-  process.env.DOOMBAR_SAVINGS_STATE || path.join(TMP, `savings_${sid}.json`);
+  process.env.DOOMBAR_SAVINGS_STATE || sessionPaths(sid).savings;
 
 // Per-session lean-ctx savings. lean-ctx's mcp-live.json is a single global file clobbered
 // by every concurrent session, so it can't be per-session. events.jsonl is append-only and

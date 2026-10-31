@@ -46,6 +46,8 @@ try {
       MUGSHOT_STATE: stateFile,
       DOOMBAR_PRESET: path.join(ROOT, "presets", "full.toml"),
       COLUMNS: "140",
+      TEMP: tmp, TMP: tmp, TMPDIR: tmp, // shared state files stay in tmp, not the real temp dir
+      DOOMBAR_MSYS_REAP: "0",            // no detached shell reaper racing the cleanup below
     },
   }));
 

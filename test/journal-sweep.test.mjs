@@ -31,6 +31,10 @@ const TTL = 7 * DAY;
     "mugshot_msys_old-session.json",      // cold scratch -> go
     "mugshot_adv_old-session.json",       // cold scratch -> go
     "mugshot_old-session.json.9999.tmp",  // orphaned atomic-write temp -> go
+    "savings_old-session.json",           // cold savings accumulator -> go
+    "savings_idle.json",                  // fresh savings accumulator -> keep
+    "mugshot_cpu.json",                   // SHARED CPU sample -> keep even when ancient
+    "mugshot_ratelimits_global.json",     // SHARED rate limits -> keep even when ancient
     "mugshot_ratehealth_global.json",     // SHARED across sessions -> keep even when ancient
     "mugshot_reap_tick.json",             // process-wide throttle -> keep
     "mugshot_live.json",                  // this session -> keep
@@ -41,6 +45,7 @@ const TTL = 7 * DAY;
   ];
   const ages = {
     "mugshot_idle.json": 30 * 1000,        // half a minute old
+    "savings_idle.json": 30 * 1000,
     "mugshot_unreadable.json": null,
   };
   const ageOf = (n) => (n in ages ? ages[n] : 30 * DAY); // default: a month old
@@ -48,12 +53,15 @@ const TTL = 7 * DAY;
 
   const expected = ["mugshot_old-session.json", "mugshot_old-session.json.jsonl",
     "mugshot_git_old-session.json", "mugshot_msys_old-session.json", "mugshot_adv_old-session.json",
-    "mugshot_old-session.json.9999.tmp"];
+    "mugshot_old-session.json.9999.tmp", "savings_old-session.json"];
   ok(stale.length === expected.length && expected.every((e) => stale.includes(e)),
-    `selects exactly the 6 cold scratch files (got ${stale.length}: ${stale.join(", ")})`);
+    `selects exactly the 7 cold scratch files (got ${stale.length}: ${stale.join(", ")})`);
   ok(!stale.includes("mugshot_ratehealth_global.json"),
     "the cross-session rate-health accumulator is NEVER deleted, however old");
   ok(!stale.includes("mugshot_reap_tick.json"), "the reap throttle marker is never deleted");
+  ok(!stale.includes("mugshot_cpu.json") && !stale.includes("mugshot_ratelimits_global.json"),
+    "the shared CPU sample and rate-limit pool are never deleted");
+  ok(!stale.includes("savings_idle.json"), "a fresh savings file is kept");
   ok(!stale.includes("mugshot_live.json") && !stale.includes("mugshot_live.json.jsonl"),
     "this session's own checkpoint and journal are kept");
   ok(!stale.includes("mugshot_idle.json"), "a fresh file from an idle/concurrent session is kept");
