@@ -105,6 +105,33 @@ console frame.
   `{hunger}` resolved through the preset's binding, rebinding a gauge is a preset-only change and the chat
   follows by itself.
 
+### 5. Chat: universal lines, game lines, and overrides (owner, 2026-10-31)
+
+Every game feeds the chat with its own conversations. Three kinds of line:
+
+| Kind | Example | Lives in |
+|---|---|---|
+| **Universal metric line**: asks or answers about a metric | "how full is your context?" / "context 42% full" | shared chat pack |
+| **Game metric line**: the same fact in the game's voice | Minecraft: "how many hearts have you got?", "drink a potion!!" | the game's chat pack |
+| **Game atmosphere line**: no metric, only atmosphere | Minecraft: diamonds, creepers, "whats the seed?" | the game's chat pack |
+
+- Every metric line has a **key** (`ctx.ask`, `ctx.answer`, `limit5h.low`, …). A game line with the same key
+  **overrides** the universal one, so a game only rewrites what it wants in its own voice and inherits the
+  rest. Resolution order: user overlay > game pack > universal pack, the same rule as for presets.
+- A new game starts with the universal pack plus a handful of its own atmosphere lines and is
+  playable at once. Overrides come later, one key at a time.
+- Each game also brings its **cast** (Minecraft: players joining and leaving; WC3: heroes and workers;
+  DOOM: marines). "me" is always the running model.
+- Today's Minecraft `SCRIPT` splits cleanly into three parts: metric lines in neutral wording go to the
+  universal pack, the hearts / food / potion wording becomes Minecraft overrides, and the banter becomes
+  Minecraft atmosphere.
+- Atmosphere lines are written fresh in each game's spirit. Don't quote game dialogue.
+- The chat is a render primitive, so a game whose original HUD has no chat (DOOM) can still put one in a box.
+
+Open: who owns the **order** of the conversation? Either the game script is the skeleton and pulls
+universal lines in by key (`use = "ctx"`), or universal lines are dealt automatically into the gaps between
+game lines. The first gives the game full control of pacing; the second makes a new game cheaper to start.
+
 ## Warcraft III: what it would reuse
 
 The WC3 bottom console maps well onto the kit, which is a good test that the split is right:
@@ -124,17 +151,75 @@ The WC3 bottom console maps well onto the kit, which is a good test that the spl
 New work would be the console frame chrome, the resource-bar row, and whatever genuinely has no counterpart.
 Artwork stays original (glyphs and colours drawn in code); as with the Minecraft theme, no game assets.
 
+## Rename: `claude-doom-statusbar` → `claude-game-bar` (owner, 2026-10-31)
+
+The game portfolio is growing, so the whole project, the npm package included, becomes **`claude-game-bar`**.
+Checked on 31.10.2026: the name is free on npm (`npm view` → 404) and on GitHub (`99LevelsUp/claude-game-bar`
+does not exist).
+
+Rule for every "doom" in the tree: **universal code** drops it (neutral `game` / `gamebar` / `GAMEBAR_`);
+**DOOM-specific code** keeps it. Inventory of the tracked tree as of `707e391`:
+
+### Universal → rename
+
+| What | Today | Becomes | Migration |
+|---|---|---|---|
+| Package, bin, repo | `claude-doom-statusbar` (package.json, bin/cli.js usage, README, `repository.url`) | `claude-game-bar` | keep `claude-doom-statusbar` as a second `bin` alias for a while; GitHub repo rename (GitHub redirects the old URL) |
+| Description / keywords | "DOOM-inspired status bar…" | game-neutral description; keywords keep `doom` and add `minecraft`, `warcraft` | — |
+| Env vars (17) | `DOOMBAR_PRESET`, `_THEME`, `_THEME_FILE`, `_TEXT_OVERFLOW`, `_INDENT`, `_EVENTS`, `_LLMLINGUA`, `_SAVINGS_STATE`, `_RATELIMITS`, `_RATELIMITS_SHARE`, `_REAP_TICK`, `_MSYS_REAP`, `_MSYS_REAP_AGE`, `_MSYS_REAP_MIN`, `_MSYS_TTL`, `_GIT_TTL`, `_JOURNAL_TTL` | `GAMEBAR_*` | one `env(name)` helper reads `GAMEBAR_x`, falls back to `DOOMBAR_x`; installer rewrites `env.DOOMBAR_PRESET` in settings.json |
+| Theme choice file | `~/.claude/doombar-theme.json` | `~/.claude/gamebar-theme.json` | read the old file when the new one is missing; `theme` writes the new one and removes the old |
+| Engine state in temp | `mugshot_<sid>.json`, `mugshot_git_*`, `mugshot_msys_*`, `mugshot_adv_*`, `mugshot_cpu.json`, `mugshot_ratehealth_global.json`, `mugshot_ratelimits_global.json`, `mugshot_reap_tick.json`; env `MUGSHOT_STATE` | `gamebar_*`, `GAMEBAR_STATE` | **the `mugshot_` prefix is the journal sweep's "this is ours" marker** (`hook.js staleStateFiles`): during the transition the sweep must recognise both prefixes, or old files stay forever |
+| **Reaction channel encoded as DOOM sprite names** | `statusline.js spriteFor()` returns `STFOUCH2` / `STFGOD0` / `STFDEAD0`; `hotbar.js spriteExpr()` parses the reaction back out of the sprite name | a neutral state `{ expr: idle/ouch/kill/evl/tl/tr, hp: 0..4, god, dead }`; only the DOOM portrait maps it to `STF*` sprites | the biggest hidden doom-ism: any game (WC3 portrait) would otherwise have to speak DOOM sprite names |
+| Comments in engine code | `fold.js` "reducer for the DOOM HUD state", `hook.js` "event recorder for the DOOM HUD", `statusline.js` header, `hotbar.js` sprite comments | "game bar" | — |
+| Render demo values | `render.js` `"doom-hud-demo"`, `"claude-doom-statusbar"` | neutral | — |
+| Tests | temp prefixes `doombar-*`, `doomtest`; every test pins `DOOMBAR_THEME=doom` | `gamebar-*`; `GAMEBAR_THEME=doom` (the value stays: doom is a theme) | — |
+| Project files | `CLAUDE.md` title and overview, this repo's `.claude/settings.local.json` (`DOOMBAR_PRESET`, absolute paths), local dir name, auto-memory | updated with the rename | `.claude/settings.local.json` drives the live bar: re-wire before moving the repo dir |
+
+Installer note: ownership detection matches path suffixes (`HOOK_MARKS = src/hook.js`, `SL_MARKS =
+src/statusline.js`), not the package name, so `claude-game-bar install` already recognises and replaces
+entries written by the old package. `test/installer.test.mjs` has an old-cache-path case; extend it with
+`claude-doom-statusbar/…` → `claude-game-bar/…`.
+
+### DOOM-specific → keep `doom`
+
+- The theme name `doom` (`THEMES.doom`), the default theme.
+- The DOOM presets `full` / `standard` / `minimal` (candidates for `presets/doom/` once other games ship
+  several sizes).
+- `src/face.js`, the `STF*` sprite names, `assets/images/mugshot/`, `assets/images/hud.png`. "Mugshot" is
+  DOOM's own name for the face, so it stays inside the DOOM layout; the shared kit calls it **portrait**.
+- README's DOOM section and the id Software credit.
+- History is not rewritten: `CHANGELOG.md` entries, `docs/ideation/2026-06-06-doom-statusbar-ideation.md`
+  and other dated docs keep their names and wording.
+
+### npm migration
+
+1. First release under `claude-game-bar`. **Trusted publishing (OIDC) is configured per package on
+   npmjs.com**, so the new package must be set up there (it may need one manual first publish) before
+   the CI pipeline can release it. Verify before relying on `npm version`.
+2. A final `claude-doom-statusbar` release prints a one-line notice pointing to `claude-game-bar`, then
+   `npm deprecate claude-doom-statusbar "renamed to claude-game-bar"`.
+3. `claude-game-bar install` migrates in place: settings entries (path-suffix detection above), env var
+   names, theme file.
+4. Fallbacks for `DOOMBAR_*`, `doombar-theme.json` and the `mugshot_` prefix stay for a few releases, then
+   go in a release that says so in the changelog.
+
+Coordinate with the contributor: this touches every file they work in, so do it between their changes,
+not during one.
+
 ## Phasing
 
 0. **Agree with the contributor** — this reshapes the files they own; do it together.
 1. **Pin today's output.** Snapshot tests of the Minecraft HUD at several widths (plus the DOOM presets), so
-   the refactor is provably output-neutral where intended.
-2. **Layout registry** and the **user-level preset overlay** (slots survive updates).
-3. **Extract the kit** from `hotbar.js` / `render.js`: cell fit, gauge, meter, grid, selection. Merge
+   the rename and the refactor are provably output-neutral where intended.
+2. **Rename to `claude-game-bar`** (section above), before the refactor, so the new modules are born with
+   neutral names and the sprite-name reaction channel is replaced by the neutral state first.
+3. **Layout registry** and the **user-level preset overlay** (slots survive updates).
+4. **Extract the kit** from `hotbar.js` / `render.js`: cell fit, gauge, meter, grid, selection. Merge
    `rIcons` and `glyphCells`. No visible change except the escape-safe clipping.
-4. **Unify behaviour:** hotbar goes through the shared width planner, `[bar].fallback` and `text_overflow`.
-5. **Chat as data** with declarative conditions and generic facts.
-6. **Warcraft III** layout on top of the kit.
+5. **Unify behaviour:** hotbar goes through the shared width planner, `[bar].fallback` and `text_overflow`.
+6. **Chat as data** with declarative conditions and generic facts; split today's script into the universal
+   pack, Minecraft overrides and Minecraft atmosphere.
+7. **Warcraft III** layout on top of the kit.
 
 ## Open questions
 
