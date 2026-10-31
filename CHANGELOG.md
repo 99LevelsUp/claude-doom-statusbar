@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-31
+
 ### Added
 - **Game themes: Minecraft and Satisfactory**, alongside the original DOOM look. Switch live with
   `claude-doom-statusbar theme <doom|minecraft|satisfactory>` (or `theme next` to cycle, `theme`
@@ -326,7 +328,8 @@ Note: no changes to the published package contents (`src`, `bin`, `presets`,
 - Mugshot tracking session health, plus usage, model, project, and system stats.
 - Live subagent list with always-visible AGENTS and TASKS boxes.
 
-[Unreleased]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.11.6...v0.12.0
 [0.6.0]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.3.0...v0.4.0
