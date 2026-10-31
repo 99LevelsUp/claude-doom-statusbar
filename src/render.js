@@ -170,6 +170,31 @@ function rAmmo(pct, colorSpec, segs = 5) {
     f(c) + " " + String(pct).padStart(3) + "%";
 }
 
+// A row of glyphs, filled by value: Minecraft-style hearts / food, a power gauge, etc.
+// `invert` fills by what is LEFT (100 - pct), so a "used %" metric reads as health.
+function rIcons(entry, pct) {
+  const count = entry.count ?? 10;
+  const v = entry.invert ? 100 - pct : pct;
+  const filled = Math.max(0, Math.min(count, pyround((v / 100) * count)));
+  const on = colorFor(entry.color || "threshold", v) ?? TEXT;
+  const off = colorFor(entry.empty_color, v) ?? [90, 95, 120];
+  const glyph = entry.glyph || "■", empty = entry.empty_glyph || glyph;
+  const sp = " ".repeat(entry.gap ?? 0); // spaces between glyphs ("♥ ♥ ♥" with gap = 1)
+  const cells = Array.from({ length: count }, (_, i) => (i < filled ? f(on) + glyph : f(off) + empty));
+  let s = cells.join(sp);
+  if (entry.show_pct) s += f(on) + " " + String(v).padStart(3) + "%";
+  return s;
+}
+
+function iconsWidth(entry) {
+  const count = entry.count ?? 10;
+  let w = count * Math.max(vlen(entry.glyph || "■"), vlen(entry.empty_glyph || entry.glyph || "■"))
+    + Math.max(0, count - 1) * (entry.gap ?? 0);
+  if (entry.show_pct) w += 5;
+  if (entry.suffix && entry.suffix in VALUES) w += 1 + vlen(String(VALUES[entry.suffix]));
+  return w;
+}
+
 // Sparkline glyph tables: rows = left sub-bar height 0..4, cols = right height 0..4.
 // Stored as arrays of code points (octants are astral — string[i] would split them).
 const SPARK_OCTANT = [
@@ -269,6 +294,12 @@ export function renderValue(entry, cells, boxRgb) {
     return s;
   }
   if (render === "ammo") return label + rAmmo(val, color || "threshold");
+  if (render === "icons") {
+    let s = label + rIcons(entry, val);
+    const sid = entry.suffix;
+    if (sid && sid in VALUES) s += f(TEXT) + " " + String(VALUES[sid]);
+    return s;
+  }
   if (render === "spark") return label + rSpark(val, entry.spark_style || "block", boxRgb, entry.spark_max);
   if (render === "equalizer") return label + rEqualizer(val, boxRgb, color || "threshold");
   if (render === "list") {
@@ -288,6 +319,11 @@ function barMeta(entry) {
     let sw = entry.show_pct === false ? 0 : 5;
     const sid = entry.suffix;
     if (sid && sid in VALUES) sw += 1 + vlen(String(VALUES[sid]));
+    return [lw, sw, r];
+  }
+  if (r === "icons") { // only reached for stretch icons: the glyph row takes the bar's cells
+    let sw = entry.show_pct ? 5 : 0;
+    if (entry.suffix && entry.suffix in VALUES) sw += 1 + vlen(String(VALUES[entry.suffix]));
     return [lw, sw, r];
   }
   return [lw, 0, entry.render || "text"];
@@ -322,6 +358,7 @@ export function metricFixedWidth(entry, textCap = TEXTCAP_MAX) {
   }
   if (r === "spark") return lw + Math.floor(((VALUES[entry.id] || []).length + 1) / 2);
   if (r === "equalizer") return lw + Math.min((VALUES[entry.id] || []).length, EQ_MAX) + rextra;
+  if (r === "icons") return entry.stretch ? null : lw + iconsWidth(entry) + rextra; // stretch: sized like a bar
   if (r === "ammo") return lw + 5 + vlen(" " + (entry.id in VALUES ? VALUES[entry.id] : 0) + "%");
   if (r === "list") {
     const items = VALUES[entry.id] || [];
@@ -475,7 +512,7 @@ function layoutContext(cfg, spriteFor) {
   const dataRows = boxes.length ? Math.max(...boxes.map(rowcount)) : 0;
   const totalRows = Math.max(dataRows + (headers ? 1 : 0), 4); // 4 = mugshot floor
   const hp = hpRow();
-  const face = loadFace(spriteFor(hp), totalRows);
+  const face = loadFace(spriteFor(hp), totalRows, (cfg.mugshot || {}).face);
   const faceW = Math.max(...face.map((r) => r.length));
   return { bar, style, headers, segs, totalRows, hp, face, faceW };
 }
@@ -546,6 +583,7 @@ export function buildBar(cfg, target, spriteFor, tick = 0, overflow) {
   const boxRgb = rgbOf(bar.box_background ?? "term-bg");
   const bcol = bar.border_color ?? "term-fg";
   const mugRgb = rgbOf((cfg.mugshot || {}).background ?? "#000000");
+  const titleFg = f(bar.title_color ? rgbOf(bar.title_color) : TITLE); // themes recolour box titles
 
   const { cells, textCap } = planLayout(cfg, target, spriteFor);
 
@@ -563,7 +601,7 @@ export function buildBar(cfg, target, spriteFor, tick = 0, overflow) {
       const t = s.title || "";
       const pad = w - vlen(t);
       const left = Math.floor(pad / 2);
-      col.push(bgsgrBox(boxRgb) + BOLD + f(TITLE) + " " + " ".repeat(left) + t + " ".repeat(pad - left) + " " + RESET);
+      col.push(bgsgrBox(boxRgb) + BOLD + titleFg + " " + " ".repeat(left) + t + " ".repeat(pad - left) + " " + RESET);
     }
     for (const m of s.metric) {
       if (m.render === "list") {
@@ -599,7 +637,7 @@ export function buildBar(cfg, target, spriteFor, tick = 0, overflow) {
           const tailW = vlen(tail);
           let body;
           if (Array.isArray(item)) {                       // [left, right] (agents)
-            const right = f(TEXT) + String(item[1]) + (marker ? f(TITLE) + tail : "");
+            const right = f(TEXT) + String(item[1]) + (marker ? titleFg + tail : "");
             const rightW = vlen(String(item[1])) + tailW;
             const labelMax = Math.max(0, w - vlen(lbl) - rightW - 1); // 1 = min gap
             const left = lbl + f(TEXT) + marquee(String(item[0]), labelMax, tick, ovf);
@@ -613,15 +651,26 @@ export function buildBar(cfg, target, spriteFor, tick = 0, overflow) {
             const max = Math.max(0, w - vlen(mPad) - 1 - tailW); // reserve gap + marker on the right
             body = head + marquee(String(item.text), max, tick, ovf);
             body += " ".repeat(Math.max(0, w - tailW - vlen(body)));
-            if (tail) body += f(TITLE) + tail;
+            if (tail) body += titleFg + tail;
           }
           col.push(bgsgrBox(boxRgb) + " " + body + " " + RESET);
         });
         continue;
       }
-      let body = renderValue(m, m.render === "bar" ? cells : 0, boxRgb);
       const rid = m.right;
       const rhs = rid && rid in VALUES ? f(TEXT) + String(VALUES[rid]) : "";
+      let body;
+      if (m.render === "icons" && m.stretch) {
+        // Stretch icons fill the whole box row (hearts end where the box ends), however wide the
+        // box came out, rather than a fixed count. A bar's cells is the minimum.
+        const [lw, sw] = barMeta(m);
+        // With a gap, n glyphs take n + (n-1)*gap columns, so fit as many as the row allows.
+        const room = Math.max(cells, w - lw - sw - vlen(rhs));
+        const gap = m.gap ?? 0;
+        body = renderValue({ ...m, count: Math.max(1, Math.floor((room + gap) / (1 + gap))) }, 0, boxRgb);
+      } else {
+        body = renderValue(m, m.render === "bar" ? cells : 0, boxRgb);
+      }
       // Plain text/number that overflows its column budget -> marquee. Skipped when
       // the value carries ANSI/OSC escapes (colours, hyperlinks): those can't be
       // sliced by column without corrupting the escape sequence.

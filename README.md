@@ -96,6 +96,27 @@ The cwd / branch / PR are emitted as OSC 8 hyperlinks. They render in any termin
 $env:FORCE_HYPERLINK = "1"; claude
 ```
 
+## Themes
+
+Not a DOOM player? The HUD also comes dressed as **Minecraft** or **Satisfactory**. Switch at any time, and it changes on the next refresh with no restart:
+
+```bash
+npx claude-doom-statusbar theme minecraft     # doom | minecraft | satisfactory
+npx claude-doom-statusbar theme next          # cycle to the next one
+npx claude-doom-statusbar theme               # list them and show the current one
+```
+
+| | DOOM | Minecraft | Satisfactory |
+|---|---|---|---|
+| mugshot | Doomguy | a blocky miner, hearts below | an engineer's helmet; the visor colour is health |
+| context window | 🧠 HP bar | ♥ hearts left | 🎒 inventory |
+| 5h rate limit | 🕔 bar | 🍗 hunger | 🔌 power grid load (FUSE! when it trips) |
+| 7d rate limit | 📅 bar | 🟢 XP bar | 🔋 batteries |
+| agents / tasks | AGENTS / TASKS | PETS / ADVANCEMENTS | DRONES / MILESTONES |
+| system | SYSTEM | F3 DEBUG | HUB |
+
+The choice is saved in `~/.claude/doombar-theme.json`; set `DOOMBAR_THEME` to override it for one shell. `doom` uses whatever `--preset` you installed with (`full`, `standard` or `minimal`). The other themes use `presets/minecraft.toml` and `presets/satisfactory.toml`, which fall back to their `-mini` versions on narrow terminals. The Minecraft and Satisfactory faces are original pixel art drawn from code, so they don't need chafa.
+
 ## Presets
 
 `DOOMBAR_PRESET` picks the layout (defaults to `presets/standard.toml`):
@@ -104,7 +125,7 @@ $env:FORCE_HYPERLINK = "1"; claude
 - **`standard`** — balanced HUD.
 - **`full`** — every box, the look in the screenshot above.
 
-A preset is TOML: a `[bar]` style block, a `[mugshot]` block, and a list of `[[segment]]` boxes. Each box lists metrics with a render type — `bar`, `number`, `text`, `spark`, `equalizer`, `ammo`, `list`, `scroll`, or a `group`. (`equalizer` draws an array of `0..1` values as a one-row VU-meter: one block column per channel, each coloured by its own value — e.g. `sys.cores` for per-core CPU.) Copy one and rearrange the boxes, swap icons, or change which metrics show.
+A preset is TOML: a `[bar]` style block, a `[mugshot]` block, and a list of `[[segment]]` boxes. Each box lists metrics with a render type — `bar`, `number`, `text`, `spark`, `equalizer`, `ammo`, `icons`, `list`, `scroll`, or a `group`. (`icons` draws a row of glyphs filled by value, such as Minecraft hearts: `glyph`, `empty_glyph`, `count`, and `invert = true` to count what's left of a used-% metric.) `[bar].title_color` recolours box titles, and `[mugshot].face` picks the face (`doom`, `minecraft`, `satisfactory`). (`equalizer` draws an array of `0..1` values as a one-row VU-meter: one block column per channel, each coloured by its own value — e.g. `sys.cores` for per-core CPU.) Copy one and rearrange the boxes, swap icons, or change which metrics show.
 
 A value-carrying metric (`bar`, `ammo`, `equalizer`, `number`, `text`) can set `color`:
 
@@ -126,7 +147,7 @@ See [`docs/ideation/`](docs/ideation/) for the full design write-up.
 
 ## Credits
 
-- The status-face sprites are from **DOOM** (1993), id Software.
+- The status-face sprites are from **DOOM** (1993), id Software. The Minecraft- and Satisfactory-themed faces are original pixel art; this project isn't affiliated with Mojang or Coffee Stain.
 - Mugshot rasterisation by **[chafa](https://hpjansson.org/chafa/)** (Hans Petter Jansson).
 - Prior art that shaped what this HUD shows: **[claude-hud](https://github.com/jarrodwatts/claude-hud)** and **[ccstatusline](https://github.com/sirmalloc/ccstatusline)**.
 

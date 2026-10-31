@@ -7,6 +7,9 @@
 //   claude-doom-statusbar install --project     # install into ./.claude/settings.json instead
 //   claude-doom-statusbar install --refresh 0   # events only; default is a 1s timer + events
 //   claude-doom-statusbar uninstall             # remove everything this installer added
+//   claude-doom-statusbar theme minecraft       # switch game theme: doom | minecraft | satisfactory
+//   claude-doom-statusbar theme next            # cycle to the next theme
+//   claude-doom-statusbar theme                 # list themes, show the current one
 //
 // It merges into your existing settings (other hooks / statusline are preserved or
 // backed up), is safe to re-run, and prints what to do next.
@@ -15,6 +18,7 @@ import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync } from
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { THEMES, THEME_NAMES, currentTheme, saveTheme, nextTheme, themeFile } from "../src/theme.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url)); // bin/
 const ROOT = path.dirname(HERE); // package root
@@ -166,10 +170,11 @@ function uninstall(cfg) {
 }
 
 function parseArgs(argv) {
-  const out = { cmd: "install", preset: "full", project: false, refresh: DEFAULT_REFRESH };
+  const out = { cmd: "install", preset: "full", project: false, refresh: DEFAULT_REFRESH, theme: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "install" || a === "uninstall") out.cmd = a;
+    else if (a === "theme" || a === "themes") { out.cmd = "theme"; out.theme = argv[++i] ?? null; }
     else if (a === "--uninstall") out.cmd = "uninstall";
     else if (a === "--project") out.project = true;
     else if (a === "--preset") out.preset = argv[++i];
@@ -189,14 +194,36 @@ function refreshValue(v) {
   return n;
 }
 
+// `theme` with no name lists the themes; with a name (or "next") switches. The statusline
+// re-reads the choice on every render, so it takes effect on the next refresh.
+function theme(name) {
+  const cur = currentTheme();
+  if (!name) {
+    console.log("themes:");
+    for (const t of THEME_NAMES) console.log(`  ${t === cur ? "▶" : " "} ${t.padEnd(13)} ${THEMES[t].about}`);
+    console.log("\nswitch with:  claude-doom-statusbar theme <name>   (or: theme next)");
+    return;
+  }
+  const want = name === "next" ? nextTheme(cur) : name.toLowerCase();
+  if (!THEME_NAMES.includes(want)) die(`! unknown theme: ${name} (pick one of: ${THEME_NAMES.join(", ")}, next)`);
+  saveTheme(want);
+  console.log(`✓ theme: ${want} — ${THEMES[want].about}`);
+  console.log("  the status bar switches on its next refresh (no restart needed).");
+  if (process.env.DOOMBAR_THEME && process.env.DOOMBAR_THEME !== want) {
+    console.log(`  note: DOOMBAR_THEME=${process.env.DOOMBAR_THEME} is set in this environment and overrides the saved theme.`);
+  }
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
+  if (args.cmd === "theme") return theme(args.theme);
   const p = settingsFile(args.project);
   const cfg = load(p);
 
   if (args.cmd === "uninstall") {
     uninstall(cfg);
     save(p, cfg);
+    if (!args.project) saveTheme("doom"); // drop the saved theme choice too
     console.log(`✓ removed claude-doom-statusbar from ${p}`);
     console.log("  restart Claude Code to apply.");
     return;

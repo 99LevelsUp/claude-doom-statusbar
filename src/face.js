@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { RESET, sgrBg } from "./ansi.js";
+import { pixelFace, PIXEL_FACES } from "./pixelface.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.dirname(HERE);
@@ -86,9 +87,16 @@ function parseAnsi(text) {
   return out;
 }
 
-export function loadFace(name, rows) {
-  const key = `${name}@${rows}`;
+// `style` picks the face: "doom" (default, the real sprites) or one of the pixel-art
+// faces in pixelface.js ("minecraft", "satisfactory"), set by a preset's [mugshot].face.
+export function loadFace(name, rows, style = "doom") {
+  const key = `${style}:${name}@${rows}`;
   if (_cache.has(key)) return _cache.get(key);
+  if (PIXEL_FACES.includes(style)) {
+    const out = pixelFace(style, name, rows);
+    _cache.set(key, out);
+    return out;
+  }
   let text = chafaFace(name, rows);
   if (!text) text = ansiFace(name, rows); // no chafa -> pre-rendered ANSI
   let out = parseAnsi(text);

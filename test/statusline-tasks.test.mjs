@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 import { activityValues } from "../src/statusline.js";
+
+// Pin the DOOM theme so a theme saved on this machine (`theme minecraft`) can't change
+// what the statusline renders under test. Child processes inherit it via process.env.
+process.env.DOOMBAR_THEME = "doom";
 let fails = 0;
 const ok = (c, m) => { console.log((c?"  ok   ":"  FAIL ")+m); if(!c) fails++; };
 

@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Game themes: Minecraft and Satisfactory**, alongside the original DOOM look. Switch live with
+  `claude-doom-statusbar theme <doom|minecraft|satisfactory>` (or `theme next` to cycle, `theme`
+  to list). The choice is saved to `~/.claude/doombar-theme.json` and read on every render, so it
+  applies on the next refresh with no restart; `DOOMBAR_THEME` overrides it for one shell.
+  - **minecraft**: hearts for context left, a hunger row for the 5h limit, an XP bar for the 7-day
+    one, plus PLAYER / SURVIVAL / WORLD / REDSTONE / PETS / ADVANCEMENTS / F3 DEBUG boxes.
+  - **satisfactory**: a POWER GRID box (the 5h limit is the grid load, the 7-day one the
+    batteries), FACTORY, PRODUCTION, DRONES, MILESTONES and HUB.
+  - Each theme has its own original pixel-art mugshot (a blocky miner, an engineer's helmet whose
+    visor colour tracks health) that reacts to the same events as the Doomguy face, with a health
+    caption underneath. It's drawn from code, so it needs no chafa.
+- `icons` render type: a row of glyphs filled by value (`glyph`, `empty_glyph`, `count`,
+  `invert`, `empty_color`, `show_pct`, `suffix`), e.g. hearts.
+- `[bar].title_color` sets the box-title colour, and `[mugshot].face` picks the face
+  (`doom` | `minecraft` | `satisfactory`).
+
 ## [0.11.6] - 2026-08-27
 
 ### Fixed

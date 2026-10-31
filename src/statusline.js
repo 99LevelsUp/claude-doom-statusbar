@@ -7,7 +7,8 @@
 // settings.json:
 //   "statusLine": { "type": "command",
 //       "command": "node /abs/path/src/statusline.js", "refreshInterval": 1 }
-// Config: $DOOMBAR_PRESET (default presets/standard.toml)  State: $MUGSHOT_STATE
+// Config: $DOOMBAR_PRESET (default presets/standard.toml), or the theme picked with
+// `claude-doom-statusbar theme` (see theme.js)  State: $MUGSHOT_STATE
 
 import {
   readFileSync, writeFileSync, renameSync, openSync, fstatSync, readSync, closeSync, statfsSync, statSync,
@@ -20,6 +21,7 @@ import { parse as parseToml } from "smol-toml";
 import { pyround, sgrFg } from "./ansi.js";
 import { buildBar, setValues, resolvePreset, OK, TEXT, CRIT } from "./render.js";
 import { foldBatch, statePaths } from "./fold.js";
+import { currentTheme, themePreset } from "./theme.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.dirname(HERE);
@@ -595,7 +597,9 @@ function main() {
   let data = {};
   try { data = JSON.parse(readFileSync(0, "utf8")); } catch { data = {}; }
 
-  const preset = process.env.DOOMBAR_PRESET || path.join(REPO, "presets", "standard.toml");
+  // A non-DOOM theme (see theme.js) swaps in its own preset; doom keeps DOOMBAR_PRESET.
+  const preset = themePreset(currentTheme())
+    || process.env.DOOMBAR_PRESET || path.join(REPO, "presets", "standard.toml");
   const cfg = parseToml(readFileSync(preset, "utf8"));
 
   const now = Date.now() / 1000;

@@ -9,6 +9,10 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// Pin the DOOM theme so a theme saved on this machine (`theme minecraft`) can't change
+// what the statusline renders under test. Child processes inherit it via process.env.
+process.env.DOOMBAR_THEME = "doom";
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.join(HERE, "..", "bin", "cli.js");
 

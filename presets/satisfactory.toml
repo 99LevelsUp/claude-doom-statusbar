@@ -1,0 +1,89 @@
+# satisfactory — a factory-builder control panel: power grid, production, milestones
+#   🔌 power grid = 5h rate limit (the fuse trips at 100%)   🔋 batteries = 7-day usage
+#   🎒 inventory  = context window                           🪙 coupons   = session cost
+# Switch themes with:  claude-doom-statusbar theme <doom|minecraft|satisfactory|next>
+[bar]
+border_style   = "vertical"
+border_color   = "term-bg"
+box_background = "#23262c"      # dark steel
+title_color    = "#fa9549"      # safety orange
+headers        = true
+fallback       = "satisfactory-mini"
+
+[mugshot]
+face       = "satisfactory"
+background = "#14161a"
+
+[[segment]]
+type  = "box"
+title = "ENGINEER"
+metric = [
+  { id = "model.name",       render = "text", icon = "🦺", right = "model.effort" },
+  { id = "model.mode",       render = "text" },
+  { id = "model.permission", render = "text" },
+  { id = "model.style",      render = "text", icon = "🎨" },
+  { id = "advisor.model",    render = "text", icon = "🧙" },
+]
+
+[[segment]]
+type  = "box"
+title = "POWER GRID"
+metric = [
+  { id = "ratelimit.5h", render = "bar",    icon = "🔌", color = [[0, "#38d6f0"], [70, "#e8d040"], [100, "#ff3b30"]], show_pct = false, suffix = "usage.reset5h" },
+  { id = "ratelimit.7d", render = "icons",  icon = "🔋", glyph = "▰", empty_glyph = "▱", count = 8, invert = true, color = "#38d6f0", empty_color = "#4a4f58", suffix = "usage.reset7d" },
+  { id = "context.hp",   render = "bar",    icon = "🎒", color = "threshold" },
+  { id = "sys.ram",      render = "bar",    icon = "💾", color = "threshold" },
+  { id = "cost.total",   render = "number", icon = "🪙", color = "#fa9549" },
+]
+
+[[segment]]
+type  = "box"
+title = "FACTORY"
+metric = [
+  { id = "session.name", render = "text", icon = "🚩" },
+  { id = "loc.cwd",      render = "text", icon = "🏭" },
+  { id = "git.branch",   render = "text", icon = "🚂" },
+  { id = "git.work",     render = "text" },
+  { id = "loc.churn",    render = "text", icon = "📦" },
+  { id = "pr.state",     render = "text", icon = "⇧ " },
+]
+
+[[segment]]
+type = "mugshot"
+
+[[segment]]
+type  = "box"
+title = "PRODUCTION"
+metric = [
+  { id = "act.geiger", render = "spark",  icon = "📈", spark_style = "octant", spark_max = 1 },
+  { id = "act.agents", render = "number", icon = "🛸" },
+  { id = "act.tasks",  render = "number", icon = "🏁" },
+  { id = "act.errors", render = "number", icon = "🚨", color = "threshold" },
+]
+
+[[segment]]
+type  = "box"
+title = "DRONES"
+max_width = 22
+metric = [
+  { id = "act.subagents", render = "scroll", anchor = "top", icon = "🛸" },
+]
+
+[[segment]]
+type  = "box"
+title = "MILESTONES"
+max_width = 22
+metric = [
+  { id = "act.tasklist", render = "scroll", anchor = "boundary" },
+]
+
+[[segment]]
+type  = "box"
+title = "HUB"
+metric = [
+  { id = "sys.cores",   render = "equalizer", icon = "🔥", color = "threshold", right = "sys.cpu" },
+  { id = "sys.disk",    render = "bar",    icon = "💿", color = "threshold" },
+  { id = "sys.zombies", render = "number", icon = "🐗", color = [[5, "#7fae6a"], [8, "#e8c34a"], [10, "#e25555"]] },
+  { id = "sys.session", render = "text",   icon = "🕙" },
+  { id = "sys.clock",   render = "text",   icon = "🕓" },
+]
