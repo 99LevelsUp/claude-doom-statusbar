@@ -11,7 +11,7 @@
 // `claude-doom-statusbar theme` (see theme.js)  State: $MUGSHOT_STATE
 
 import {
-  readFileSync, writeFileSync, renameSync, openSync, fstatSync, readSync, closeSync, statfsSync, statSync,
+  readFileSync, writeFileSync, renameSync, unlinkSync, openSync, fstatSync, readSync, closeSync, statfsSync, statSync,
 } from "node:fs";
 import { spawn } from "node:child_process";
 import os from "node:os";
@@ -195,6 +195,20 @@ function _pick(bucket) {
   return x % 3;
 }
 
+// Write via a temp file + rename, so a concurrent reader never sees a half-written file. If
+// the rename fails (on Windows: the target is open in another process) the temp file is
+// removed rather than left behind, and the error goes to the caller, which retries next render.
+function writeAtomic(file, data) {
+  const tmp = `${file}.${process.pid}.tmp`;
+  try {
+    writeFileSync(tmp, data);
+    renameSync(tmp, file);
+  } catch (e) {
+    try { unlinkSync(tmp); } catch { /* never written, or already gone */ }
+    throw e;
+  }
+}
+
 // Fold the per-session journal into the checkpoint and return the folded state.
 //
 // Read cost is O(events since last render): we read only journal bytes past the stored
@@ -238,9 +252,7 @@ export function loadState(data) {
   }
 
   try { // persist state + offset together, atomically
-    const tmp = `${checkpoint}.${process.pid}.tmp`;
-    writeFileSync(tmp, JSON.stringify(st));
-    renameSync(tmp, checkpoint);
+    writeAtomic(checkpoint, JSON.stringify(st));
   } catch { /* ignore: next render retries */ }
   return st;
 }
@@ -608,9 +620,7 @@ function syncRateLimits(mine) {
   const pick = (o) => ({ five_hour: o && o.five_hour, seven_day: o && o.seven_day });
   if (JSON.stringify(pick(merged)) !== JSON.stringify(pick(shared))) {
     try { // atomic: concurrent sessions never read a half-written file
-      const tmp = `${file}.${process.pid}.tmp`;
-      writeFileSync(tmp, JSON.stringify(pick(merged)));
-      renameSync(tmp, file);
+      writeAtomic(file, JSON.stringify(pick(merged)));
     } catch { /* ignore: next render retries */ }
   }
   return merged;

@@ -6,7 +6,7 @@
 // wrote into the machine's real temp directory, where nothing could find or sweep them.
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, readdirSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, rmSync, existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -68,6 +68,31 @@ try {
       MUGSHOT_STATE: path.join(sandbox, `mugshot_${sid}2.json`) },
   });
   ok(existsSync(explicit), "DOOMBAR_SAVINGS_STATE wins over the checkpoint's directory");
+
+  // --- A failed atomic write leaves no .tmp behind --------------------------------------------
+  // Make the rename target a directory, so writing the .tmp succeeds and the rename fails (on
+  // Windows a target held open by another process fails the same way).
+  {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "doombar-files-rename-"));
+    const checkpoint = path.join(dir, "mugshot_blocked.json");
+    const shared = path.join(dir, "shared-limits.json");
+    mkdirSync(checkpoint);
+    mkdirSync(shared);
+    // A journal line to fold, so the render reaches the checkpoint write.
+    writeFileSync(checkpoint + ".jsonl", JSON.stringify({ name: "Stop", ev: {}, ts: 1 }) + "\n");
+    const renderBlocked = () => execFileSync(process.execPath, [STATUSLINE], {
+      input: JSON.stringify({ session_id: "blocked", cwd: dir,
+        rate_limits: { five_hour: { used_percentage: 20, resets_at: 1793500000 } } }),
+      encoding: "utf8",
+      env: { ...env, MUGSHOT_STATE: checkpoint, DOOMBAR_RATELIMITS: shared,
+        DOOMBAR_RATELIMITS_SHARE: "1", COLUMNS: "120" },
+    });
+    const out = renderBlocked();
+    ok(out.trim().length > 0, "a render whose state writes fail still prints the HUD");
+    const tmps = readdirSync(dir).filter((n) => n.endsWith(".tmp"));
+    ok(tmps.length === 0, `failed checkpoint and rate-limit renames leave no .tmp (found: ${tmps.join(", ") || "none"})`);
+    rmSync(dir, { recursive: true, force: true });
+  }
 
   // --- Nothing per-session reached the system temp dir --------------------------------------
   const leaked = ours(elsewhere).filter((n) => /_(filestest)/.test(n));
