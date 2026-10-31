@@ -284,6 +284,26 @@ function shouldSnapshotMsys(name, nowMs, sid) {
   return nowMs - (m.ts || 0) >= MSYS_TTL;
 }
 
+// End of session: delete its scratch now rather than leave it for a later session's sweep.
+// Kept: the savings file — a resumed session keeps its id, and its lean-ctx savings total lives
+// only there. The checkpoint goes: a resume resets it anyway (SessionStart truncates the
+// journal), and its stale offset could misread the resumed session's new journal.
+// Unlink only — no journal line, no probes — so nothing is recreated behind us.
+function endSession(sid) {
+  const p = sessionPaths(sid);
+  for (const f of [p.journal, p.checkpoint, p.git, p.msys, p.adv]) {
+    try { unlinkSync(f); } catch { /* never written, or already gone */ }
+  }
+  // Orphaned `<checkpoint>.<pid>.tmp` files from this session's interrupted atomic writes.
+  const dir = path.dirname(p.checkpoint), base = path.basename(p.checkpoint);
+  let names = [];
+  try { names = readdirSync(dir); } catch { return; }
+  for (const n of names) {
+    if (!n.startsWith(base + ".") || !/^\.\d+\.tmp$/.test(n.slice(base.length))) continue;
+    try { unlinkSync(path.join(dir, n)); } catch { /* in use / already gone */ }
+  }
+}
+
 function main() {
   try {
     let ev = {};
@@ -293,6 +313,11 @@ function main() {
     const nowMs = Date.now();
     const sid = ev.session_id || "default";
     const { journal } = statePaths(sid);
+
+    if (name === "SessionEnd") {
+      try { endSession(sid); } catch { /* housekeeping is never worth failing a hook */ }
+      process.exit(0);
+    }
 
     // SessionStart resets the journal so each session starts clean (hygiene; sid is already
     // per-session). At this instant no other hook is appending, so truncation is race-free.

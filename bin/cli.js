@@ -59,7 +59,7 @@ const DEFAULT_REFRESH = 1;
 const HOOK_EVENTS = [
   "SessionStart",
   "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied",
-  "Stop", "SubagentStart", "SubagentStop", "TaskCreated", "TaskCompleted",
+  "Stop", "SubagentStart", "SubagentStop", "TaskCreated", "TaskCompleted", "SessionEnd",
 ];
 
 // How we recognise our own entries — current JS scripts plus legacy Python ones, so a
@@ -135,7 +135,12 @@ function install(cfg, preset, refresh) {
     // events no longer floods Git Bash's shared MSYS section (the "add_item errno 1" crash).
     // statusLine has no exec form and cannot be moved off the shell, so the flood from ABOVE
     // is handled by the hook's reaper instead (see reapStaleShells in src/hook.js).
-    const desired = { hooks: [{ type: "command", command: "node", args: [HOOK], async: true }] };
+    // SessionEnd is the exception: it deletes the session's scratch files as Claude Code exits,
+    // and an async hook can be cut off by that exit. It only unlinks a few files, so running
+    // it synchronously costs nothing noticeable.
+    const entry = { type: "command", command: "node", args: [HOOK] };
+    if (ev !== "SessionEnd") entry.async = true;
+    const desired = { hooks: [entry] };
     const at = lst.findIndex(ours);
     if (at === -1) { lst.push(desired); continue; }
     // Idempotent, but NOT blindly: an entry of ours that points at a different path is stale —

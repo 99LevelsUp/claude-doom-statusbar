@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **The bar no longer leaves piles of small files in the temp directory.** A session's files
+  are deleted when it ends (a new `SessionEnd` hook; re-run `install` to add it), keeping only
+  its savings total for a later resume. Sessions that never showed a bar, such as headless
+  `claude -p` runs, which were most of the files, are swept after an hour
+  (`DOOMBAR_UNRENDERED_TTL`) instead of a week. The savings files, which were never swept, now
+  are, and a failed atomic write no longer leaves its `.tmp` behind.
+- **Every per-session file follows `MUGSHOT_STATE`.** The probe markers, the advisor cache and
+  the savings file used to go to the system temp directory regardless, so `npm test` wrote into
+  the machine's real temp directory. The test suite now leaves nothing there.
+
+### Added
+- Snapshot tests that pin what the DOOM presets and the Minecraft hotbar draw, and a Linux test
+  workflow that runs the suite on every push to `master`.
+
 ## [0.13.1] - 2026-10-31
 
 ### Changed

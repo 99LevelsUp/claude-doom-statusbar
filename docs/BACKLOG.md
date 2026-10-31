@@ -16,11 +16,6 @@ Source: [ideation/2026-10-31-temp-file-leaks-and-hook-cost.md](ideation/2026-10-
 
 | ID | Item | Status |
 |---|---|---|
-| L-B | `SessionEnd` hook deletes the session's files (decide what `--resume` needs first) | next |
-| L-C | Sessions that never rendered: delete after ~1 h instead of 7 days | next |
-| L-E | Unlink the `.tmp` when an atomic rename fails (checkpoint, ratelimits) | next |
-| L-F | Probe markers **and `savings_*`** follow the state location (`MUGSHOT_STATE`), so tests stop writing into the real `%TEMP%` | next |
-| L-G | Sweep knows every file the bar writes (`savings_*`; shared files listed in `SHARED_STATE`) | next |
 | L-D | No git / tasklist probes in headless sessions (verify `CLAUDE_CODE_ENTRYPOINT` or probe only after first render) | open |
 | L-A | Own directory `%TEMP%/claude-game-bar/<session>/`, sweep lists only that; first sweep removes old-style files | open, with R-1 |
 
@@ -40,7 +35,6 @@ Source: [ideation/2026-10-31-shared-game-layout-engine.md](ideation/2026-10-31-s
 
 | ID | Item | Status |
 |---|---|---|
-| G-1 | Snapshot tests pinning today's Minecraft and DOOM output at several widths (before R-1 and the refactor) | next |
 | G-2 | Layout registry instead of `if (layout === …)` in `statusline.js` | open |
 | G-3 | User-level preset overlay `~/.claude/<bar>/<theme>.toml` so slot choices survive npm updates | open |
 | G-4 | Extract the shared HUD kit: cell fit (escape-safe), gauge row (merge `rIcons` + `glyphCells`), meter bar, grid, selection, portrait | open |
@@ -98,6 +92,8 @@ Source: [ideation/2026-06-06-doom-statusbar-ideation.md](ideation/2026-06-06-doo
 | Cap-ratio floor `k ≥ 1` (H-D) | ≤ 0.11 |
 | Theme switch + Minecraft hotbar theme | 0.12.0–0.13.0 |
 | Rate limits shared across sessions (first shared piece of P-2) | 0.13.1 |
+| End-of-session cleanup, 1-hour sweep for unrendered sessions, every per-session file next to its checkpoint, no orphaned `.tmp` (L-B, L-C, L-E, L-F, L-G) | unreleased |
+| Snapshot tests of the DOOM presets and the Minecraft hotbar, Linux test workflow on every push (G-1) | unreleased |
 
 ## Won't do
 

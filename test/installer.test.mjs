@@ -53,6 +53,13 @@ const tmpdir = () => mkdtempSync(path.join(os.tmpdir(), "doombar-test-"));
     const h = cfg.hooks[e][0].hooks[0];
     return h.command === "node" && Array.isArray(h.args) && h.args.some((a) => a.includes("src/hook.js"));
   }), "every hook entry is exec form (command:node + args, no shell wrapper)");
+  // SessionEnd cleans up the session's files. It runs synchronously: an async hook can be cut
+  // off when Claude Code exits, which is exactly when this one runs.
+  const end = cfg.hooks?.SessionEnd;
+  ok(Array.isArray(end) && end.length === 1, "SessionEnd hook present with one entry");
+  ok(end?.[0].hooks[0].command === "node" && end[0].hooks[0].args.some((a) => a.includes("src/hook.js")),
+    "SessionEnd entry is exec form and runs src/hook.js");
+  ok(end?.[0].hooks[0].async !== true, "SessionEnd entry is synchronous (not async)");
   rmSync(tmp, { recursive: true, force: true });
 }
 
