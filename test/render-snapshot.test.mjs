@@ -1,0 +1,89 @@
+#!/usr/bin/env node
+// Snapshot tests: pin what the DOOM presets and the Minecraft hotbar draw today, byte for
+// byte, so a refactor can prove it changes nothing on screen.
+//
+// Only the pure renderers run here, with a fixed fixture and a fixed clock: the statusline
+// process reads live CPU, RAM and the time, which change on every run.
+//
+// Regenerate on purpose with UPDATE_SNAPSHOTS=1. A missing snapshot fails otherwise.
+
+// The DOOM mugshot is rasterised by chafa when it is on PATH and read from the pre-rendered
+// .ans faces when it is not. chafa is on some machines and not on CI, and the face width
+// feeds the layout, so the snapshots pin the .ans faces: empty PATH before the first render.
+process.env.PATH = "";
+
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { parse as parseToml } from "smol-toml";
+import { SAMPLE, setValues, resolvePreset, buildBar } from "../src/render.js";
+import { buildHotbar } from "../src/hotbar.js";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const PRESETS = path.join(HERE, "..", "presets");
+const SNAP_DIR = path.join(HERE, "snapshots");
+const UPDATE = process.env.UPDATE_SNAPSHOTS === "1";
+let fails = 0;
+const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
+
+const loadPreset = (name) => {
+  try { return parseToml(readFileSync(path.join(PRESETS, `${name}.toml`), "utf8")); }
+  catch { return null; }
+};
+
+// SAMPLE plus the keys the hotbar slots and the chat read that the box presets do not.
+const FIXTURE = {
+  ...SAMPLE,
+  "loc.added": "185",
+  "model.effort_level": "high",
+  "session.title": "doom-hud-demo",
+};
+const NOW = 1793500000;                       // fixed clock: chat position, idle slot, rainbow
+const idleSprite = (hp) => `STFST${hp}1`;     // the idle face, no reaction
+
+function check(name, lines) {
+  const file = path.join(SNAP_DIR, `${name}.txt`);
+  const actual = lines.join("\n") + "\n";
+  if (UPDATE) {
+    mkdirSync(SNAP_DIR, { recursive: true });
+    writeFileSync(file, actual);
+    ok(true, `${name}: written`);
+    return;
+  }
+  if (!existsSync(file)) {
+    ok(false, `${name}: no snapshot at test/snapshots/${name}.txt (run with UPDATE_SNAPSHOTS=1)`);
+    return;
+  }
+  const expected = readFileSync(file, "utf8");
+  ok(!expected.includes("\r"), `${name}: snapshot has LF line endings (.gitattributes keeps it binary)`);
+  ok(actual === expected, `${name}: matches test/snapshots/${name}.txt`);
+}
+
+// --- DOOM presets, through the same fallback chain the statusline uses -------------------
+for (const preset of ["full", "standard", "minimal"]) {
+  for (const width of [80, 120, 200]) {
+    setValues(FIXTURE);
+    const cfg = loadPreset(preset);
+    const selected = resolvePreset(cfg, width, loadPreset, idleSprite);
+    const overflow = selected.text_overflow || cfg.text_overflow || "scroll";
+    check(`doom-${preset}-${width}`, buildBar(selected, width, idleSprite, 0, overflow).lines);
+  }
+}
+
+// --- Minecraft hotbar -------------------------------------------------------------------
+{
+  const cfg = loadPreset("minecraft");
+  const base = { sprite: "STFST01", exhausted: false, now: NOW, expr: null, exprAge: 999, indent: 2 };
+  for (const width of [60, 100, 160]) {
+    check(`minecraft-${width}`, buildHotbar(cfg, width, FIXTURE, base).lines);
+  }
+  // Out of usage: the hearts row turns into "You died!".
+  check("minecraft-160-exhausted",
+    buildHotbar(cfg, 160, FIXTURE, { ...base, sprite: "STFDEAD0", exhausted: true }).lines);
+  // A tool just failed: hearts flash and the selected slot jumps to the errors slot.
+  check("minecraft-160-ouch",
+    buildHotbar(cfg, 160, FIXTURE, { ...base, sprite: "STFOUCH0", expr: "ouch", exprAge: 1 }).lines);
+}
+
+console.log(fails ? `\n${fails} FAILED` : "\nALL PASS");
+process.exit(fails ? 1 : 0);
