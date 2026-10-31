@@ -28,6 +28,16 @@ Raising `refreshInterval` is the **last resort** — discussed several times, no
    part once — e.g. a single background producer writing a cache that each session's render only reads —
    so N sessions do not each recompute (and each spawn) the common work every second.
 
+## Update 2026-10-31 — first shared piece landed (0.13.1)
+
+0.13.1 (contributor) pools `rate_limits` across sessions: every render merges its reading into
+`$TMP/mugshot_ratelimits_global.json` (atomic tmp + rename) and shows the freshest one (later `resets_at`
+wins; same window takes the higher %). `DOOMBAR_RATELIMITS_SHARE=0` turns it off. That fixes stale limits in
+idle chats, but it is still N renderers each reading and writing per second, not one producer, so it does
+not reduce the bash spawns. Two things to carry into the design: after a window's `resets_at` has passed
+with every session idle, the pooled value stays at the old % until some session calls the API; and the file
+is per OS user, not per Claude account.
+
 ## Open questions
 
 - Which part of a render is expensive, and which part actually needs the per-second refresh?

@@ -99,6 +99,11 @@ console frame.
 - Speakers derived from data (the running model + configurable cast), not a hard-coded `FAMILY` list that
   goes stale with the next model generation.
 - Users can add or replace conversations through the same user-level overlay as the slots.
+- **Chat lines talk about sockets, not metrics.** 0.13.1 swapped hearts (now the 5h limit) and hunger (now
+  context) in the preset, and had to rewrite four chat lines in `chat.js` in the same commit ("food" ↔
+  "hearts"), because each line hard-codes which metric a gauge means. With facts like `{hearts}` /
+  `{hunger}` resolved through the preset's binding, rebinding a gauge is a preset-only change and the chat
+  follows by itself.
 
 ## Warcraft III: what it would reuse
 
