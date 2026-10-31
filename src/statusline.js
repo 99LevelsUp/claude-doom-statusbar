@@ -22,6 +22,7 @@ import { pyround, sgrFg } from "./ansi.js";
 import { buildBar, setValues, resolvePreset, OK, TEXT, CRIT } from "./render.js";
 import { foldBatch, statePaths } from "./fold.js";
 import { currentTheme, themePreset } from "./theme.js";
+import { buildHotbar } from "./hotbar.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.dirname(HERE);
@@ -128,6 +129,7 @@ export function buildValues(data, git) {
   if ("total_lines_added" in cost || "total_lines_removed" in cost) {
     const a = cost.total_lines_added || 0, r = cost.total_lines_removed || 0;
     v["loc.churn"] = `${f(OK)}+${a}${f(TEXT)} / ${f(CRIT)}-${r}`;
+    v["loc.added"] = String(a); // plain number: fits (and centres in) a hotbar slot
   }
 
   const m = data.model || {};
@@ -136,6 +138,7 @@ export function buildValues(data, git) {
   if (eff) {
     const icon = { low: "🌒", medium: "🌓", high: "🌔", xhigh: "🌕", max: "🌞" };
     v["model.effort"] = icon[eff] || "🌓";
+    v["model.effort_level"] = eff; // raw level: the hotbar chat colours the model name by it
   }
   const cwm = (data.context_window || {}).context_window_size;
   if (cwm) v["model.window"] = cwm >= 1000000 ? `${Math.floor(cwm / 1000000)}M` : `${Math.floor(cwm / 1000)}K`;
@@ -639,6 +642,16 @@ function main() {
   };
 
   const target = parseInt(process.env.COLUMNS || "100", 10);
+  // The in-game HUD layout (minecraft-hud theme) draws its own screen instead of boxes.
+  if ((cfg.bar || {}).layout === "hotbar") {
+    const { lines } = buildHotbar(cfg, target, values, {
+      sprite: spriteFor(0), exhausted, now, expr: st.expr, exprAge: now - (st.ts || 0),
+      indent: Number(process.env.DOOMBAR_INDENT ?? 2), // Claude Code draws the status line 2 cols in
+    });
+    process.stdout.write(lines.join("\n") + "\n");
+    maybeReap();
+    return;
+  }
   const tick = Math.floor(now); // one marquee step per refresh (~1s); pure fn of time
   // Pick the preset that fits the terminal: the chosen preset is the ceiling; if it
   // (at its minimum scale) overflows COLUMNS, fall back down its [bar].fallback chain.

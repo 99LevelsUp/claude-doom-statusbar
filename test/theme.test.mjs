@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { parse as parseToml } from "smol-toml";
 import { pixelFace, parseSprite } from "../src/pixelface.js";
 import { buildBar, setValues, renderValue, SAMPLE, vlen } from "../src/render.js";
+import { buildHotbar } from "../src/hotbar.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, "..");
@@ -67,6 +68,61 @@ for (const name of ["minecraft", "satisfactory"]) {
   ok(mini.mugshot.face === name, `${name}: fallback preset keeps the ${name} face`);
 }
 
+// Hotbar layout: every row the same width, hearts/hunger track the values, death screen.
+{
+  const cfg = parseToml(readFileSync(path.join(ROOT, "presets", "minecraft-hud.toml"), "utf8"));
+  const vals = { "context.hp": 30, "ratelimit.5h": 80, "ratelimit.7d": 31, "model.name": "Opus 5.5",
+    "model.effort_level": "high", "cost.total": "$1.83", "act.tasks": "2/5", "sys.cpu": "17%" };
+  const calm = { now: 1005 };
+  for (const target of [204, 100, 60, 46, 30]) {
+    const { lines, width } = buildHotbar(cfg, target, vals, calm);
+    const rows = lines.map((l) => vlen(strip(l)));
+    ok(rows.every((w) => w === rows[0]) && rows[0] <= target && width <= target,
+      `hotbar @${target}: every row the same width, inside the terminal (${rows[0]})`);
+  }
+  const plain = buildHotbar(cfg, 100, vals, calm).lines.map(strip);
+  ok((plain[0].match(/♥/g) || []).length === 7, "hotbar: 30% context used -> 7 of 10 hearts");
+  ok((plain[0].match(/🍖/g) || []).length === 2, "hotbar: 80% of 5h used -> 2 of 10 shanks");
+  ok(/ 31 /.test(plain[1]), "hotbar: XP level shows the 7-day percent");
+  ok(/┃ \$1\.83 ┃/.test(plain[4]) && /┃  2\/5  ┃/.test(plain[4]), "hotbar: odd-length values sit centred in their slot");
+  ok(/^ *┏━+┳/.test(plain[2].slice(plain[2].indexOf("┏"))), "hotbar: slots drawn with heavy lines");
+  const dead = buildHotbar(cfg, 100, vals, { exhausted: true, now: 1005 }).lines.map(strip);
+  ok(dead[0].includes("You died!") && !dead[0].includes("♥"), "hotbar: out of usage -> You died!, no hearts");
+  ok(buildHotbar(cfg, 100, vals, calm).lines.length === 6, "hotbar: six rows (no wave row)");
+
+  // Selected slot: reacts to what just happened, otherwise wanders over time.
+  const react = buildHotbar(cfg, 100, vals, { now: 1005, expr: "ouch", exprAge: 1 }).selected;
+  ok(cfg.slot[react].id === "act.errors", "hotbar: an error selects the 💥 slot");
+  const picks = new Set();
+  for (let t = 0; t < 200; t += 7) picks.add(buildHotbar(cfg, 100, vals, { now: t }).selected);
+  ok(picks.size > 3, `hotbar: idle selection moves around (${picks.size} different slots)`);
+
+  // Chat: on wide terminals, with the running model as a speaker; hidden when there's no room.
+  const wide = buildHotbar(cfg, 204, vals, calm).lines.map(strip).join("\n");
+  ok(/<[A-Z][a-z]+ \d\.\d>/.test(wide), "hotbar: chat shows <Model> messages on a wide terminal");
+  let mine = false;
+  for (let t = 0; t < 400; t += 5) if (buildHotbar(cfg, 204, vals, { now: t }).lines.map(strip).join("").includes("<Opus 5.5>")) mine = true;
+  ok(mine, "hotbar: the selected model takes part in the chat");
+  ok(!/</.test(buildHotbar(cfg, 100, vals, calm).lines.map(strip).join("")), "hotbar: no chat when there's no room");
+}
+
+// Chat timing: answers to questions come quickly, other pauses vary.
+{
+  const { chatLog } = await import("../src/chat.js");
+  const vals = { "model.name": "Opus 5.5" };
+  const last = (t) => chatLog(vals, t, 1)[0].map((p) => p.text).join("");
+  const gaps = [];
+  let prev = last(0), since = 0, prevText = prev;
+  for (let t = 1; t < 400; t++) {
+    const cur = last(t);
+    if (cur !== prev) { gaps.push([prevText.trim().endsWith("?"), t - since]); since = t; prevText = cur; prev = cur; }
+  }
+  const answers = gaps.filter(([q]) => q).map(([, g]) => g);
+  const others = new Set(gaps.filter(([q]) => !q).map(([, g]) => g));
+  ok(answers.length > 0 && answers.every((g) => g <= 2), `chat: answers follow questions within 2s (${answers.join(",")})`);
+  ok(others.size >= 3, `chat: other pauses vary (${[...others].sort((a, b) => a - b).join(",")}s)`);
+}
+
 // End to end: `theme` writes the choice, the statusline picks it up on the next render.
 const tmp = mkdtempSync(path.join(os.tmpdir(), "doombar-theme-"));
 try {
@@ -78,6 +134,8 @@ try {
   }));
   cli("minecraft");
   ok(render().includes("PLAYER"), "theme minecraft -> statusline renders the minecraft HUD");
+  cli("next");
+  ok(render().includes("━"), "theme next -> minecraft-hud (the hotbar layout)");
   cli("next");
   ok(render().includes("ENGINEER"), "theme next -> satisfactory");
   cli("next");

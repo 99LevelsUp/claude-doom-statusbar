@@ -17,6 +17,7 @@ const REPO = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 export const THEMES = {
   doom: { preset: null, about: "DOOM (1993) HUD with the Doomguy mugshot" },
   minecraft: { preset: "minecraft.toml", about: "hearts, hunger, XP and a blocky miner" },
+  "minecraft-hud": { preset: "minecraft-hud.toml", about: "the in-game look: hearts, hunger, XP bar and a 9-slot hotbar" },
   satisfactory: { preset: "satisfactory.toml", about: "power grid, production and an engineer's helmet" },
 };
 export const THEME_NAMES = Object.keys(THEMES);

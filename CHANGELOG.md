@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-10-31
+
+### Added
+- **`minecraft-hud` theme: the in-game survival screen** instead of a row of boxes:
+  - 10 hearts (context left) across the left half and 10 🍖 shanks (5h limit left, 🦴 when
+    eaten) across the right;
+  - the XP bar (7-day usage, level = its percent);
+  - a 9-slot hotbar with a session stat in each slot (context size, cost, changed files, lines
+    added, agents, tasks, errors, CPU, clock), drawn with heavy box lines. Slots are an odd 7
+    columns wide so values centre exactly. The selected slot jumps to what just happened (error, write, finished task) and
+    wanders on its own when idle;
+  - a Minecraft-style chat on the left, a long pre-written script that loops (no tokens). The
+    running model is always one of the speakers, its name coloured by reasoning effort (low red,
+    medium orange, high green, xhigh aqua, max a drifting rainbow). Answers to questions arrive
+    within 2 s, other messages after a varied 3-10 s pause, and a few lines quote live session
+    values.
+  It flashes the hearts on errors, turns them gold while invulnerable, and shows "You died!" when
+  out of usage. Narrow terminals hide the chat, drop slots from the right and halve the hearts.
+  It's centred on the true middle of the terminal (Claude Code draws the status line 2 columns
+  in; `DOOMBAR_INDENT` overrides). Configured by `presets/minecraft-hud.toml`
+  (`[bar] layout = "hotbar"`, `[hotbar]`, `[hotbar.react]` and nine `[[slot]]` entries).
+- Screenshot of `minecraft-hud` and a "Switching themes" guide in the README.
+- `loc.added` metric: lines added this session as a plain number; `model.effort_level`: the raw
+  reasoning effort level.
+
 ## [0.12.0] - 2026-10-31
 
 ### Added
@@ -328,7 +353,8 @@ Note: no changes to the published package contents (`src`, `bin`, `presets`,
 - Mugshot tracking session health, plus usage, model, project, and system stats.
 - Live subagent list with always-visible AGENTS and TASKS boxes.
 
-[Unreleased]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.12.1...HEAD
+[0.12.1]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.11.6...v0.12.0
 [0.6.0]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.4.0...v0.5.0

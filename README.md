@@ -98,13 +98,32 @@ $env:FORCE_HYPERLINK = "1"; claude
 
 ## Themes
 
-Not a DOOM player? The HUD also comes dressed as **Minecraft** or **Satisfactory**. Switch at any time, and it changes on the next refresh with no restart:
+Not a DOOM player? The HUD also comes dressed as **Minecraft** or **Satisfactory**.
+
+<p align="center">
+  <img src="assets/images/minecraft.png" alt="The minecraft-hud theme: a Minecraft-style chat on the left, hearts and hunger, the XP bar with its level, and a 9-slot hotbar of session stats">
+</p>
+
+### Switching themes
+
+There are four themes:
+
+- **`doom`** (the default) is the DOOM HUD.
+- **`minecraft`** is the boxes with a Minecraft look.
+- **`minecraft-hud`** is the in-game screen shown above.
+- **`satisfactory`** is a factory control panel.
+
+Switch at any time. The status bar changes on its next refresh, with no restart:
 
 ```bash
-npx claude-doom-statusbar theme minecraft     # doom | minecraft | satisfactory
-npx claude-doom-statusbar theme next          # cycle to the next one
-npx claude-doom-statusbar theme               # list them and show the current one
+npx claude-doom-statusbar theme minecraft-hud   # doom | minecraft | minecraft-hud | satisfactory
+npx claude-doom-statusbar theme next            # cycle to the next one
+npx claude-doom-statusbar theme                 # list them and show the current one
 ```
+
+From inside Claude Code, put `!` in front to run it without leaving the chat: `! npx claude-doom-statusbar theme next`. In a clone of this repo, `npm run theme minecraft-hud` does the same with the local code. Going back to `doom` restores whichever `--preset` you installed with.
+
+The colour of your model's name in the `minecraft-hud` chat follows Claude Code's reasoning effort, so `/effort` changes it: low is red, medium orange, high green, xhigh aqua and max a rainbow.
 
 | | DOOM | Minecraft | Satisfactory |
 |---|---|---|---|
@@ -114,6 +133,8 @@ npx claude-doom-statusbar theme               # list them and show the current o
 | 7d rate limit | 📅 bar | 🟢 XP bar | 🔋 batteries |
 | agents / tasks | AGENTS / TASKS | PETS / ADVANCEMENTS | DRONES / MILESTONES |
 | system | SYSTEM | F3 DEBUG | HUB |
+
+**`minecraft-hud`** drops the boxes for the in-game screen: hearts and food, the XP bar with its level number, a 9-slot hotbar with a session stat in each slot, and a chat on the left. The chat is a long pre-written script that loops, so it costs no tokens, and the model you're running is always one of the speakers, its name coloured by reasoning effort (red low, orange medium, green high, aqua xhigh, rainbow max). Answers to questions come quickly, other messages after a varied pause. The selected slot jumps to what just happened (💥 on an error, 🧱 on a write, 🏆 when a task finishes) and wanders on its own when idle. Edit the `[[slot]]` entries in `presets/minecraft-hud.toml` to put different things in the slots, or the `SCRIPT` in `src/chat.js` to change the chat.
 
 The choice is saved in `~/.claude/doombar-theme.json`; set `DOOMBAR_THEME` to override it for one shell. `doom` uses whatever `--preset` you installed with (`full`, `standard` or `minimal`). The other themes use `presets/minecraft.toml` and `presets/satisfactory.toml`, which fall back to their `-mini` versions on narrow terminals. The Minecraft and Satisfactory faces are original pixel art drawn from code, so they don't need chafa.
 
