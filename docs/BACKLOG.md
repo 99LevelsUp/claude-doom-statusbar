@@ -18,6 +18,9 @@ Source: [ideation/2026-10-31-temp-file-leaks-and-hook-cost.md](ideation/2026-10-
 |---|---|---|
 | L-D | No git / tasklist probes in headless sessions (verify `CLAUDE_CODE_ENTRYPOINT` or probe only after first render) | open |
 | L-A | Own directory `%TEMP%/claude-game-bar/<session>/`, sweep lists only that; first sweep removes old-style files | open, with R-1 |
+| L-H | Give the savings file a bar-specific prefix (the sweep now owns the generic `savings_` prefix in the temp dir) and narrow `.tmp` cleanup to bar-owned names under a custom `MUGSHOT_STATE`; both disappear with L-A | open, with L-A |
+| L-I | An async Stop hook still running at session end can recreate a journal line or git marker after SessionEnd cleanup; the 1-hour sweep collects them. Revisit with L-A | idea |
+| L-J | Add a `windows-latest` job to the Test workflow; Windows runs only locally today | idea |
 
 ## Rename to `claude-game-bar`
 Source: [ideation/2026-10-31-shared-game-layout-engine.md](ideation/2026-10-31-shared-game-layout-engine.md), section *Rename*
