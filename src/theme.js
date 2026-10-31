@@ -1,5 +1,5 @@
 // Themes: which game the HUD dresses up as. Switched live with
-//   claude-doom-statusbar theme <doom|minecraft|satisfactory|next>
+//   claude-doom-statusbar theme <doom|minecraft|next>
 //
 // The choice lives in a tiny JSON file the statusline reads on every render, so a switch
 // shows up on the next refresh (about a second), with no restart and no settings.json edit.
@@ -16,11 +16,19 @@ const REPO = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 // theme -> preset file (null = follow DOOMBAR_PRESET), plus a one-line blurb for the CLI.
 export const THEMES = {
   doom: { preset: null, about: "DOOM (1993) HUD with the Doomguy mugshot" },
-  minecraft: { preset: "minecraft.toml", about: "hearts, hunger, XP and a blocky miner" },
-  "minecraft-hud": { preset: "minecraft-hud.toml", about: "the in-game look: hearts, hunger, XP bar and a 9-slot hotbar" },
-  satisfactory: { preset: "satisfactory.toml", about: "power grid, production and an engineer's helmet" },
+  minecraft: { preset: "minecraft.toml", about: "the in-game look: chat, hearts, hunger, XP bar and a 9-slot hotbar" },
 };
 export const THEME_NAMES = Object.keys(THEMES);
+
+// Old names that still work. 0.12.x called the hotbar theme "minecraft-hud"; a saved
+// choice (or a typed name) using it keeps landing on the same theme.
+const ALIASES = { "minecraft-hud": "minecraft" };
+
+// Canonical theme name for `name` (aliases resolved), or null if there's no such theme.
+export function resolveTheme(name) {
+  const t = ALIASES[name] || name;
+  return THEME_NAMES.includes(t) ? t : null;
+}
 
 export const themeFile = () =>
   process.env.DOOMBAR_THEME_FILE || path.join(os.homedir(), ".claude", "doombar-theme.json");
@@ -32,7 +40,7 @@ export function currentTheme() {
   if (!t) {
     try { t = JSON.parse(readFileSync(themeFile(), "utf8")).theme; } catch { t = null; }
   }
-  return THEME_NAMES.includes(t) ? t : "doom";
+  return resolveTheme(t) || "doom";
 }
 
 // The preset file to render for `theme`, or null to keep the caller's default.

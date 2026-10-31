@@ -1,45 +1,19 @@
 #!/usr/bin/env node
-// Themes: pixel-art faces, the `icons` render, theme presets, and the live theme switch.
+// Themes: the `icons` render, the minecraft hotbar + chat, and the live theme switch.
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseToml } from "smol-toml";
-import { pixelFace, parseSprite } from "../src/pixelface.js";
-import { buildBar, setValues, renderValue, SAMPLE, vlen } from "../src/render.js";
-import { buildHotbar } from "../src/hotbar.js";
+import { buildBar, setValues, renderValue, vlen } from "../src/render.js";
+import { buildHotbar, wrapMessage } from "../src/hotbar.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, "..");
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 const strip = (s) => s.replace(/\x1b\[[0-9;]*m/g, "");
-
-// Sprite names map onto expressions + health.
-ok(parseSprite("STFDEAD0").expr === "dead", "STFDEAD0 -> dead");
-ok(parseSprite("STFOUCH3").expr === "ouch" && parseSprite("STFOUCH3").hp === 3, "STFOUCH3 -> ouch, hp 3");
-ok(parseSprite("STFTL20").glance === 0 && parseSprite("STFTR20").glance === 2, "turn sprites set the glance");
-ok(parseSprite("STFST12").expr === "idle" && parseSprite("STFST12").glance === 2, "idle glance parsed");
-
-// Every face is exactly `rows` tall and the same width for every sprite (stable layout).
-const SPRITES = ["STFST00", "STFST41", "STFOUCH2", "STFKILL1", "STFEVL3", "STFTL00", "STFTR40", "STFDEAD0", "STFGOD0"];
-for (const theme of ["minecraft", "satisfactory"]) {
-  for (const rows of [4, 5, 7, 9, 12]) {
-    const widths = new Set();
-    let tall = true;
-    for (const sp of SPRITES) {
-      const face = pixelFace(theme, sp, rows);
-      if (face.length !== rows) tall = false;
-      widths.add(Math.max(...face.map((r) => r.length)));
-    }
-    ok(tall && widths.size === 1, `${theme} @${rows} rows: exact height, one width for all sprites`);
-  }
-  // Health shows up in the caption: a healthy face has more filled cells than a hurt one.
-  const filled = (sp) => pixelFace(theme, sp, 7)[6].filter(([ch]) => ch === "♥" || ch === "▰").length;
-  ok(filled("STFST00") > filled("STFST41"), `${theme}: caption loses health as hp drops`);
-}
-ok(pixelFace("satisfactory", "STFDEAD0", 7)[6].map(([c]) => c).join("") === "FUSE!", "satisfactory: dead -> FUSE!");
 
 // icons render: invert reads a used% as what is left.
 setValues({ "context.hp": 70 });
@@ -58,19 +32,9 @@ ok(hearts === "♥♥♥♡♡♡♡♡♡♡", `icons: 70% used -> 3 of 10 hear
   ok([...heartsRow].filter((c) => c === "♥" || c === "♡").length > 10, "stretch: more than the default 10 glyphs at full width");
 }
 
-// Theme presets render at full width and fall back when narrow.
-setValues(SAMPLE);
-for (const name of ["minecraft", "satisfactory"]) {
-  const cfg = parseToml(readFileSync(path.join(ROOT, "presets", `${name}.toml`), "utf8"));
-  const mini = parseToml(readFileSync(path.join(ROOT, "presets", cfg.bar.fallback + ".toml"), "utf8"));
-  const res = buildBar(cfg, 220);
-  ok(res.lines.length >= 4 && res.lines.every((l) => vlen(l) <= 220), `${name}: renders within 220 cols`);
-  ok(mini.mugshot.face === name, `${name}: fallback preset keeps the ${name} face`);
-}
-
 // Hotbar layout: every row the same width, hearts/hunger track the values, death screen.
 {
-  const cfg = parseToml(readFileSync(path.join(ROOT, "presets", "minecraft-hud.toml"), "utf8"));
+  const cfg = parseToml(readFileSync(path.join(ROOT, "presets", "minecraft.toml"), "utf8"));
   const vals = { "context.hp": 30, "ratelimit.5h": 80, "ratelimit.7d": 31, "model.name": "Opus 5.5",
     "model.effort_level": "high", "cost.total": "$1.83", "act.tasks": "2/5", "sys.cpu": "17%" };
   const calm = { now: 1005 };
@@ -123,6 +87,50 @@ for (const name of ["minecraft", "satisfactory"]) {
   ok(others.size >= 3, `chat: other pauses vary (${[...others].sort((a, b) => a - b).join(",")}s)`);
 }
 
+// Chat facts: everything the status bar knows shows up somewhere in the loop, and a sparse
+// session still makes a coherent chat (no unfilled {placeholders}, no unanswered questions).
+{
+  const { chatScript } = await import("../src/chat.js");
+  const { SAMPLE } = await import("../src/render.js");
+  const full = chatScript({ ...SAMPLE, "model.name": "Opus 5.5", "model.effort_level": "high",
+    "session.title": "status bar themes", "loc.added": "185" }).map((m) => m.map((p) => p.text).join(""));
+  const all = full.join("\n");
+  const expected = ["status bar themes", "claude-doom-statusbar", "main", "3 files changed", "high", "thinking is on",
+    "fast mode off", "auto mode", "Opus 4.8", "78% full", "1M", "64%", "2h13m", "31%", "3d4h", "$1.83", "185 blocks",
+    "62 mined", "#1234", "2 helpers", "hook events", "2m13s", "2/5", "statusline values", "hook bus", "render engine",
+    "0. clean run", "3 commits to push", "2 new commits", "12% on 8 cores", "95%", "RAM 47%", "disk 63%", "3 zombies",
+    "busy 54%", "8.3k", "1.2k", "5h55m", "14:23"];
+  const missing = expected.filter((x) => !all.includes(x));
+  ok(missing.length === 0, `chat: every session fact is mentioned${missing.length ? " (missing: " + missing.join(", ") + ")" : ""}`);
+  for (const [name, vals] of [["full", null], ["sparse", { "model.name": "Opus 5.5" }]]) {
+    const lines = vals ? chatScript(vals).map((m) => m.map((p) => p.text).join("")) : full;
+    ok(!lines.some((l) => /[{}]/.test(l)), `chat (${name}): no unfilled {placeholders}`);
+    const dangling = lines.filter((l, i) => l.trim().endsWith("?") && !(lines[i + 1] || "").startsWith("<"));
+    ok(dangling.length === 0, `chat (${name}): every question gets a reply${dangling.length ? " (" + dangling.join(" | ") + ")" : ""}`);
+  }
+}
+
+// Chat wrapping: long messages break at spaces onto more lines, never wider than the strip.
+{
+  const msg = [{ text: "<", role: "text" }, { text: "Opus 5.5", role: "me" }, { text: "> context 78% full, out of 1M", role: "text" }];
+  const text = (l) => l.map((p) => p.text).join("");
+  const one = wrapMessage(msg, 60);
+  ok(one.length === 1 && text(one[0]) === "<Opus 5.5> context 78% full, out of 1M", "wrap: fits on one line when wide");
+  const many = wrapMessage(msg, 16);
+  ok(many.length > 1 && many.every((l) => vlen(text(l)) <= 16), `wrap: narrow -> ${many.length} lines, each <= 16 cols`);
+  ok(many.map(text).join(" ").replace(/ +/g, " ") === "<Opus 5.5> context 78% full, out of 1M", "wrap: no words lost or split");
+  ok(!text(many[0]).startsWith(" ") && many.slice(1).every((l) => /^ \S/.test(text(l))), "wrap: continuation lines start with one space");
+  ok(many[0].some((p) => p.role === "me" && p.text.includes("Opus")), "wrap: the model name keeps its colour role");
+  const long = wrapMessage([{ text: "supercalifragilisticexpialidocious", role: "text" }], 10);
+  ok(long.every((l) => vlen(text(l)) <= 10), "wrap: a word longer than the line is split");
+  const cfg = parseToml(readFileSync(path.join(ROOT, "presets", "minecraft.toml"), "utf8"));
+  const v = { "model.name": "Opus 5.5", "context.hp": 78, "model.window": "1M" };
+  for (const target of [204, 150, 120]) {
+    const lines = buildHotbar(cfg, target, v, { now: 1005 }).lines.map(strip);
+    ok(!lines.join("").includes("…"), `hotbar @${target}: chat wraps instead of cutting messages off`);
+  }
+}
+
 // End to end: `theme` writes the choice, the statusline picks it up on the next render.
 const tmp = mkdtempSync(path.join(os.tmpdir(), "doombar-theme-"));
 try {
@@ -133,17 +141,19 @@ try {
     env, encoding: "utf8", input: JSON.stringify({ session_id: `theme-test-${process.pid}`, cwd: tmp, model: { display_name: "Opus" } }),
   }));
   cli("minecraft");
-  ok(render().includes("PLAYER"), "theme minecraft -> statusline renders the minecraft HUD");
-  cli("next");
-  ok(render().includes("━"), "theme next -> minecraft-hud (the hotbar layout)");
-  cli("next");
-  ok(render().includes("ENGINEER"), "theme next -> satisfactory");
+  ok(render().includes("━"), "theme minecraft -> statusline renders the hotbar HUD");
   cli("next");
   ok(!existsSync(env.DOOMBAR_THEME_FILE), "theme next wraps to doom and removes the saved file");
   ok(render().includes("MODEL"), "doom theme -> back to the DOOM preset");
+  cli("minecraft-hud");
+  ok(JSON.parse(readFileSync(env.DOOMBAR_THEME_FILE, "utf8")).theme === "minecraft", "old name minecraft-hud -> saved as minecraft");
+  writeFileSync(env.DOOMBAR_THEME_FILE, JSON.stringify({ theme: "minecraft-hud" }));
+  ok(render().includes("━"), "a saved 0.12.x choice (minecraft-hud) still renders the hotbar");
+  writeFileSync(env.DOOMBAR_THEME_FILE, JSON.stringify({ theme: "satisfactory" }));
+  ok(render().includes("MODEL"), "a saved theme that no longer exists falls back to doom");
   let threw = false;
-  try { execFileSync(process.execPath, [path.join(ROOT, "bin", "cli.js"), "theme", "zelda"], { env, stdio: "pipe" }); } catch { threw = true; }
-  ok(threw, "unknown theme is rejected");
+  try { execFileSync(process.execPath, [path.join(ROOT, "bin", "cli.js"), "theme", "satisfactory"], { env, stdio: "pipe" }); } catch { threw = true; }
+  ok(threw, "unknown (or removed) theme is rejected");
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }

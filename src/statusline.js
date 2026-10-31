@@ -158,6 +158,7 @@ export function buildValues(data, git) {
   // Clip generously, not to box width: the renderer fits each field to its box (marquee or
   // clip per text_overflow). A tight clip here would truncate before the renderer ever sees it.
   if (sname) v["session.name"] = clip(sname, 60);
+  if (data.session_name) v["session.title"] = clip(data.session_name, 60); // a real name only, never the id
 
   const cwd = data.cwd || (data.workspace || {}).current_dir;
   if (cwd) {
@@ -642,7 +643,7 @@ function main() {
   };
 
   const target = parseInt(process.env.COLUMNS || "100", 10);
-  // The in-game HUD layout (minecraft-hud theme) draws its own screen instead of boxes.
+  // The in-game HUD layout (minecraft theme) draws its own screen instead of boxes.
   if ((cfg.bar || {}).layout === "hotbar") {
     const { lines } = buildHotbar(cfg, target, values, {
       sprite: spriteFor(0), exhausted, now, expr: st.expr, exprAge: now - (st.ts || 0),

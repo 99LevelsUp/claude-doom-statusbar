@@ -98,45 +98,36 @@ $env:FORCE_HYPERLINK = "1"; claude
 
 ## Themes
 
-Not a DOOM player? The HUD also comes dressed as **Minecraft** or **Satisfactory**.
+Not a DOOM player? The HUD also comes as **Minecraft**: the in-game survival screen instead of the boxes.
 
 <p align="center">
-  <img src="assets/images/minecraft.png" alt="The minecraft-hud theme: a Minecraft-style chat on the left, hearts and hunger, the XP bar with its level, and a 9-slot hotbar of session stats">
+  <img src="assets/images/minecraft.png" alt="The minecraft theme: a Minecraft-style chat on the left, hearts and hunger, the XP bar with its level, and a 9-slot hotbar of session stats">
 </p>
+
+| | DOOM | Minecraft |
+|---|---|---|
+| context window | 🧠 HP bar | ♥ hearts left |
+| 5h rate limit | 🕔 bar | 🍖 hunger (🦴 when eaten) |
+| 7d rate limit | 📅 bar | the XP bar; the level is its percent |
+| everything else | boxes around the Doomguy mugshot | a 9-slot hotbar: context size, cost, changed files, lines added, agents, tasks, errors, CPU, clock |
+
+The selected hotbar slot jumps to what just happened (💥 on an error, 🧱 on a write, 🏆 when a task finishes) and wanders on its own when idle. On the left is a chat in Minecraft's format. It's a long pre-written script that loops, so it costs no tokens. The model you're running is always one of the speakers, and between the banter they talk about everything the status bar knows about your session: its name, the project and branch, changes, PR, effort and modes, context and usage with reset times, cost, agents and what they're doing, tasks, errors, token savings and the machine. Lines whose facts aren't known are skipped, and some only show when they fit, like a warning when context is nearly full. Answers to questions come quickly, other messages after a varied pause. Hearts flash on errors, turn gold while invulnerable, and "You died!" appears when you're out of usage.
 
 ### Switching themes
 
-There are four themes:
-
-- **`doom`** (the default) is the DOOM HUD.
-- **`minecraft`** is the boxes with a Minecraft look.
-- **`minecraft-hud`** is the in-game screen shown above.
-- **`satisfactory`** is a factory control panel.
-
-Switch at any time. The status bar changes on its next refresh, with no restart:
+There are two themes: **`doom`** (the default) and **`minecraft`**. Switch at any time. The status bar changes on its next refresh, with no restart:
 
 ```bash
-npx claude-doom-statusbar theme minecraft-hud   # doom | minecraft | minecraft-hud | satisfactory
-npx claude-doom-statusbar theme next            # cycle to the next one
-npx claude-doom-statusbar theme                 # list them and show the current one
+npx claude-doom-statusbar theme minecraft   # doom | minecraft
+npx claude-doom-statusbar theme next        # cycle to the next one
+npx claude-doom-statusbar theme             # list them and show the current one
 ```
 
-From inside Claude Code, put `!` in front to run it without leaving the chat: `! npx claude-doom-statusbar theme next`. In a clone of this repo, `npm run theme minecraft-hud` does the same with the local code. Going back to `doom` restores whichever `--preset` you installed with.
+From inside Claude Code, put `!` in front to run it without leaving the chat: `! npx claude-doom-statusbar theme next`. In a clone of this repo, `npm run theme minecraft` does the same with the local code. Going back to `doom` restores whichever `--preset` you installed with (`full`, `standard` or `minimal`).
 
-The colour of your model's name in the `minecraft-hud` chat follows Claude Code's reasoning effort, so `/effort` changes it: low is red, medium orange, high green, xhigh aqua and max a rainbow.
+The colour of your model's name in the Minecraft chat follows Claude Code's reasoning effort, so `/effort` changes it: low is red, medium orange, high green, xhigh aqua and max a rainbow.
 
-| | DOOM | Minecraft | Satisfactory |
-|---|---|---|---|
-| mugshot | Doomguy | a blocky miner, hearts below | an engineer's helmet; the visor colour is health |
-| context window | 🧠 HP bar | ♥ hearts left | 🎒 inventory |
-| 5h rate limit | 🕔 bar | 🍗 hunger | 🔌 power grid load (FUSE! when it trips) |
-| 7d rate limit | 📅 bar | 🟢 XP bar | 🔋 batteries |
-| agents / tasks | AGENTS / TASKS | PETS / ADVANCEMENTS | DRONES / MILESTONES |
-| system | SYSTEM | F3 DEBUG | HUB |
-
-**`minecraft-hud`** drops the boxes for the in-game screen: hearts and food, the XP bar with its level number, a 9-slot hotbar with a session stat in each slot, and a chat on the left. The chat is a long pre-written script that loops, so it costs no tokens, and the model you're running is always one of the speakers, its name coloured by reasoning effort (red low, orange medium, green high, aqua xhigh, rainbow max). Answers to questions come quickly, other messages after a varied pause. The selected slot jumps to what just happened (💥 on an error, 🧱 on a write, 🏆 when a task finishes) and wanders on its own when idle. Edit the `[[slot]]` entries in `presets/minecraft-hud.toml` to put different things in the slots, or the `SCRIPT` in `src/chat.js` to change the chat.
-
-The choice is saved in `~/.claude/doombar-theme.json`; set `DOOMBAR_THEME` to override it for one shell. `doom` uses whatever `--preset` you installed with (`full`, `standard` or `minimal`). The other themes use `presets/minecraft.toml` and `presets/satisfactory.toml`, which fall back to their `-mini` versions on narrow terminals. The Minecraft and Satisfactory faces are original pixel art drawn from code, so they don't need chafa.
+The choice is saved in `~/.claude/doombar-theme.json`; set `DOOMBAR_THEME` to override it for one shell. To change what's in the hotbar, edit the `[[slot]]` entries in `presets/minecraft.toml`; to change the chat, edit the `SCRIPT` in `src/chat.js`.
 
 ## Presets
 
@@ -146,7 +137,7 @@ The choice is saved in `~/.claude/doombar-theme.json`; set `DOOMBAR_THEME` to ov
 - **`standard`** — balanced HUD.
 - **`full`** — every box, the look in the screenshot above.
 
-A preset is TOML: a `[bar]` style block, a `[mugshot]` block, and a list of `[[segment]]` boxes. Each box lists metrics with a render type — `bar`, `number`, `text`, `spark`, `equalizer`, `ammo`, `icons`, `list`, `scroll`, or a `group`. (`icons` draws a row of glyphs filled by value, such as Minecraft hearts: `glyph`, `empty_glyph`, `count`, and `invert = true` to count what's left of a used-% metric.) `[bar].title_color` recolours box titles, and `[mugshot].face` picks the face (`doom`, `minecraft`, `satisfactory`). (`equalizer` draws an array of `0..1` values as a one-row VU-meter: one block column per channel, each coloured by its own value — e.g. `sys.cores` for per-core CPU.) Copy one and rearrange the boxes, swap icons, or change which metrics show.
+A preset is TOML: a `[bar]` style block, a `[mugshot]` block, and a list of `[[segment]]` boxes. Each box lists metrics with a render type — `bar`, `number`, `text`, `spark`, `equalizer`, `ammo`, `icons`, `list`, `scroll`, or a `group`. (`icons` draws a row of glyphs filled by value, such as Minecraft hearts: `glyph`, `empty_glyph`, `count`, and `invert = true` to count what's left of a used-% metric.) `[bar].title_color` recolours box titles. (`equalizer` draws an array of `0..1` values as a one-row VU-meter: one block column per channel, each coloured by its own value — e.g. `sys.cores` for per-core CPU.) Copy one and rearrange the boxes, swap icons, or change which metrics show.
 
 A value-carrying metric (`bar`, `ammo`, `equalizer`, `number`, `text`) can set `color`:
 
@@ -168,7 +159,7 @@ See [`docs/ideation/`](docs/ideation/) for the full design write-up.
 
 ## Credits
 
-- The status-face sprites are from **DOOM** (1993), id Software. The Minecraft- and Satisfactory-themed faces are original pixel art; this project isn't affiliated with Mojang or Coffee Stain.
+- The status-face sprites are from **DOOM** (1993), id Software. The Minecraft theme is a fan-made look; this project isn't affiliated with Mojang.
 - Mugshot rasterisation by **[chafa](https://hpjansson.org/chafa/)** (Hans Petter Jansson).
 - Prior art that shaped what this HUD shows: **[claude-hud](https://github.com/jarrodwatts/claude-hud)** and **[ccstatusline](https://github.com/sirmalloc/ccstatusline)**.
 

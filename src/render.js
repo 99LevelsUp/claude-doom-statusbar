@@ -512,7 +512,7 @@ function layoutContext(cfg, spriteFor) {
   const dataRows = boxes.length ? Math.max(...boxes.map(rowcount)) : 0;
   const totalRows = Math.max(dataRows + (headers ? 1 : 0), 4); // 4 = mugshot floor
   const hp = hpRow();
-  const face = loadFace(spriteFor(hp), totalRows, (cfg.mugshot || {}).face);
+  const face = loadFace(spriteFor(hp), totalRows);
   const faceW = Math.max(...face.map((r) => r.length));
   return { bar, style, headers, segs, totalRows, hp, face, faceW };
 }

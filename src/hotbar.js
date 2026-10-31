@@ -13,8 +13,17 @@
 
 import { RESET, BOLD, sgrFg as f, sgrBg as b, pyround } from "./ansi.js";
 import { vlen } from "./render.js";
-import { parseSprite } from "./pixelface.js";
-import { chatLog } from "./chat.js";
+import { chatLog, chatScript } from "./chat.js";
+
+// The reaction the DOOM sprite name encodes ("STFOUCH2" -> "ouch", "STFGOD0" -> "god").
+// The statusline picks faces by sprite name; the hotbar only needs the expression.
+function spriteExpr(name) {
+  const s = String(name || "");
+  if (s === "STFDEAD0") return "dead";
+  if (s === "STFGOD0") return "god";
+  const m = /^STF(OUCH|KILL|EVL|TL|TR)\d/.exec(s);
+  return m ? m[1].toLowerCase() : "idle";
+}
 
 const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const C = {
@@ -100,18 +109,44 @@ function selectedSlot(slots, hb, { expr, exprAge, now }) {
   return pick(Math.floor(now / IDLE_SWITCH), slots.length);
 }
 
-// The chat column: the last `rows` messages, each clipped to `w` columns, on a dark strip.
+// Word-wrap one message (styled parts) into lines of at most `w` columns, like the game's
+// chat: break at spaces, and split a word only when it alone is wider than the line. Each
+// continuation line starts with one space, so a wrapped message reads as one message.
+const WRAP_INDENT = " ";
+export function wrapMessage(parts, w) {
+  const tokens = []; // { text, role }, words and the spaces between them
+  for (const p of parts) for (const t of p.text.split(/( +)/)) if (t) tokens.push({ text: t, role: p.role });
+  const lines = [[]];
+  let used = 0, start = 0; // start = columns the line begins with (the indent on continuations)
+  const push = (text, role) => { lines[lines.length - 1].push({ text, role }); used += vlen(text); };
+  const newline = () => { lines.push([]); used = 0; push(WRAP_INDENT, "text"); start = used; };
+  for (const { text, role } of tokens) {
+    if (/^ +$/.test(text)) { if (used > start && used + vlen(text) < w) push(text, role); else if (used > start) newline(); continue; }
+    if (used > start && used + vlen(text) > w) newline();
+    let rest = [...text];
+    while (vlen(rest.join("")) > w - used) { // a word longer than a whole line: hard split
+      const room = Math.max(1, w - used);
+      push(rest.slice(0, room).join(""), role);
+      rest = rest.slice(room);
+      newline();
+    }
+    if (rest.length) push(rest.join(""), role);
+  }
+  return lines.filter((l) => l.some((p) => p.text.trim()));
+}
+
+// The chat column: the newest messages, wrapped to `w` columns, bottom-aligned, `rows`
+// lines tall, on a dark strip. Older lines scroll off the top as new ones arrive.
 function chatColumn(values, now, rows, w) {
   const level = values["model.effort_level"];
-  return chatLog(values, now, rows).map((parts) => {
+  const lines = chatLog(values, now, rows).flatMap((parts) => wrapMessage(parts, w)).slice(-rows);
+  while (lines.length < rows) lines.unshift([]);
+  return lines.map((line) => {
     let s = "", used = 0;
-    for (const p of parts) {
-      if (used >= w) break;
-      let t = p.text;
-      if (used + vlen(t) > w) { t = [...t].slice(0, Math.max(0, w - used - 1)).join("") + "…"; }
-      if (p.role === "me") s += effortName(t, level, now);
-      else s += f(p.role === "system" ? C.system : p.role === "adv" ? C.adv : C.chatText) + t;
-      used += vlen(t);
+    for (const p of line) {
+      if (p.role === "me") s += effortName(p.text, level, now);
+      else s += f(p.role === "system" ? C.system : p.role === "adv" ? C.adv : C.chatText) + p.text;
+      used += vlen(p.text);
     }
     return b(C.chatBg) + " " + s + " ".repeat(Math.max(0, w - used)) + " " + RESET;
   });
@@ -128,7 +163,7 @@ export function buildHotbar(cfg, target, values, opts = {}) {
   const { sprite = "STFST01", exhausted = false, now = Date.now() / 1000, indent = 2 } = opts;
   const hb = cfg.hotbar || {};
   const all = (cfg.slot || []).slice(0, 9);
-  const flash = parseSprite(sprite).expr;
+  const flash = spriteExpr(sprite);
 
   // Slots are an ODD number of columns wide (7, or 5 when narrow), so the mostly
   // odd-length values ($1.83, 2/5, 17%) sit exactly in the middle. Narrower than nine
@@ -186,8 +221,10 @@ export function buildHotbar(cfg, target, values, opts = {}) {
   rows.push(rule("┗", "┻", "┛"));
 
   // Chat on the left, bottom-aligned like the game's, when there is room beside the bar.
-  const CHAT_MAX = 44; // the game's chat box has a fixed width too
-  const chatW = Math.min(CHAT_MAX, padN - 4); // leave a gap before the hotbar (2 = the strip's own padding)
+  // The chat takes the room left of the hotbar, but no wider than its longest message, so
+  // the strip stays one steady width while the loop runs. Anything longer wraps.
+  const longest = Math.max(0, ...chatScript(values).map((m) => vlen(m.map((p) => p.text).join(""))));
+  const chatW = Math.min(longest, padN - 4); // leave a gap before the hotbar (2 = the strip's own padding)
   const chat = chatW >= 16 ? chatColumn(values, now, rows.length, chatW) : null;
   const lines = rows.map((r, i) => {
     const left = chat ? chat[i] + " ".repeat(padN - (chatW + 2)) : " ".repeat(padN);

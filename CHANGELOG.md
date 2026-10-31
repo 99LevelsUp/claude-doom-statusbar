@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-31
+
+### Changed
+- **The Minecraft chat now says everything the status bar knows.** The hotbar's nine slots are
+  configurable, so the chat is where every session fact gets said: session name and project,
+  branch, changed files, lines added and removed, push/pull, PR, effort, thinking and fast mode,
+  permission mode, output style, advisor, context, both usage limits with their resets, cost,
+  running agents (with what they're doing), the current, next and last-finished task, errors,
+  token savings, CPU per core, RAM, disk, zombie shells, session length and the time. Some lines
+  only appear when they fit (a warning when context is nearly full, "skip the night" after 9pm),
+  and a question is only asked when its answer is known. New `session.title` metric: the
+  session's real name (`/rename`), never its id.
+- **The chat is as wide as it can be and wraps instead of cutting off.** It takes all the room
+  left of the hotbar, up to its longest message, and a message that still doesn't fit continues
+  on the next line, like the game's chat. Narrow the terminal and more messages wrap; the newest
+  stays at the bottom.
+- **The hotbar theme is now just `minecraft`** (it was `minecraft-hud`). The old name still works,
+  both typed (`theme minecraft-hud`) and as a saved choice from 0.12.x.
+
+### Removed
+- The box-style `minecraft` and `satisfactory` themes from 0.12.0 (DOOM's layout with restyled
+  boxes) and their pixel-art mugshots, along with the `[mugshot].face` option. A saved
+  `satisfactory` choice falls back to `doom`. The `icons` render type and `[bar].title_color`
+  stay as general preset options.
+
 ## [0.12.1] - 2026-10-31
 
 ### Added
@@ -353,7 +378,8 @@ Note: no changes to the published package contents (`src`, `bin`, `presets`,
 - Mugshot tracking session health, plus usage, model, project, and system stats.
 - Live subagent list with always-visible AGENTS and TASKS boxes.
 
-[Unreleased]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.12.1...HEAD
+[Unreleased]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.12.1...v0.13.0
 [0.12.1]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.11.6...v0.12.0
 [0.6.0]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.5.0...v0.6.0
