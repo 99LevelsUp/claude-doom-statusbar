@@ -68,6 +68,15 @@ written by the installer.
     seen: 211 KB). The statusline reads it incrementally by offset, so this costs disk, not render time.
     Low priority.
 
+### One-off cleanup done 31.10.2026
+
+3,244 files deleted by hand (sessions without a checkpoint older than 1 day, orphaned `.tmp` older than
+1 day, 30 test leftovers); 465 files (1.1 MB) kept: rendered sessions and headless runs younger than a day.
+Found while doing it: `savings_<sid>.json` also ignores `MUGSHOT_STATE` (its own `DOOMBAR_SAVINGS_STATE`
+or `%TEMP%`), so a test or a sandboxed render writes it into the real temp dir too; it belongs under F.
+
+Open items are tracked in [../BACKLOG.md](../BACKLOG.md).
+
 ## Proposals
 
 | # | Change | Fixes | Size |
