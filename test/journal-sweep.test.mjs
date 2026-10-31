@@ -77,6 +77,43 @@ const TTL = 7 * DAY;
     "empty / missing name list is safe");
 }
 
+// --- Sessions that never rendered go after an hour, decided per session ---------------------
+// Headless runs (claude -p) fire the hooks but never render a bar, so they leave a journal and
+// probe markers and no checkpoint. Those are swept after an hour instead of a week; a session
+// with a checkpoint keeps the long TTL. The newest file of a session decides for all of it.
+{
+  const HOUR = 60 * 60 * 1000;
+  const sweep = (ages) => staleStateFiles(Object.keys(ages), (n) => ages[n]);
+  const all = (names, stale) => names.every((n) => stale.includes(n));
+  const none = (names, stale) => names.every((n) => !stale.includes(n));
+
+  const headless = ["mugshot_h.json.jsonl", "mugshot_git_h.json", "mugshot_msys_h.json"];
+  ok(all(headless, sweep(Object.fromEntries(headless.map((n) => [n, 2 * HOUR])))),
+    "never rendered, newest file 2 h old -> every file of the session goes");
+  ok(none(headless, sweep(Object.fromEntries(headless.map((n) => [n, 30 * 60 * 1000])))),
+    "never rendered, newest file 30 min old -> all kept");
+  ok(none(headless, sweep({ "mugshot_h.json.jsonl": 10 * 60 * 1000,
+    "mugshot_git_h.json": 2 * HOUR, "mugshot_msys_h.json": 2 * HOUR })),
+    "never rendered, journal fresh but markers 2 h old -> all kept (the newest file decides)");
+
+  const rendered = ["mugshot_r.json", "mugshot_r.json.jsonl", "mugshot_git_r.json", "savings_r.json"];
+  ok(none(rendered, sweep(Object.fromEntries(rendered.map((n) => [n, 2 * HOUR])))),
+    "rendered (has a checkpoint), 2 h old -> all kept under the 7-day rule");
+  ok(all(rendered, sweep(Object.fromEntries(rendered.map((n) => [n, 8 * DAY])))),
+    "rendered, 8 days old -> all go, savings file included");
+  // After end-of-session cleanup only the savings file is left. Only a render writes it, so it
+  // marks the session as rendered: it keeps the 7-day rule and survives a later resume.
+  ok(sweep({ "savings_ended.json": 2 * HOUR }).length === 0,
+    "a lone savings file (session ended cleanly) is kept past an hour");
+  ok(sweep({ "savings_ended.json": 8 * DAY }).length === 1, "a lone savings file goes after 7 days");
+
+  ok(sweep({ "mugshot_s.json.jsonl": 2 * HOUR, "mugshot_cpu.json": 2 * HOUR }).includes("mugshot_s.json.jsonl") &&
+     !sweep({ "mugshot_cpu.json": 99 * DAY }).length,
+    "shared files are never part of a session, whatever their age");
+  ok(staleStateFiles(["mugshot_h.json.jsonl"], () => 2 * HOUR, { unrenderedTtl: 3 * HOUR }).length === 0,
+    "a custom unrendered TTL is honoured");
+}
+
 // --- End to end: the real hook sweeps its own temp dir on SessionStart ----------------------
 {
   const tmp = mkdtempSync(path.join(os.tmpdir(), "doombar-sweep-"));
@@ -92,6 +129,10 @@ const TTL = 7 * DAY;
   stamp("mugshot_git_dead.json", 30 * DAY);
   stamp("mugshot_ratehealth_global.json", 30 * DAY);
   stamp("mugshot_fresh.json", 1000);
+  stamp("mugshot_headless.json.jsonl", 2 * 60 * 60 * 1000); // never rendered, 2 h old
+  stamp("mugshot_git_headless.json", 2 * 60 * 60 * 1000);
+  stamp("mugshot_shown.json", 2 * 60 * 60 * 1000);          // rendered, 2 h old
+  stamp("mugshot_shown.json.jsonl", 2 * 60 * 60 * 1000);
   stamp("unrelated.txt", 30 * DAY);
 
   // TMPDIR points the hook's os.tmpdir() at our sandbox; MUGSHOT_STATE keeps its own checkpoint
@@ -109,6 +150,10 @@ const TTL = 7 * DAY;
      !left.includes("mugshot_git_dead.json"), `cold files swept (left: ${left.join(", ")})`);
   ok(left.includes("mugshot_ratehealth_global.json"), "shared accumulator survived the sweep");
   ok(left.includes("mugshot_fresh.json"), "fresh file survived");
+  ok(!left.includes("mugshot_headless.json.jsonl") && !left.includes("mugshot_git_headless.json"),
+    "a session that never rendered is swept after an hour");
+  ok(left.includes("mugshot_shown.json") && left.includes("mugshot_shown.json.jsonl"),
+    "a rendered session of the same age is kept");
   ok(left.includes("unrelated.txt"), "unrelated file survived");
   ok(existsSync(path.join(tmp, `mugshot_${sid}.json.jsonl`)),
      "this session's own journal exists and was not swept");

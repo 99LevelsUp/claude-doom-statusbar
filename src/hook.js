@@ -198,28 +198,60 @@ const msysMarkerPath = (sid) => sessionPaths(sid).msys;
 //     are cross-session by design (see statusline.js) and the reap throttle is process-wide, so
 //     they are keyed by a fixed name with no session id and are excluded by name;
 //   * never this session's own files;
-//   * only when mtime is older than DOOMBAR_JOURNAL_TTL (default 7 days), so a session that is
-//     merely idle — or a concurrent one — is never touched.
-// Orphaned `<checkpoint>.<pid>.tmp` files from interrupted atomic writes are swept on the same
-// rule. Failures are ignored per file: housekeeping must never cost a hook its exit 0.
+//   * decided per session, by its newest file, so a session that is merely idle — or a
+//     concurrent one — is never touched, and a session's files go together or not at all;
+//   * a session that ever rendered a bar (it has a checkpoint, advisor cache or savings file)
+//     goes once its newest file is older than DOOMBAR_JOURNAL_TTL (default 7 days); one
+//     that never rendered — a headless
+//     `claude -p` run fires the hooks but shows no bar — after DOOMBAR_UNRENDERED_TTL
+//     (default 1 hour), because nothing will ever read its files.
+// Orphaned `<checkpoint>.<pid>.tmp` files from interrupted atomic writes belong to their
+// session. Failures are ignored per file: housekeeping must never cost a hook its exit 0.
 const JOURNAL_TTL = envNum(process.env.DOOMBAR_JOURNAL_TTL, 7 * 24 * 60 * 60 * 1000); // ms
+const UNRENDERED_TTL = envNum(process.env.DOOMBAR_UNRENDERED_TTL, 60 * 60 * 1000); // ms
 
 // Fixed-name files shared across sessions — deleting these would lose real state.
 const SHARED_STATE = new Set([
   "mugshot_ratehealth_global.json", "mugshot_ratelimits_global.json", "mugshot_cpu.json", "mugshot_reap_tick.json",
 ]);
 
+// The session key a file belongs to (the names sessionPaths in fold.js writes), or null when
+// the name is not one of ours. Markers are matched before the checkpoint pattern, which would
+// otherwise read `mugshot_git_<key>.json` as the checkpoint of a session named `git_<key>`.
+function sessionKeyOf(name) {
+  let m = /^mugshot_(?:git|msys|adv)_(.+)\.json$/.exec(name) || /^savings_(.+)\.json$/.exec(name);
+  if (m) return m[1];
+  m = /^mugshot_(.+?)\.json(?:\.jsonl|\.\d+\.tmp)?$/.exec(name); // checkpoint, journal, .tmp
+  return m ? m[1] : null;
+}
+
 // Pure: which of `names` are cold scratch files? Exported so the delete rule is tested without
 // touching a real temp dir. `ageOf` returns mtime age in ms, or null when it can't be read.
-export function staleStateFiles(names, ageOf, { ttl = JOURNAL_TTL, keep = [] } = {}) {
+export function staleStateFiles(names, ageOf, { ttl = JOURNAL_TTL, unrenderedTtl = UNRENDERED_TTL, keep = [] } = {}) {
+  const all = names || [];
+  const listed = new Set(all);
   const mine = new Set(keep.map((p) => path.basename(p)));
-  return (names || []).filter((n) => {
-    if (!/^(mugshot|savings)_/.test(n)) return false; // not ours
-    if (SHARED_STATE.has(n)) return false;       // cross-session state, no session id in the name
-    if (mine.has(n)) return false;               // this session's own files
-    const age = ageOf(n);
-    return Number.isFinite(age) && age >= ttl;
-  });
+  const sessions = new Map(); // session key -> [{ name, age }]
+  for (const n of all) {
+    if (SHARED_STATE.has(n) || mine.has(n)) continue; // shared state; this session's own files
+    const key = sessionKeyOf(n);
+    if (key === null) continue;                         // not ours
+    if (!sessions.has(key)) sessions.set(key, []);
+    sessions.get(key).push({ name: n, age: ageOf(n) });
+  }
+  const stale = [];
+  for (const [key, files] of sessions) {
+    const known = files.filter((f) => Number.isFinite(f.age)); // an unreadable age is never a reason to delete
+    if (!known.length) continue;
+    const newest = Math.min(...known.map((f) => f.age));
+    // Rendered = any file only the statusline writes is present. After end-of-session cleanup
+    // the savings file is all that is left, and it must keep the long TTL for a later resume.
+    const rendered = [`mugshot_${key}.json`, `mugshot_adv_${key}.json`, `savings_${key}.json`]
+      .some((n) => listed.has(n));
+    const limit = rendered ? ttl : unrenderedTtl;
+    if (newest >= limit) stale.push(...known.map((f) => f.name));
+  }
+  return stale;
 }
 
 function sweepState(sid) {
