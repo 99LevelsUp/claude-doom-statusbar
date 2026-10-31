@@ -45,8 +45,8 @@ ok(hearts === "♥♥♥♡♡♡♡♡♡♡", `icons: 70% used -> 3 of 10 hear
       `hotbar @${target}: every row the same width, inside the terminal (${rows[0]})`);
   }
   const plain = buildHotbar(cfg, 100, vals, calm).lines.map(strip);
-  ok((plain[0].match(/♥/g) || []).length === 7, "hotbar: 30% context used -> 7 of 10 hearts");
-  ok((plain[0].match(/🍖/g) || []).length === 2, "hotbar: 80% of 5h used -> 2 of 10 shanks");
+  ok((plain[0].match(/♥/g) || []).length === 2, "hotbar: 80% of 5h used -> 2 of 10 hearts");
+  ok((plain[0].match(/🍖/g) || []).length === 7, "hotbar: 30% context used -> 7 of 10 shanks");
   ok(/ 31 /.test(plain[1]), "hotbar: XP level shows the 7-day percent");
   ok(/┃ \$1\.83 ┃/.test(plain[4]) && /┃  2\/5  ┃/.test(plain[4]), "hotbar: odd-length values sit centred in their slot");
   ok(/^ *┏━+┳/.test(plain[2].slice(plain[2].indexOf("┏"))), "hotbar: slots drawn with heavy lines");

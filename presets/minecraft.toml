@@ -1,14 +1,14 @@
 # minecraft — the in-game survival screen instead of boxes:
-#   a chat on the left (a looping pre-written script: no tokens), ♥ hearts (context left)
-#   + 🍖 hunger (5h limit left), the XP bar (7-day usage, level = its %), and a 9-slot
+#   a chat on the left (a looping pre-written script: no tokens), ♥ hearts (5h limit left)
+#   + 🍖 hunger (context left), the XP bar (7-day usage, level = its %), and a 9-slot
 #   hotbar of session stats.
 # Switch themes with:  claude-doom-statusbar theme <name>   (npm run theme <name>)
 [bar]
 layout = "hotbar"
 
 [hotbar]
-hearts = "context.hp"     # used %, hearts show what is left
-hunger = "ratelimit.5h"
+hearts = "ratelimit.5h"   # used %, hearts show what is left; empty = "You died!"
+hunger = "context.hp"     # used %, shanks show what is left
 xp     = "ratelimit.7d"
 
 # The selected slot jumps to what just happened, then wanders on its own when idle.

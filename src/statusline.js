@@ -565,6 +565,58 @@ function rateHealthValue(data) {
   return headroom;
 }
 
+// --- Account-wide rate limits, shared across sessions --------------------------------------
+// Rate limits belong to the ACCOUNT, but Claude Code only refreshes a session's copy when that
+// session itself talks to the API. An idle chat kept showing its last numbers (12% on the 7-day
+// bar) while another chat was already at 16%. So every render pools what it sees into one
+// shared file and renders the freshest reading any session has seen.
+//
+// "Freshest" needs no timestamps: a window is identified by its resets_at, and within one
+// window used_percentage only ever rises. So per window: a later resets_at wins (a new window
+// started), the same resets_at takes the higher percentage, an earlier one is stale.
+const SAME_WINDOW_S = 60; // resets_at readings this close are the same window (rounding jitter)
+
+// Pure: the fresher of two readings of one window, { used_percentage, resets_at } | null.
+export function fresherWindow(a, b) {
+  const ok = (w) => w && typeof w === "object" && typeof w.used_percentage === "number";
+  if (!ok(a)) return ok(b) ? b : null;
+  if (!ok(b)) return a;
+  const ra = typeof a.resets_at === "number" ? a.resets_at : null;
+  const rb = typeof b.resets_at === "number" ? b.resets_at : null;
+  if (ra !== null && rb !== null && Math.abs(ra - rb) > SAME_WINDOW_S) return ra > rb ? a : b; // newer window
+  return b.used_percentage > a.used_percentage ? b : a; // same window (or unknown): usage only rises
+}
+
+// Pure: merge this session's rate_limits with the shared ones; returns the merged object.
+export function mergeRateLimits(mine, shared) {
+  const out = { ...(mine && typeof mine === "object" ? mine : {}) };
+  for (const k of ["five_hour", "seven_day"]) {
+    const w = fresherWindow(out[k], shared && shared[k]);
+    if (w) out[k] = w; else delete out[k];
+  }
+  return out;
+}
+
+const rateLimitsFile = () => process.env.DOOMBAR_RATELIMITS || path.join(TMP, "mugshot_ratelimits_global.json");
+
+// I/O wrapper: read the shared snapshot, merge, write it back if anything got fresher.
+// Throw-proof: the render path has no top-level catch, so failures keep the session's own.
+function syncRateLimits(mine) {
+  const file = rateLimitsFile();
+  let shared = null;
+  try { shared = JSON.parse(readFileSync(file, "utf8")); } catch { /* first reading */ }
+  const merged = mergeRateLimits(mine, shared);
+  const pick = (o) => ({ five_hour: o && o.five_hour, seven_day: o && o.seven_day });
+  if (JSON.stringify(pick(merged)) !== JSON.stringify(pick(shared))) {
+    try { // atomic: concurrent sessions never read a half-written file
+      const tmp = `${file}.${process.pid}.tmp`;
+      writeFileSync(tmp, JSON.stringify(pick(merged)));
+      renameSync(tmp, file);
+    } catch { /* ignore: next render retries */ }
+  }
+  return merged;
+}
+
 // --- Idle-time MSYS reaping -----------------------------------------------------------------
 // The hook reaps hung Git Bash wrappers on every event, but while the session sits idle no events
 // arrive — and idle is precisely when the 1 s refresh timer is the ONLY thing spawning shells. So
@@ -607,6 +659,13 @@ function main() {
   const cfg = parseToml(readFileSync(preset, "utf8"));
 
   const now = Date.now() / 1000;
+  // Account-wide limits: use the freshest reading any session has seen (see syncRateLimits).
+  // A brand-new chat that hasn't called the API yet gets them too. DOOMBAR_RATELIMITS_SHARE=0
+  // turns it off.
+  if (process.env.DOOMBAR_RATELIMITS_SHARE !== "0") {
+    try { data.rate_limits = syncRateLimits(data.rate_limits); } catch { /* keep the session's own */ }
+    if (!Object.keys(data.rate_limits || {}).length) delete data.rate_limits;
+  }
   const st = loadState(data);
   const cwd = data.cwd || (data.workspace || {}).current_dir;
   const values = { ...buildValues(data, st.git), ...activityValues(st, now), ...sysValues(cwd), ...statsValues(data, cwd) };

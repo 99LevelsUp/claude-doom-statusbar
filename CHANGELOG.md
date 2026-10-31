@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-10-31
+
+### Changed
+- **Minecraft theme: hearts and hunger swapped.** Hearts are now the 5-hour limit (so running
+  out of it empties them and shows "You died!", like in the game) and the 🍖 hunger is the
+  context window. The chat lines about food and hearts follow.
+
+### Fixed
+- **Usage limits now match across chats.** Rate limits belong to the account, but Claude Code
+  only refreshes a chat's copy when that chat calls the API, so an idle chat kept showing old
+  numbers (12% on the 7-day bar while another chat was at 16%). Every render now pools its
+  reading into a shared file in the temp directory and shows the freshest one any chat has
+  seen: per window, a later `resets_at` wins, and within a window the higher percentage wins
+  (usage only rises). Brand-new chats show the limits before their first message, and the
+  mugshot's rate-based health uses the same shared numbers. `DOOMBAR_RATELIMITS_SHARE=0` turns
+  it off. Context (the hunger / HP bar) stays per chat: each chat has its own.
+
 ## [0.13.0] - 2026-10-31
 
 ### Changed
@@ -378,7 +395,8 @@ Note: no changes to the published package contents (`src`, `bin`, `presets`,
 - Mugshot tracking session health, plus usage, model, project, and system stats.
 - Live subagent list with always-visible AGENTS and TASKS boxes.
 
-[Unreleased]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.13.1...HEAD
+[0.13.1]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.12.1...v0.13.0
 [0.12.1]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.11.6...v0.12.0

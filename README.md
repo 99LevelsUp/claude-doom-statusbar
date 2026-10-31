@@ -106,8 +106,8 @@ Not a DOOM player? The HUD also comes as **Minecraft**: the in-game survival scr
 
 | | DOOM | Minecraft |
 |---|---|---|
-| context window | 🧠 HP bar | ♥ hearts left |
-| 5h rate limit | 🕔 bar | 🍖 hunger (🦴 when eaten) |
+| 5h rate limit | 🕔 bar | ♥ hearts left ("You died!" when they run out) |
+| context window | 🧠 HP bar | 🍖 hunger (🦴 when eaten) |
 | 7d rate limit | 📅 bar | the XP bar; the level is its percent |
 | everything else | boxes around the Doomguy mugshot | a 9-slot hotbar: context size, cost, changed files, lines added, agents, tasks, errors, CPU, clock |
 
