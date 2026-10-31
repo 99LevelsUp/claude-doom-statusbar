@@ -295,11 +295,11 @@ function endSession(sid) {
     try { unlinkSync(f); } catch { /* never written, or already gone */ }
   }
   // Orphaned `<checkpoint>.<pid>.tmp` files from this session's interrupted atomic writes.
-  const dir = path.dirname(p.checkpoint), base = path.basename(p.checkpoint);
+  const dir = path.dirname(p.checkpoint), stem = path.basename(p.checkpoint);
   let names = [];
   try { names = readdirSync(dir); } catch { return; }
   for (const n of names) {
-    if (!n.startsWith(base + ".") || !/^\.\d+\.tmp$/.test(n.slice(base.length))) continue;
+    if (!n.startsWith(stem) || !/^\.\d+\.tmp$/.test(n.slice(stem.length))) continue;
     try { unlinkSync(path.join(dir, n)); } catch { /* in use / already gone */ }
   }
 }
