@@ -1,0 +1,32 @@
+name: Test
+
+# Runs the suite on Linux for every push to master and every pull request, so a
+# Linux-only difference (snapshot output, paths, temp handling) shows up before a
+# release tag is pushed. Publishing stays in publish.yml.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test

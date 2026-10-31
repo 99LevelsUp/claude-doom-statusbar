@@ -11,7 +11,8 @@ every pushed tag matching `v*.*.*` and publishes via npm trusted publishing (OID
 
 ## Cutting a release
 
-1. Make sure `master` is clean and all changes are committed.
+1. Make sure `master` is clean, all changes are committed, and the latest
+   **Test** workflow run (`.github/workflows/test.yml`, Linux) on `master` is green.
 2. Move the relevant `CHANGELOG.md` entries from `[Unreleased]` into a new
    version section, then commit.
 3. Bump the version. This runs the test suite, updates `package.json` +
