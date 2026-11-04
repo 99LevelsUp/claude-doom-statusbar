@@ -19,8 +19,8 @@ const st = { tasks: {
 
 const v = activityValues(st, now);
 
-// Count: completed / (completed+open), deleted excluded.
-ok(v["act.tasks"] === "1/3", `act.tasks counts live only (got ${v["act.tasks"]})`);
+// Count: open / done (open = pending + in_progress), deleted excluded.
+ok(v["act.tasks"] === "2/1", `act.tasks is open/done (got ${v["act.tasks"]})`);
 
 // tasklist: settled (completed, deleted) then open (in_progress, pending).
 const list = v["act.tasklist"];

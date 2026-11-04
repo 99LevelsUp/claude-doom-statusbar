@@ -11,7 +11,7 @@
 // `claude-doom-statusbar theme` (see theme.js)  State: $MUGSHOT_STATE
 
 import {
-  readFileSync, writeFileSync, renameSync, unlinkSync, openSync, fstatSync, readSync, closeSync, statfsSync, statSync,
+  readFileSync, writeFileSync, renameSync, unlinkSync, openSync, fstatSync, readSync, closeSync, statfsSync, statSync, readdirSync,
 } from "node:fs";
 import { spawn } from "node:child_process";
 import os from "node:os";
@@ -20,7 +20,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { parse as parseToml } from "smol-toml";
 import { pyround, sgrFg } from "./ansi.js";
 import { buildBar, setValues, resolvePreset, OK, TEXT, CRIT } from "./render.js";
-import { foldBatch, statePaths, sessionPaths } from "./fold.js";
+import { foldBatch, statePaths, sessionPaths, TASK_LINGER } from "./fold.js";
 import { currentTheme, themePreset } from "./theme.js";
 import { buildHotbar } from "./hotbar.js";
 
@@ -207,6 +207,55 @@ function writeAtomic(file, data) {
     try { unlinkSync(tmp); } catch { /* never written, or already gone */ }
     throw e;
   }
+}
+
+// Claude Code keeps each session's task list on disk (~/.claude/tasks/<list id>/<task id>.json),
+// and that survives a reboot and `claude --resume`; our journal in the temp dir doesn't. The
+// list id is CLAUDE_CODE_TASK_LIST_ID when set, otherwise the session id. DOOMBAR_TASKS_DIR
+// overrides the whole directory (tests). Returns null when there is no list directory.
+export function tasksDir(sessionId) {
+  if (process.env.DOOMBAR_TASKS_DIR) return process.env.DOOMBAR_TASKS_DIR;
+  const listId = process.env.CLAUDE_CODE_TASK_LIST_ID || sessionId;
+  if (!listId) return null;
+  const home = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude");
+  return path.join(home, "tasks", String(listId));
+}
+
+export function readDiskTasks(dir) {
+  let names;
+  try { names = readdirSync(dir); } catch { return null; }
+  const out = {};
+  for (const n of names) {
+    if (!n.endsWith(".json") || n.startsWith(".")) continue;
+    const f = path.join(dir, n);
+    try {
+      const t = JSON.parse(readFileSync(f, "utf8"));
+      if (!t || typeof t !== "object") continue;
+      const id = String(t.id ?? n.slice(0, -5));
+      out[id] = { title: t.subject || t.title || "task", status: t.status || "pending", ts: statSync(f).mtimeMs / 1000 };
+    } catch { /* half-written or foreign file: skip */ }
+  }
+  return out;
+}
+
+// Overlay the on-disk task list onto the folded state (a copy; the checkpoint is untouched).
+// Disk is the source of truth for which tasks exist and their status. From the journal we keep
+// the creation time (stable ordering) and tasks it saw deleted, which Claude Code removes from
+// disk. The same linger rule as fold.js hides the box once everything has settled.
+export function mergeDiskTasks(st, disk, now) {
+  if (!disk) return st;
+  const seen = st.tasks || {};
+  const tasks = {};
+  let latest = st.tasks_ts || 0;
+  for (const [id, t] of Object.entries(disk)) {
+    const j = seen[id];
+    tasks[id] = j && j.status === "deleted" ? { ...j } : { ...t, ts: j ? j.ts : t.ts };
+    latest = Math.max(latest, t.ts);
+  }
+  for (const [id, j] of Object.entries(seen)) if (!(id in tasks) && j.status === "deleted") tasks[id] = { ...j };
+  const anyOpen = Object.values(tasks).some((t) => t.status === "pending" || t.status === "in_progress");
+  const settled = Object.keys(tasks).length && !anyOpen && now - latest > TASK_LINGER;
+  return { ...st, tasks: settled ? {} : tasks, tasks_ts: latest };
 }
 
 // Fold the per-session journal into the checkpoint and return the folded state.
@@ -472,9 +521,10 @@ export function activityValues(st, now) {
   v["act.subagents"] = agents.map((a) => [clip(a.desc || a.type || "agent", 60), _dur(now - a.start)]);
 
   const tasks = st.tasks && typeof st.tasks === "object" ? Object.values(st.tasks) : [];
-  const live = tasks.filter((t) => t.status !== "deleted");
-  const done = live.filter((t) => t.status === "completed").length;
-  v["act.tasks"] = `${done}/${live.length}`;
+  // open/done: open = pending + in_progress, done = completed; deleted counts in neither.
+  const open = tasks.filter((t) => t.status === "pending" || t.status === "in_progress").length;
+  const done = tasks.filter((t) => t.status === "completed").length;
+  v["act.tasks"] = `${open}/${done}`;
   const ordered = tasks
     .map((t) => ({ ...t }))
     .sort((a, b) => (TASK_ORDER[a.status] - TASK_ORDER[b.status]) || (a.ts - b.ts));
@@ -675,7 +725,7 @@ function main() {
     try { data.rate_limits = syncRateLimits(data.rate_limits); } catch { /* keep the session's own */ }
     if (!Object.keys(data.rate_limits || {}).length) delete data.rate_limits;
   }
-  const st = loadState(data);
+  const st = mergeDiskTasks(loadState(data), readDiskTasks(tasksDir(data.session_id)), now);
   const cwd = data.cwd || (data.workspace || {}).current_dir;
   const values = { ...buildValues(data, st.git), ...activityValues(st, now), ...sysValues(cwd), ...statsValues(data, cwd) };
   const [advModel, advTs] = advisorInfo(data.transcript_path || "");
