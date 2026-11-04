@@ -11,7 +11,7 @@ import path from "node:path";
 
 export const GEIGER_WINDOW = 30.0; // seconds of tool-run history kept for the sparkline
 export const MAX_RUN = 300.0; // drop an unclosed span after this (assume the Post was lost)
-export const TASK_LINGER = 10.0; // seconds the TASKS box lingers after all tasks settle
+export const TASK_LINGER = 10.0; // seconds the task list lingers after all tasks settle (the count stays)
 
 export const READ_TOOLS = new Set(["Read", "Grep", "Glob",
   "ctx_read", "ctx_multi_read", "ctx_search", "ctx_semantic_search", "ctx_tree", "ctx_overview"]);
@@ -120,10 +120,8 @@ export function foldActivity(st, name, ev, now) {
   const win = now - GEIGER_WINDOW; // prune: closed spans out of window, orphaned open spans
   st.spans = st.spans.filter((s) => (s[1] === null ? s[0] >= now - MAX_RUN : s[1] >= win));
   st.squad = Object.fromEntries(Object.entries(st.squad).filter(([, v]) => now - v.start < MAX_RUN));
-
-  const taskVals = Object.values(st.tasks || {});
-  const anyOpen = taskVals.some((t) => t.status === "pending" || t.status === "in_progress");
-  if (taskVals.length && !anyOpen && now - (st.tasks_ts || 0) > TASK_LINGER) st.tasks = {};
+  // Tasks are never pruned here: the count (open/done/total) covers the whole session. Only the
+  // task LIST hides once everything has settled; see TASK_LINGER in statusline's activityValues.
 }
 
 // One full event fold: activity + face expression + permission mode + git snapshot.

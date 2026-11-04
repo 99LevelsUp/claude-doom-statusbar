@@ -8,14 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
-- **The task count reads open/done** (open = pending + in progress), not done/total. Deleted
-  tasks count in neither.
+- **Finished tasks stay in the count for the whole session.** Ten seconds after the last task
+  settles only the task list empties; the count no longer drops back to zero. When Claude Code
+  cleans up a finished list (it deletes the task files and keeps `.highwatermark`), the tasks
+  up to that mark still count as done, including after a reboot or `--resume`.
 
 ### Fixed
 - **Tasks survive a reboot and `claude --resume`.** The bar knew tasks only from its journal in
   the temp directory, which a reboot wipes, so a resumed session showed 0/0 with tasks still
   open. It now reads Claude Code's own task list in `~/.claude/tasks/<session id>/` (or
-  `CLAUDE_CODE_TASK_LIST_ID`), and keeps from the journal only the order and deleted tasks.
+  `CLAUDE_CODE_TASK_LIST_ID`), and fills in from the journal the order and the tasks it saw
+  deleted.
 - **The bar no longer leaves piles of small files in the temp directory.** A session's files
   are deleted when it ends (a new `SessionEnd` hook; re-run `install` to add it), keeping only
   its savings total for a later resume. Sessions that never showed a bar, such as headless

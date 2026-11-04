@@ -40,7 +40,7 @@ id   = "act.agents"             # running helper agents
 
 [[slot]]
 icon = "🏆"
-id   = "act.tasks"              # tasks open / done
+id   = "act.tasks"              # tasks done / total
 
 [[slot]]
 icon = "💥"

@@ -45,12 +45,12 @@ ok(st.tasks.t2.status === "in_progress", "TaskUpdate in_progress applied");
 fold(st, "PostToolUse", { hook_event_name:"PostToolUse", tool_name:"TaskUpdate", tool_input:{ taskId:"t2", status:"deleted" } }, 180);
 ok(st.tasks.t2.status === "deleted", "TaskUpdate deleted applied");
 
-// Prune: once all terminal AND past TASK_LINGER, the map clears.
+// No prune: settled tasks stay in the map after TASK_LINGER, so the count keeps them.
 let st2 = {};
 fold(st2, "TaskCreated", { hook_event_name:"TaskCreated", task_id:"a", task_title:"x" }, 0);
 fold(st2, "TaskCompleted", { hook_event_name:"TaskCompleted", task_id:"a" }, 1);
 fold(st2, "Stop", { hook_event_name:"Stop" }, 1 + 11); // 11s > TASK_LINGER(10), all terminal
-ok(Object.keys(st2.tasks || {}).length === 0, "all-terminal map pruned after linger");
+ok(st2.tasks.a && st2.tasks.a.status === "completed", "all-terminal map kept after linger");
 
 // Not pruned while an open task remains.
 let st3 = {};
