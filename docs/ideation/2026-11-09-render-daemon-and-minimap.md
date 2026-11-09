@@ -69,6 +69,51 @@ Claude Code ─every 1 s─▶  bash thin client: builtins only, no fork
   crashes where `SessionEnd` never arrives.
 - Single instance: a lock (pid file or a named port) so two `SessionStart` hooks racing don't start two daemons.
 
+### Collector and renderer on separate clocks (owner's idea, 2026-11-09)
+
+**The wish.** The lab preview of the WC3 heads (`lab/wc3-portraits/render/preview.mjs`) animates smoothly,
+and the owner wants the bar to feel the same. Split the daemon into two loops:
+
+- **Collector**: gathers data on its own interval, **configurable**, default 1 s.
+- **Renderer**: draws as fast as it can, independent of the collector. Target about one frame every 10 ms.
+
+**The hard limit.** The lab preview is fast because it owns the whole terminal: a `setInterval` at
+`1000 / fps` writes each frame straight to its own TTY (`\x1b[H` … `\x1b[J`). The status bar is drawn by
+Claude Code, not by us. Claude Code runs the statusLine command on `refreshInterval` (documented minimum: 1 s)
+and on its own events, and shows whatever that run prints. However fast the daemon renders, **the status bar
+shows at most the frame that exists when Claude Code reads it**: about one per second, plus one per event. A
+10 ms renderer behind the statusLine is invisible beyond that.
+
+**What still follows from the idea, even within the limit:**
+
+- **Animation time comes from the wall clock**, not from counting ticks or payloads. Whenever a frame is read,
+  it shows the right moment of the animation, and an extra event-driven refresh never makes it jump or stall.
+- **The collector interval applies only to data the daemon gathers itself** (P-2: rate limits, CPU/RAM,
+  clock, file watchers). The Claude Code payload arrives when Claude Code sends it; no setting changes that.
+- **Render on demand is enough for the statusLine.** Rendering 100 frames to keep one is wasted CPU. The
+  renderer can draw the frame for "now" when a payload arrives, or a few ms before the next expected read.
+
+**The cost of a free-running renderer** (if a faster display surface exists, see below):
+
+- **CPU.** Measured portrait render is 0.25–3.5 ms per frame depending on size (Part 5), plus the glyph stage
+  (D-3, not measured yet). At 10 ms per frame a single-threaded daemon serving all sessions saturates at three
+  or four sessions at the larger sizes. Options: adaptive frame rate (drop frames under load, never queue),
+  a worker thread per session, or a lower cap for background sessions.
+- **Disk.** 100 atomic writes and renames of `frame.txt` per second per session, read once per second, is
+  pure load on NTFS and Windows Defender. Write a frame file only when its text changed, and cap the write rate
+  at what the reader can consume.
+
+**Open: a display surface without the 1 s limit.** The smooth animation only reaches the eye if something
+other than the statusLine shows it. Candidates, all **unverified**:
+
+- A Claude Code panel or pane beside the chat that the extension API keeps updated (the `plugin-authoring`
+  skill mentions "a panel or pane that stays beside the chat and updates"). Check whether it accepts pushed
+  updates and at what rate.
+- A separate terminal pane (Windows Terminal split, tmux) running a viewer that owns its TTY like
+  `preview.mjs` and reads frames from the daemon.
+- Writing into Claude Code's own terminal from outside is not a candidate: it would fight Claude Code's renderer
+  for the same screen.
+
 ### Open questions for ideation and brainstorm
 
 - **Hooks without spawns.** Today every tool call spawns `node hook.js`. If Claude Code supports HTTP hooks
@@ -334,7 +379,9 @@ Runtime path (`.glb` → import → animate → rasterise), Footman / Blademaste
 - Model load: 14–25 ms from `.glb` (PNG inflate); 17–43 ms from MDX (JPEG decode). Once per daemon, not per frame.
 - Memory: about 0.3 MB of RGBA textures per portrait.
 - Portraits have 200–300 triangles. The budget is one frame per second per session; even the largest size uses
-  under 0.3 % of it. The live terminal preview (`preview.mjs`) runs at 10 fps for comparison.
+  under 0.3 % of it. The live terminal preview (`preview.mjs`) runs at 10 fps for comparison. For the cost of
+  a free-running renderer at about 100 fps, and why the statusLine cannot show it, see Part 1, "Collector and
+  renderer on separate clocks".
 - chafa per frame (preview `m` mode, mugshot glyph set, 24×12 cells from a 96×96 px frame): about 35 ms, almost
   all of it process spawn and PNG encode. Ten times the render itself. Fine for a lab preview, and the measured
   reason the daemon renders portrait frames with the built-in glyph renderer (D-3), not chafa.
@@ -393,6 +440,7 @@ smoke and glow on some heroes.
 - Race / player colour through the replaceable textures; transparent background option.
 - Pick the roster: which heads look good at 16–24 rows (contact sheets in `lab/.../out/all-*.png`).
 - Daemon (D-1) hosting the renderer; frame per session per second.
+- Verify a display surface that accepts frames faster than 1 s (Claude Code panel, terminal pane), Part 1.
 
 ## Artwork
 
