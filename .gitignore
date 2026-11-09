@@ -5,5 +5,8 @@ __pycache__/
 # Node
 node_modules/
 
+# Local experiments and prototypes (may hold third-party game assets; never commit)
+/lab/
+
 # Local machine-specific Claude Code settings (absolute paths)
 .claude/settings.local.json
