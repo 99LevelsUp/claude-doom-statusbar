@@ -59,7 +59,8 @@ Claude Code ─every 1 s─▶  bash thin client: builtins only, no fork
   for the daemon's lifetime. A few dozen spawns at start, then none. The minimap never goes through chafa:
   every frame differs.
 - **Daemon down**: the client sees a stale frame (`[[ payload -nt frame ]]` for longer than a threshold) and
-  prints a static "offline" frame. It starts nothing (owner decision).
+  prints a static "offline" frame. It starts nothing (owner decision). (This test cannot work as written: the
+  client writes the payload just before it, so the payload is always newer. See Part 6, idea 1.)
 
 ### Lifecycle (to settle in the brainstorm)
 
@@ -162,7 +163,8 @@ process.
 - **Limit of the glyph set**: two colours per cell, for any renderer including chafa. The minimap needs a
   priority (ping > unit > terrain) when more colours meet in one cell.
 - **Terminal support**: Windows Terminal draws the legacy glyphs with its built-in rasteriser, no font needed.
-  Other terminals depend on the font, so a half-block-only mode stays as a setting.
+  Other terminals depend on the font, so a half-block-only mode stays as a setting. (In doubt: research says
+  Cascadia Code draws sextants and octants from the font. See Part 6, idea 2.)
 - **Possible bonus**: if the renderer holds up, compare it with chafa on the mugshot side by side. If it is
   close enough, chafa stops being needed at all. Decide from the pictures, not in advance.
 - **Mugshot without chafa** would also need a PNG decoder (inflate via built-in `zlib`, plus scanline
@@ -523,7 +525,9 @@ daemon starved by a build, or restarting after an upgrade, leaves one frame file
 animation playing for its length.
 **Rationale:** It fixes the broken liveness test, makes "yield the moment Claude Code needs it" safe (the
 daemon can be starved for seconds without the bar stalling), and makes the client contract final before D-1.
-The verifier confirmed both clock builtins are fork-free and that Git Bash ships bash 5.
+Measured on the owner's PC: Git Bash is bash 5.3.15, `$EPOCHSECONDS` works, and `printf -v n '%(%s)T' -1`
+returns the same value (`printf` is a builtin). `$EPOCHSECONDS` is a shell variable, so it cannot fork; whether
+the whole client stays fork-free is still Part 1's open measurement.
 **Downsides:** Payload data still lags one tick; the reel protects animation and liveness, not freshness.
 More bytes written per tick (k slots). "Never hot-patched" is overstated if the command points at a package
 file, but the command string itself is still the user's.
@@ -656,7 +660,7 @@ that never use tasks earn little. Persisting per repo adds state, which idea 5 m
 
 | # | Idea | Reason rejected |
 |---|------|-----------------|
-| 1 | Hookless feed: daemon tails the transcript | Transcript flushes at turn end (project memory) and lacks permission, `TaskCompleted` and `SubagentStart` signals; subagents write separate files. Breaks the event sources ideas 3 and 7 need. |
+| 1 | Hookless feed: daemon tails the transcript | Transcript flushes at turn end (project memory). Per the verifier, not checked: it lacks permission, `TaskCompleted` and `SubagentStart` signals, and subagents write separate files. Would break the event sources ideas 3 and 7 need. |
 | 2 | Payload as an append-only journal | Part 1 already covers torn writes (keep the last good payload); the file grows without bound and the client cannot rotate it without a fork. |
 | 3 | Measure-first gate (fork count, bar on/off benchmark) | Already in the doc (Part 1 "Prove it by measurement", "Measure it, don't assume"). Becomes the acceptance test for idea 1, not a separate direction. |
 | 4 | Crisp, posterised portrait input (no supersampling) | Premise unmeasured and probably backwards for photographic textures: nearest sampling shimmers when shrinking. Test with idea 2's score before adopting. |
