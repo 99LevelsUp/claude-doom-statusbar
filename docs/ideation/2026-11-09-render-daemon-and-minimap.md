@@ -319,15 +319,19 @@ Runtime total about 530 lines, no dependencies.
 
 ### Measured (owner's PC, Node 26, single thread, after JIT warm-up, median of 100 frames)
 
+Runtime path (`.glb` → import → animate → rasterise), Footman / Blademaster / Archer:
+
 | Output | Internal | Per frame |
 |---|---|---|
-| 32×32 px (32×16 half-block cells) | 64 px (2× supersample) | 0.5–0.6 ms |
-| 64×64 px | 64 px | 0.6 ms |
-| 64×64 px | 128 px (2×) | 1.8–2.5 ms |
-| 128×128 px | 128 px | 1.8–2.9 ms |
+| 32×32 px (32×16 half-block cells) | 32 px | 0.25–1.1 ms |
+| 32×32 px | 64 px (2× supersample) | 0.7–1.3 ms |
+| 64×64 px | 64 px | 0.7–1.3 ms |
+| 64×64 px | 128 px (2×) | 2.0–3.4 ms |
+| 128×128 px | 128 px | 2.0–3.5 ms |
 
-- Animation + skinning: 0.04–0.13 ms. Rasterisation dominates.
-- Model load: 17–43 ms from MDX (JPEG decode); 17 ms from `.glb`. Once per daemon, not per frame.
+- Animation + skinning: 0.06–0.15 ms (the glTF path skins once per material layer and applies inverse bind
+  matrices; the MDX path was 0.04–0.13 ms). Rasterisation dominates.
+- Model load: 14–25 ms from `.glb` (PNG inflate); 17–43 ms from MDX (JPEG decode). Once per daemon, not per frame.
 - Memory: about 0.3 MB of RGBA textures per portrait.
 - Portraits have 200–300 triangles. The budget is one frame per second per session; even the largest size uses
   under 0.3 % of it. The live terminal preview (`preview.mjs`) runs at 10 fps for comparison.
@@ -336,9 +340,16 @@ Runtime total about 530 lines, no dependencies.
 
 - All 383 models (332 portraits + 51 model-as-portrait) load, render and convert; none produce an empty frame.
 - Converted `.glb` vs original MDX, rendered side by side at 64 px over 3 moments of every animation:
-  **356 of 383 pixel-identical** (max channel difference ≤ 2), mean difference 0.010 / 255. The rest differ
+  **353 of 383 pixel-identical** (max channel difference ≤ 2), mean difference 0.013 / 255. The rest differ
   slightly where alpha animation was resampled at 30 Hz (water elementals) or the camera follows a global
-  sequence.
+  sequence. "Identical" means identical to the prototype's own reading of MDX, not to the game: rotations
+  ignore Hermite tangents, edge keys hold instead of wrapping, particles are not drawn.
+- **Khronos glTF validator** (`gltf-validator`): all 383 files, 0 errors, 0 warnings. Fixes it forced: a
+  synthetic root above all MDX roots (joints need a common root), merged duplicate bones in a matrix group,
+  unit normals, single-key tracks as LINEAR (CUBICSPLINE needs two keys).
+- **Third-party glTF**: the Khronos sample `Fox.glb` (skinned, 3 animations, PNG texture, no camera) renders
+  through the same runtime path. Models without a camera get an automatic one framing the bounding box.
+  JPEG textures inside glTF are not supported yet (PNG only).
 
 ### glTF mapping (what the converter does)
 
