@@ -4,8 +4,9 @@
 **Trigger:** the Warcraft III layout (G-8). The owner asked what the WC3 minimap could show. The answer
 needs a map that is larger than its view and scrolls on its own, which today's one-process-per-second
 statusline cannot afford. That turned the discussion to the backend.
-**Status:** direction agreed by the owner (decisions below). Not planned. Next steps: `ce-ideate` to add
-detail, then `ce-brainstorm`, then the usual plan → work → review flow.
+**Status:** direction agreed by the owner (decisions below). Not planned. `ce-ideate` ran over the whole doc
+(Part 6, seven ranked ideas). Next steps: `ce-brainstorm` on a chosen idea, then the usual plan → work → review
+flow.
 
 ## Order agreed by the owner
 
@@ -452,6 +453,228 @@ smoke and glow on some heroes.
 - Pick the roster: which heads look good at 16–24 rows (contact sheets in `lab/.../out/all-*.png`).
 - Daemon (D-1) hosting the renderer; frame per session per second.
 - Verify a display surface that accepts frames faster than 1 s (Claude Code panel, terminal pane), Part 1.
+
+## Part 6: ideation round (ce-ideate, 2026-11-09)
+
+Ideation over Parts 1–5. Five generators with different lenses (pain, removal, leverage, cross-domain analogy,
+assumption-breaking and constraint-flipping) produced 47 raw ideas, merged to 31 candidates. A separate verifier
+that had not seen the generation checked every basis against the repo. Seven survive; the rest are listed with
+the reason they were cut. Owner decisions above were treated as hard constraints, not as assumptions to break.
+
+### Grounding beyond Parts 1–5
+
+- **statusLine behaviour** (code.claude.com/docs/en/statusline): updates are debounced at 300 ms, and **a new
+  update cancels the script that is still running**. The client must be a fast read of a ready frame, never a
+  render. The payload also carries `prompt_cache` (`warm`, `expires_at`, `hit_ratio`).
+- **Doc claim in doubt:** Part 2 says Windows Terminal draws the legacy glyphs with its built-in rasteriser, no
+  font needed. Research says Cascadia Code 2404.23 added sextants and octants **to the font**, and a Windows
+  Terminal pull request to draw sextants built-in was still a draft in February 2026. Unverified either way;
+  idea 2 settles it.
+- **Doc flaw found by the verifier:** Part 1's liveness test `[[ payload -nt frame ]]` runs right after the
+  client has written the payload, so the payload is always newer. The test cannot work as written; idea 1
+  replaces it.
+- **Prior art:** gitstatusd (powerlevel10k) serves shells from a resident daemon over pipes; ztheme shares one
+  per-user daemon across shells and uses generation ids so a slow result never overwrites a newer one. Other
+  Claude Code statuslines (ccstatusline, claude-powerline) are one-shot processes with small TTL caches; a
+  resident daemon would be new in this category.
+- Code seams: `render.js` builders are pure (values in, lines out); `fold.js` already folds an append-only
+  journal by offset; `face.js` `_cache` is the cache that dies with every render today.
+
+### Topic axes
+
+1. Daemon backbone: lifecycle, single instance, transport, liveness, upgrades, crash isolation.
+2. Pixels to glyphs: glyph renderer, portrait pipeline, terminal glyph support.
+3. What the map shows: layers, data sources, camera, meaning over a session.
+4. Console meaning: WC3 elements mapped to metrics, portrait behaviour, rows budget.
+5. Time and display surfaces: the 1 s pull, the animation clock, staying invisible to Claude Code.
+
+### Ranked ideas
+
+1. Frame reel with a deadline, read by a write-once client
+2. Glyph truth on the real terminal, scored by rendering glyphs back to pixels
+3. One per-repo ledger behind the map, with "changed since Claude read it" as its headline layer
+4. Pose-to-pose sampling: make a 1 Hz portrait look alive
+5. Crash-only daemon with a version-named singleton
+6. Cell-space compositor with two resolvers
+7. XP from resolved work, kept per repo
+
+#### 1. Frame reel with a deadline, read by a write-once client
+
+**Description:** The bash client is the one piece that lives in every user's `settings.json`; freeze it and move
+every future change into the frame file. The daemon renders a short reel: one slot per wall-clock second for
+the next few seconds, plus a header (`v`, `gen`, `daemon` version, `valid_until`). The client reads the current
+second with a builtin (`$EPOCHSECONDS`, bash 5; or `printf -v now '%(%s)T' -1`, bash 4.2), prints that slot,
+and prints the static offline frame once the reel has run out. Rendering becomes a pure `render(state, t)`.
+
+```mermaid
+flowchart TB
+  D[daemon: render state at t, t+1, t+2, t+3] --> R[frame reel: header + 4 slots, valid_until]
+  C[bash client at second t: builtin clock] --> P{t within valid_until?}
+  R --> P
+  P -->|yes| S[print slot t]
+  P -->|no| O[print offline frame]
+```
+
+**Axis:** Daemon backbone.
+**Basis:** `direct:` Part 1 "Thin client: only bash builtins" and "One tick of latency"; the `-nt` liveness test
+cannot work (see grounding). `external:` ztheme generation ids; the jitter buffer in VoIP receivers, which
+exists because the producer's timing is unreliable and the consumer's is fixed. `reasoned:` a low-priority
+daemon starved by a build, or restarting after an upgrade, leaves one frame file frozen; a reel keeps the
+animation playing for its length.
+**Rationale:** It fixes the broken liveness test, makes "yield the moment Claude Code needs it" safe (the
+daemon can be starved for seconds without the bar stalling), and makes the client contract final before D-1.
+The verifier confirmed both clock builtins are fork-free and that Git Bash ships bash 5.
+**Downsides:** Payload data still lags one tick; the reel protects animation and liveness, not freshness.
+More bytes written per tick (k slots). "Never hot-patched" is overstated if the command points at a package
+file, but the command string itself is still the user's.
+**Confidence:** 80%
+**Complexity:** Medium
+
+#### 2. Glyph truth on the real terminal, scored by rendering glyphs back to pixels
+
+**Description:** Two cheap checks before D-3 is designed around octants. First, a test card of every glyph
+class (half, quadrant, sextant, octant, wedge) shown once on the owner's Windows Terminal and font, judged by
+eye, and the result saved as a fallback ladder: octant → sextant → quadrant → half block. Second, a score:
+every glyph's mask is known, so any glyph frame can be rasterised back to RGBA and compared with the source
+frame (OKLab error). Run it over the 383-model corpus for the built-in renderer and for chafa, and drop glyph
+classes that do not lower the error enough to be worth their font risk.
+**Axis:** Pixels to glyphs.
+**Basis:** `direct:` Part 2 "Windows Terminal draws the legacy glyphs with its built-in rasteriser, no font
+needed" and "Decide from the pictures, not in advance"; `src/face.js:18` takes the whole chafa set
+(`block+half+quad+sextant+wedge+legacy`); Part 5 already verified `.glb` against MDX by pixel difference over
+the same corpus. `external:` Cascadia Code 2404.23 release notes; draft Windows Terminal pull request for
+built-in sextants; chafa 1.8 made block and border characters its default because wider sets are unreliable.
+**Rationale:** The glyph claim is the one assumption that could turn the portrait and the map into tofu on the
+owner's own machine, and it costs minutes to check. The score turns D-4 (keep chafa or not) and later tuning
+into numbers instead of taste.
+**Downsides:** The score measures ideal masks, not how a font draws them, so it needs the eye test beside it.
+Scoring chafa's output means decoding its glyphs back into masks.
+**Confidence:** 85%
+**Complexity:** Low
+
+#### 3. One per-repo ledger behind the map, with "changed since Claude read it" as its headline layer
+
+**Description:** Keep one ledger per repo: path → first seen, last read, last written, actor, provenance.
+Fog, Sight %, unit trails and the grey "read in an earlier session" are views of it, so the open question of
+which metric goes on which layer becomes cheap to change. The headline layer is new: a region Claude has read
+whose files changed afterwards gets a ghost tint, like last-known positions under RTS fog. Every mark carries
+its provenance, and anything the hooks cannot attribute stays neutral instead of guessed. Because the one
+daemon sees every session, two sessions working in the same repo or worktree appear on each other's map as
+allies.
+**Axis:** What the map shows.
+**Basis:** `direct:` Part 3 "Terrain = repo is the weakest pick", fog "only grows", "Bash gives no reliable
+path", "Which subagent made a call: unverified ... Check, don't guess", and cross-session grey as an open
+question; `src/fold.js:16-18` already splits `READ_TOOLS` and `WRITE_TOOLS`; Part 1 lists file watchers among
+the collector's sources. `reasoned:` a layer that only grows saturates and stops saying anything; a layer that
+can decay stays informative all session and tells the user when to have Claude re-read.
+**Rationale:** It gives the map a meaning a user would act on, settles the layer-assignment risk with one data
+model, and turns the one-daemon decision into a visible feature for parallel sessions.
+**Downsides:** Claude's own edits through Bash (`sed`) look like outside changes, so the tint must say "changed
+since read", never "changed by someone else". Ledger entries only exist for tools that carry a path. A new
+on-disk store per repo needs an owner and a cleanup rule.
+**Confidence:** 65%
+**Complexity:** Medium
+
+#### 4. Pose-to-pose sampling: make a 1 Hz portrait look alive
+
+**Description:** At a 1 s read, a looping animation sampled on the wall clock aliases: a loop close to a whole
+number of seconds looks frozen, one at 1.1 s crawls or seems to run backwards. At model load, pick a few
+extreme poses per sequence from the animation tracks (mouth open, mouth closed, look left, look right) and map
+wall-clock seconds to them so consecutive reads land on contrasting poses, never on in-betweens. It stays
+wall-clock driven, so an extra event-driven read never makes it jump.
+**Axis:** Time and display surfaces.
+**Basis:** `direct:` Part 4 "a talk loop at 1 fps is a slow jaw flap"; Part 5 sequence durations in
+`extras.wc3.duration`; Part 1 "Animation time comes from the wall clock". `external:` the stroboscopic
+(wagon-wheel) effect; limited animation in TV cartoons, which holds poses and animates on twos for low drawing
+rates.
+**Rationale:** The statusLine shows about one frame per second and that will not change. Choosing which instant
+is shown is the only lever left for the owner's wish to make the bar feel like the lab preview.
+**Downsides:** Reads jitter (about 1.0–1.1 s plus event refreshes), so the alternation sometimes repeats or
+skips a pose. Needs a one-off pass per model to find the extremes.
+**Confidence:** 70%
+**Complexity:** Low
+
+#### 5. Crash-only daemon with a version-named singleton
+
+**Description:** Hold no daemon state that cannot be rebuilt from the journals, so killing the daemon is always
+safe. Single instance is binding a named pipe that carries the package version (`\\.\pipe\doombar-<version>`);
+"address in use" means one is already running, so two racing `SessionStart` hooks need no pid file. An upgrade
+starts the new version beside the old one, which leaves through the self-exit Part 1 already plans. A session
+whose render throws repeatedly is quarantined to its own offline frame.
+**Axis:** Daemon backbone.
+**Basis:** `direct:` Part 1 lifecycle (lock by "pid file or a named port", self-exit after N idle minutes) and
+open questions "Upgrades ... Version handshake, restart on mismatch" and "Isolate per-session render errors".
+`external:` Candea and Fox, "Crash-Only Software" (HotOS IX, 2003).
+**Rationale:** Single instance, upgrade and crash recovery collapse into one OS primitive plus one rule,
+with less code to test and no stuck-daemon states.
+**Downsides:** Two versions alive at once must not write the same frame file, so session directories need the
+version in their path or the old daemon must stop serving once the new one appears. Restarting a dead daemon
+before the next `SessionStart` would need a hook, which pulls against D-2's goal of fewer hook spawns.
+**Confidence:** 70%
+**Complexity:** Medium
+
+#### 6. Cell-space compositor with two resolvers
+
+**Description:** D-3 returns a grid of cells (glyph, foreground, background), not ANSI text, and layers
+(terrain, fog, units, pings, portrait, chrome) are composited in cell space; a serializer writes the
+statusLine string last. Two resolvers fill cells. Synthetic art (minimap, chrome) is drawn in palette indices
+on the octant sub-grid (2×4 per cell) with at most two colours chosen by the layer priority, so the glyph is a
+lookup in a 256-entry table; fallback glyph sets are other tables. Photographic art (the portrait) keeps the
+error search.
+**Axis:** Pixels to glyphs.
+**Basis:** `direct:` Part 2 "two colours per cell, for any renderer including chafa. The minimap needs a
+priority (ping > unit > terrain)"; Part 3 "Pixel steps with half blocks: one column sideways, half a row up or
+down". `reasoned:` octants cover all 256 patterns of a 2×4 cell (230 new characters plus 26 reused), so the
+lookup is exact; a string-only renderer cannot be composited, diffed or tested cell by cell.
+**Rationale:** The minimap, which changes every frame, costs almost nothing; scrolling gets finer steps (half a
+column by a quarter row); the glyph ladder from idea 2 becomes a table swap. The same grid is what golden-file
+tests and any later display surface would consume.
+**Downsides:** Octants need Unicode 16 support, hence the ladder. One more type between the renderer and the
+string. Low novelty on its own; the value is in pairing it with the lookup resolver.
+**Confidence:** 75%
+**Complexity:** Medium
+
+#### 7. XP from resolved work, kept per repo
+
+**Description:** In WC3, heroes gain XP from units they kill, not from time or gold spent. Here XP comes from
+finished work: completed tasks, and failures later followed by success on the same tool and target. Never from
+tokens, turns or cost. The hero's level persists per repo, so a session is a mission and the repo a campaign.
+Level-ups are natural chat events.
+**Axis:** Console meaning.
+**Basis:** `direct:` Part 4 "What drives XP is open (output tokens, turns, cost)"; `src/fold.js:90-91` counts
+`PostToolUseFailure`, `StopFailure`, `PermissionDenied`; `src/fold.js:106` handles `TaskCompleted`; Part 4
+`per-project` race already hashes the repo path. `reasoned:` tokens, turns and cost measure spending; a bar
+that levels up for burning tokens praises waste.
+**Rationale:** XP is the most "game" element on the console. Tying it to resolved work keeps the HUD honest and
+answers an open question with the source game's own rule.
+**Downsides:** "Failure later fixed" needs a matching key (tool plus path) that not every tool has; sessions
+that never use tasks earn little. Persisting per repo adds state, which idea 5 must be able to rebuild.
+**Confidence:** 60%
+**Complexity:** Medium
+
+### Rejection summary
+
+| # | Idea | Reason rejected |
+|---|------|-----------------|
+| 1 | Hookless feed: daemon tails the transcript | Transcript flushes at turn end (project memory) and lacks permission, `TaskCompleted` and `SubagentStart` signals; subagents write separate files. Breaks the event sources ideas 3 and 7 need. |
+| 2 | Payload as an append-only journal | Part 1 already covers torn writes (keep the last good payload); the file grows without bound and the client cannot rotate it without a fork. |
+| 3 | Measure-first gate (fork count, bar on/off benchmark) | Already in the doc (Part 1 "Prove it by measurement", "Measure it, don't assume"). Becomes the acceptance test for idea 1, not a separate direction. |
+| 4 | Crisp, posterised portrait input (no supersampling) | Premise unmeasured and probably backwards for photographic textures: nearest sampling shimmers when shrinking. Test with idea 2's score before adopting. |
+| 5 | Sticky glyph choice against flicker | The search is deterministic for identical pixels; at one read per second, frame differences are the animation. Adds state that breaks idea 1's pure `render(state, t)`. |
+| 6 | Our own art emitted as glTF by code | Understates that a procedural head is the hard part (Part 4 option B); glTF buys only interop. Paper doll (option A) stays the recommended start. |
+| 7 | Content-keyed frame cache across sessions | Solves the 10 ms case that has no display surface; at 1 fps the render is about 0.3 % of budget, and per-session races make cache hits rare. |
+| 8 | Map grown from touched paths (hash or Hilbert layout) | Without known terrain, fog and the Sight % denominator disappear; hash layouts lose locality and the map starts empty. The stability idea may still serve large repos. |
+| 9 | The map is the context window | Hooks cannot know what is really in context (truncated results, Bash output, opaque compaction); duplicates the HP metric. |
+| 10 | Ping types as lighthouse rhythms | At ~1 Hz reads with jitter, phases need ≥2 s, not ≥1 s; competes with colour meaning. Worth revisiting if pings prove unreadable. |
+| 11 | Stateless closed-form camera | A spring needs the previous position and velocity; at one frame per second a smooth spring is invisible anyway. |
+| 12 | Neutral portrait state contract | Already proposed in the 2026-10-31 layout doc; the only new part is a `talk` flag, which idea 4 and Part 4 already imply. |
+| 13 | Layout packs as data, hot-reloaded | Duplicates the 2026-10-31 registry; chrome is code under the artwork rule, so a pack cannot be pure data. |
+| 14 | Dark-cockpit console with a dynamic row budget | Dark-at-rest works against WC3 recognisability (full chrome visible), and a row count that changes with state reflows Claude Code's chat area. The degradation ladder part stays an open question in Part 4. |
+| 15 | Portrait shows whoever is speaking (subagent transmissions) | Sound, cut in the second pass: parallel subagent bursts would flicker, the subagent's model tier is unknown, and hero icons already cover delegation. |
+| 16 | Command card as a tool-recency timeline | Small extension of Part 4's cooldown mapping; better settled inside G-8 than as a direction. |
+| 17 | Idle priority plus EcoQoS | EcoQoS is not reachable from Node's standard library; idle over below-normal is marginal. Safe only with idea 1. |
+| 18 | RGBA as the product, Sixel for a pane viewer | Builds an encoder for a surface that is not verified to exist. Idea 6's cell grid fits the real statusLine path. |
+| 19 | Lazy collector pulled on payload arrival | Payloads arrive every second per session, so it is a timer in disguise; ties the collector to payloads against the owner's separate-clocks wish. |
 
 ## Artwork
 
