@@ -11,6 +11,19 @@ Status: `next` = agreed, do soon · `open` = agreed direction, not scheduled · 
 
 Last reviewed: 31.10.2026 (0.13.1).
 
+## Render daemon, glyph renderer, minimap
+Source: [ideation/2026-11-09-render-daemon-and-minimap.md](ideation/2026-11-09-render-daemon-and-minimap.md)
+
+Owner's order: daemon first, renderer second, minimap and WC3 after. Next step: `ce-ideate`, then `ce-brainstorm`.
+
+| ID | Item | Status |
+|---|---|---|
+| D-1 | One render daemon for all sessions; statusLine becomes a bash thin client using builtins only (payload in, frame out, no fork); daemon down → static offline frame, nothing spawned. Absorbs P-2 | next |
+| D-2 | Hook events into the daemon without a spawn per tool call (HTTP hooks, if Claude Code supports them and fails safe) | idea |
+| D-3 | Built-in bitmap → glyph renderer on the mugshot glyph set (`block+half+quad+sextant+wedge+legacy`), half-block mode as a setting | next |
+| D-4 | Compare the built-in renderer with chafa on the mugshot; drop chafa if close enough | idea |
+| D-5 | WC3 minimap: layered metrics (terrain, fog, units per agent, pings), map larger than the view, event-driven camera. Which metric goes to which layer is open | idea |
+
 ## Housekeeping: temp-file leaks and wasted hook work
 Source: [ideation/2026-10-31-temp-file-leaks-and-hook-cost.md](ideation/2026-10-31-temp-file-leaks-and-hook-cost.md)
 
@@ -44,7 +57,7 @@ Source: [ideation/2026-10-31-shared-game-layout-engine.md](ideation/2026-10-31-s
 | G-5 | Hotbar uses the shared width planner, `[bar].fallback` and `text_overflow` | open |
 | G-6 | Chat as data: script in TOML, declarative conditions, generic facts, cast from data | open |
 | G-7 | Chat packs: universal metric lines keyed, a game pack overrides by key and adds atmosphere lines; chat refers to sockets (`{hearts}`), not metrics | open |
-| G-8 | Warcraft III layout on top of the kit | open |
+| G-8 | Warcraft III layout on top of the kit (minimap: see D-5, after D-1 and D-3) | open |
 | G-9 | Decide who owns conversation order: game skeleton pulling universal lines, or universal lines dealt into gaps | idea |
 
 ## Performance: bash spawns, shared statusbar
@@ -53,7 +66,7 @@ Source: [ideation/2026-10-14-bash-spawn-and-shared-statusbar.md](ideation/2026-1
 | ID | Item | Status |
 |---|---|---|
 | P-1 | Find out what is expensive in a render and what really needs the 1 s refresh (refresh stays at 1 s) | open |
-| P-2 | One shared producer for account- and machine-wide data (limits, CPU/RAM, clock); renders only read | open |
+| P-2 | One shared producer for account- and machine-wide data (limits, CPU/RAM, clock); renders only read | open, folds into D-1 |
 | P-3 | Shared rate limits: treat a window past its `resets_at` as reset; scope the file per Claude account, not per OS user | idea |
 
 ## Mugshot health estimator
