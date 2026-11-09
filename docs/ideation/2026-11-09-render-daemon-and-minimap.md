@@ -287,6 +287,99 @@ elf**.
 - Cooldown sweep: the original darkens a clockwise sector; in a cell this is a dimmed portion or `◔◑◕`.
 - Does the race also change behaviour (chat tone, reaction thresholds), or only looks?
 
+## Part 5: realtime 3D portrait renderer (lab prototype, 2026-11-09)
+
+Owner's direction: **render at runtime, no pre-rendered frames**, and **convert models and textures to a
+universal format** so any future 3D bar reuses the same renderer. Built and measured in
+`lab/wc3-portraits/render/` (gitignored, like the assets).
+
+### Architecture
+
+```
+offline, once:  MDX + BLP  ──mdx.js / blp.js──▶  neutral scene  ──gltf-export.js──▶  .glb (glTF 2.0, PNG inside)
+runtime:        .glb  ──gltf-import.js / png-decode.js──▶  neutral scene  ──anim.js + raster.js──▶  RGBA frame  ──▶  glyphs (D-3)
+```
+
+- The runtime never sees MDX or BLP. A future model from any glTF source (Blender export, other games' converters)
+  goes through the same path. WC3-only behaviour (additive / modulate filters, layer priority, global sequences,
+  sequence durations, replaceable textures) travels in standard glTF `extras.wc3` and is ignored by other tools.
+- Runtime dependencies: none (built-in `zlib` for PNG). The JPEG decoder needed for BLP1 (`jpeg-js`, patched to
+  return raw BGRA channels) is used only by the offline converter.
+
+### Code size
+
+| Part | Lines | When |
+|---|---|---|
+| `anim.js` (track sampling, node hierarchy, skinning) | 148 | runtime |
+| `raster.js` (z-buffer, perspective-correct UV, bilinear, WC3 filter modes, supersampling) | 180 | runtime |
+| `gltf-import.js` + `png-decode.js` | 200 | runtime |
+| `mdx.js` + `blp.js` + `gltf-export.js` + `png.js` | 558 | offline converter |
+
+Runtime total about 530 lines, no dependencies.
+
+### Measured (owner's PC, Node 26, single thread, after JIT warm-up, median of 100 frames)
+
+| Output | Internal | Per frame |
+|---|---|---|
+| 32×32 px (32×16 half-block cells) | 64 px (2× supersample) | 0.5–0.6 ms |
+| 64×64 px | 64 px | 0.6 ms |
+| 64×64 px | 128 px (2×) | 1.8–2.5 ms |
+| 128×128 px | 128 px | 1.8–2.9 ms |
+
+- Animation + skinning: 0.04–0.13 ms. Rasterisation dominates.
+- Model load: 17–43 ms from MDX (JPEG decode); 17 ms from `.glb`. Once per daemon, not per frame.
+- Memory: about 0.3 MB of RGBA textures per portrait.
+- Portraits have 200–300 triangles. The budget is one frame per second per session; even the largest size uses
+  under 0.3 % of it. The live terminal preview (`preview.mjs`) runs at 10 fps for comparison.
+
+### Robustness
+
+- All 383 models (332 portraits + 51 model-as-portrait) load, render and convert; none produce an empty frame.
+- Converted `.glb` vs original MDX, rendered side by side at 64 px over 3 moments of every animation:
+  **356 of 383 pixel-identical** (max channel difference ≤ 2), mean difference 0.010 / 255. The rest differ
+  slightly where alpha animation was resampled at 30 Hz (water elementals) or the camera follows a global
+  sequence.
+
+### glTF mapping (what the converter does)
+
+| MDX | glTF |
+|---|---|
+| Z-up | Y-up: `(x, y, z) → (x, z, −y)`, quaternions likewise |
+| Node pivot, local = `T(p) T(t) R S T(−p)` | rest translation = pivot − parent pivot, translation keys offset by it, inverse bind matrix = `T(−pivot)`; mathematically exact |
+| Matrix groups (vertex follows the average of its bones) | `JOINTS_0/WEIGHTS_0` (+ `_1` sets, up to 8 bones), equal weights |
+| One timeline cut into sequences | one animation per sequence, time from 0, duration in `extras.wc3.duration` |
+| Global sequences | one animation each (`extras.wc3.globalSequence`), played on the wall clock; zero-length ones are constants baked into the rest pose |
+| Linear / Hermite / Bezier | LINEAR / CUBICSPLINE (tangents rescaled by segment length; Bezier converted to Hermite). Rotations LINEAR |
+| Material layers | one primitive per layer over shared accessors, one material per (geoset, layer) |
+| Filter none / transparent / blend / additive… | OPAQUE / MASK (cutoff 0.75) / BLEND, exact mode in `extras.wc3.filter` |
+| Unshaded, two-sided | `KHR_materials_unlit`, `doubleSided` |
+| Geoset alpha × layer alpha (animated) | `KHR_animation_pointer` on `baseColorFactor` |
+| Team colour / glow (replaceable textures) | default red PNGs embedded, `extras.wc3.replaceableId` lets the renderer swap colour (race / player colour) |
+| Portrait camera | glTF perspective camera on a node, `yfov` = MDX FOV |
+
+Not converted (and not drawn by the MDX renderer either): particles `PRE2/PREM` (93 models), ribbons (2), texture
+animation `TXAN` (7), animated texture id `KMTF` (2), camera roll (10). Particles are the visible gap: sparks,
+smoke and glow on some heroes.
+
+### Findings worth keeping
+
+- The portrait **background** is part of the model: a plane with the team-glow texture behind the head. It takes
+  the team colour, so it can follow the race, or be hidden for a transparent terminal background.
+- Each portrait carries its own camera; framing works with no per-model tuning once the bone hierarchy is right.
+- Reference viewer behaviour checked against `mdx-m3-viewer` source: FOV is vertical; a zero-length global
+  sequence holds its first key. One difference kept on purpose: before the first / after the last key the
+  reference wraps around the loop, the prototype (like glTF) holds the edge key.
+- Size: 116 MB of `.glb` for all 383 models, because every model embeds its own PNG copies (team glow etc.) and
+  PNG is larger than the original JPEG. Fine for the lab. For shipping: external shared textures (`.gltf` +
+  `.png`) or `KHR_texture_basisu` / JPEG, and only the chosen models.
+
+### Next
+
+- Glyph stage (D-3) on top of the RGBA frame; compare with chafa on the same frames.
+- Race / player colour through the replaceable textures; transparent background option.
+- Pick the roster: which heads look good at 16–24 rows (contact sheets in `lab/.../out/all-*.png`).
+- Daemon (D-1) hosting the renderer; frame per session per second.
+
 ## Artwork
 
 As with Minecraft and the 2026-10-31 decision: all chrome drawn in code (glyphs and colours), no game assets.
