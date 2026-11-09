@@ -239,6 +239,26 @@ Options:
 - **C. Generated art, cleaned up by hand.** Faster to get many races, but the licence of the generator's
   output needs the owner's call.
 
+**Update 2026-11-09: original portraits from the owner's own install.** The owner owns WC3 and wants the
+original heads rendered to block art, without distributing the assets themselves. Checked on the owner's
+install (classic TFT, patch 1.25b, MPQ archives `war3.mpq`, `War3x.mpq`, `War3Patch.mpq`):
+
+- StormLib (`@wowserhq/stormjs`, MIT, wasm) opens all archives read-only. `mpyq` cannot: it does not
+  implement the MPQ per-file encryption (part of the archive format, not copy protection).
+- About 350 `*_portrait.mdx` models: all four races, heroes, campaign characters, creeps, critters.
+- Every portrait carries its own **camera** (`CAMS` chunk) and separate **idle** and **talk** sequences, e.g.
+  Footman: `Portrait`, `Portrait 2`, `Portrait 3`, `Portrait Talk`, `Portrait Talk 2`. Idle = waiting, talk =
+  Claude working maps one to one.
+- Textures are BLP1 (`.blp`), team colour comes from `ReplaceableTextures\TeamColor\TeamColor00.blp`.
+- Rendering needs the MDX geometry, bone animation (skinning) and BLP decoding (BLP1 is often
+  JPEG-compressed). Options: a ready WebGL viewer for MDX in a headless browser as a one-time pre-render
+  step, or an own Node renderer.
+- **Distribution:** the extracted assets and frames rendered from them stay on the owner's machine (outside
+  the repo, gitignored). If the feature ever ships, the clean form is: the package contains the extractor and
+  renderer, every user points it at their own install, and users without WC3 get the original art (option A).
+- **Unit by model tier** (idea): Haiku = worker (Peasant / Peon / Acolyte / Wisp), Sonnet = soldier
+  (Footman / Grunt / Ghoul / Archer), Opus = hero of the race. The race is chosen per session as above.
+
 **Animation pace:** one frame per second (the refresh). Blink and look-around read fine at that pace; a talk
 loop at 1 fps is a slow jaw flap, which is acceptable as a style. The daemon (D-1) can pick frames from its
 own clock between payloads.
