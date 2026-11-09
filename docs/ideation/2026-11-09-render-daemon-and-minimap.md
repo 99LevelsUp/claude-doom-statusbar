@@ -22,6 +22,7 @@ detail, then `ce-brainstorm`, then the usual plan → work → review flow.
 | Extra code | Fine. A few dozen lines for things like PNG encoding are acceptable. |
 | Renderer | A built-in renderer with a limited glyph set and no chafa as the default, chafa as the "full" option. Better still: a built-in renderer that is good enough to be the full one. |
 | Hooks and transport details | Not decided here. They belong in the brainstorm. |
+| Resource budget | **The only hard limit: Claude Code must run as fast and as well as it does without the bar.** "It is just a status bar." Within that limit the bar may render as often and as richly as it likes. |
 
 ## Part 1: render daemon
 
@@ -93,7 +94,17 @@ shows at most the frame that exists when Claude Code reads it**: about one per s
 - **Render on demand is enough for the statusLine.** Rendering 100 frames to keep one is wasted CPU. The
   renderer can draw the frame for "now" when a payload arrives, or a few ms before the next expected read.
 
-**The cost of a free-running renderer** (if a faster display surface exists, see below):
+**The cost of a free-running renderer** (if a faster display surface exists, see below). The owner's rule
+decides it: the renderer may take whatever Claude Code does not need, and must yield the moment Claude Code
+needs it. Spare CPU is fair game; slowing Claude Code is not. In practice:
+
+- **Run the daemon at below-normal priority** (`os.setPriority`), so the OS scheduler gives Claude Code, its
+  tools and builds the CPU first, without the daemon having to guess.
+- **Frame rate is a ceiling, not a promise.** The renderer drops frames when it falls behind and never queues
+  them. When the machine is busy (event-loop lag, CPU load), it slows down on its own; when idle, it runs at the
+  ceiling.
+- **Prove it by measurement**, not by argument: the same Claude Code workload (a build, a test run, a long tool
+  sequence) timed with and without the bar. A difference outside the noise is a bug in the bar.
 
 - **CPU.** Measured portrait render is 0.25–3.5 ms per frame depending on size (Part 5), plus the glyph stage
   (D-3, not measured yet). At 10 ms per frame a single-threaded daemon serving all sessions saturates at three
