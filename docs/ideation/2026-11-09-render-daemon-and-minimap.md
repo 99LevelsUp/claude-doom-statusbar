@@ -335,6 +335,9 @@ Runtime path (`.glb` → import → animate → rasterise), Footman / Blademaste
 - Memory: about 0.3 MB of RGBA textures per portrait.
 - Portraits have 200–300 triangles. The budget is one frame per second per session; even the largest size uses
   under 0.3 % of it. The live terminal preview (`preview.mjs`) runs at 10 fps for comparison.
+- chafa per frame (preview `m` mode, mugshot glyph set, 24×12 cells from a 96×96 px frame): about 35 ms, almost
+  all of it process spawn and PNG encode. Ten times the render itself. Fine for a lab preview, and the measured
+  reason the daemon renders portrait frames with the built-in glyph renderer (D-3), not chafa.
 
 ### Robustness
 
