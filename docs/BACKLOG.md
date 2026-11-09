@@ -23,6 +23,7 @@ Owner's order: daemon first, renderer second, minimap and WC3 after. Next step: 
 | D-3 | Built-in bitmap → glyph renderer on the mugshot glyph set (`block+half+quad+sextant+wedge+legacy`), half-block mode as a setting | next |
 | D-4 | Compare the built-in renderer with chafa on the mugshot; drop chafa if close enough | idea |
 | D-5 | WC3 minimap: layered metrics (terrain, fog, units per agent, pings), map larger than the view, event-driven camera. Which metric goes to which layer is open | idea |
+| D-6 | WC3 console elements beyond the minimap: portrait with races (original art), info panel, inventory, command card, resource bar, day/night clock | idea |
 
 ## Housekeeping: temp-file leaks and wasted hook work
 Source: [ideation/2026-10-31-temp-file-leaks-and-hook-cost.md](ideation/2026-10-31-temp-file-leaks-and-hook-cost.md)
