@@ -24,6 +24,7 @@ flow.
 | Renderer | A built-in renderer with a limited glyph set and no chafa as the default, chafa as the "full" option. Better still: a built-in renderer that is good enough to be the full one. |
 | Hooks and transport details | Not decided here. They belong in the brainstorm. |
 | Resource budget | **The only hard limit: Claude Code must run as fast and as well as it does without the bar.** "It is just a status bar." Within that limit the bar may render as often and as richly as it likes. |
+| Animation cadence | Per element. Telemetry updates as data arrives; effect animations as fast as the display allows (~10 ms target); the **DOOM mugshot stays at ~1 s**, faster would hurt it. See Part 6, idea 4. |
 
 ## Part 1: render daemon
 
@@ -495,7 +496,7 @@ the reason they were cut. Owner decisions above were treated as hard constraints
 1. Frame reel with a deadline, read by a write-once client
 2. Glyph truth on the real terminal, scored by rendering glyphs back to pixels
 3. One per-repo ledger behind the map, with "changed since Claude read it" as its headline layer
-4. Pose-to-pose sampling: make a 1 Hz portrait look alive
+4. Animation cadence per element, and pose-to-pose sampling where the display is 1 Hz
 5. Crash-only daemon with a version-named singleton
 6. Cell-space compositor with two resolvers
 7. XP from resolved work, kept per repo
@@ -579,7 +580,22 @@ on-disk store per repo needs an owner and a cleanup rule.
 **Confidence:** 65%
 **Complexity:** Medium
 
-#### 4. Pose-to-pose sampling: make a 1 Hz portrait look alive
+#### 4. Animation cadence per element, and pose-to-pose sampling where the display is 1 Hz
+
+**Owner's refinement (2026-11-09):** the renderer should draw smoothly, as fast as the machine allows without
+any visible slowdown; the lab preview shows a ~10-row animation at about 10 ms per frame. Telemetry values
+update as they arrive from Claude Code. The fast rendering is only for effect, and it must not be applied
+everywhere: **the DOOM mugshot is right at one second**, and a faster mugshot would hurt it. So the cadence is a
+property of each element, not of the renderer:
+
+| Element | Cadence |
+|---|---|
+| Telemetry values (HP, ammo, limits, cost) | when the payload or collector delivers new data |
+| DOOM mugshot | fixed ~1 s, by design |
+| Effect animations (3D heads, minimap pan, pings, glow) | as fast as the display surface takes, target ~10 ms |
+
+The statusLine still shows at most about one frame per second (Part 1, "The hard limit"), so a ~10 ms effect
+is only seen on a surface that accepts frames faster. On the statusLine the technique below applies.
 
 **Description:** At a 1 s read, a looping animation sampled on the wall clock aliases: a loop close to a whole
 number of seconds looks frozen, one at 1.1 s crawls or seems to run backwards. At model load, pick a few

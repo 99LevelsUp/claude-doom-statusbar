@@ -27,7 +27,7 @@ Owner's order: daemon first, renderer second, minimap and WC3 after. `ce-ideate`
 | D-7 | Frame reel with a deadline, read by a write-once client (Part 6 idea 1). The client contract for D-1; replaces the broken `-nt` liveness test | idea |
 | D-8 | Glyph truth on the real terminal: test card + fallback ladder, render-back error score vs chafa (Part 6 idea 2). Gate for D-3 and D-4 | idea |
 | D-9 | Per-repo ledger behind the map, "changed since Claude read it" layer, provenance, allied sessions (Part 6 idea 3). Data model for D-5 | idea |
-| D-10 | Pose-to-pose sampling so a 1 Hz portrait looks alive (Part 6 idea 4). For D-6 portrait | idea |
+| D-10 | Animation cadence per element: telemetry on data arrival, effects as fast as the display allows (~10 ms), DOOM mugshot fixed at ~1 s; pose-to-pose sampling where the display is 1 Hz (Part 6 idea 4). For D-6 portrait | idea |
 | D-11 | Crash-only daemon with a version-named pipe as singleton and upgrade path (Part 6 idea 5). Lifecycle for D-1 | idea |
 | D-12 | Cell-space compositor with two resolvers: lookup table for map and chrome, error search for portrait (Part 6 idea 6). Shape of D-3 | idea |
 | D-13 | XP from resolved work, kept per repo (Part 6 idea 7). For D-6 / G-8 | idea |
