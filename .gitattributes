@@ -1,1 +1,2 @@
 test/snapshots/** -text
+*.sh text eol=lf
