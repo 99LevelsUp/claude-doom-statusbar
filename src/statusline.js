@@ -326,13 +326,18 @@ function ramPercent() {
 }
 
 // Minimum interval between CPU snapshots; below this, per-core deltas are tick-quantised noise.
+// DOOMBAR_COLLECT_MS (a positive number of ms) in the render's environment overrides it.
 const CPU_MIN_MS = 1000;
+const collectMs = (env) => {
+  const n = Number(env.DOOMBAR_COLLECT_MS);
+  return env.DOOMBAR_COLLECT_MS && Number.isFinite(n) && n > 0 ? n : CPU_MIN_MS;
+};
 
 // Pure: should cpuMetrics recompute, or hold the cached result? Recompute on cold start,
-// a legacy snapshot without `ts`, a missing cached result, or once CPU_MIN_MS has elapsed.
+// a legacy snapshot without `ts`, a missing cached result, or once `minMs` has elapsed.
 // Holding in between keeps a burst of fast refreshes from sampling a sub-tick interval.
-export function shouldSampleCpu(prev, now) {
-  return !(prev && typeof prev.ts === "number" && now - prev.ts < CPU_MIN_MS && prev.result);
+export function shouldSampleCpu(prev, now, minMs = CPU_MIN_MS) {
+  return !(prev && typeof prev.ts === "number" && now - prev.ts < minMs && prev.result);
 }
 
 // Per-core idle fraction over a cumulative-time delta; null when no time elapsed.
@@ -355,7 +360,7 @@ export function cpuDeltas(prev, cur) {
   return { cpu: cpu === null ? null : pyround(cpu * 100), cores };
 }
 
-function cpuMetrics() {
+function cpuMetrics(env) {
   let cores;
   try {
     cores = os.cpus().map((c) => {
@@ -372,20 +377,20 @@ function cpuMetrics() {
   // Windows updates os.cpus() times only on the ~15.6ms scheduler tick, so a per-core
   // delta over a sub-second interval is dominated by tick quantisation and explodes
   // into 0/100 noise. The status bar refreshes on every action, often milliseconds
-  // apart -- so only recompute when >= CPU_MIN_MS has elapsed, holding the last result
+  // apart -- so only recompute when >= the collect interval has elapsed, holding the last result
   // (and the old snapshot) in between. The interval keeps growing until it's wide
   // enough to be stable, even under a burst of fast refreshes.
-  if (!shouldSampleCpu(prev, now)) return prev.result;
+  if (!shouldSampleCpu(prev, now, collectMs(env))) return prev.result;
   const result = cpuDeltas(prev, cur);
   try { writeFileSync(cache, JSON.stringify({ ...cur, result })); } catch { /* ignore */ }
   return result;
 }
 
-function sysValues(cwd, now) {
+function sysValues(cwd, now, env) {
   const v = {};
   const ram = ramPercent();
   if (ram !== null) v["sys.ram"] = ram;
-  const { cpu, cores } = cpuMetrics();
+  const { cpu, cores } = cpuMetrics(env);
   if (cpu !== null) v["sys.cpu"] = `${cpu}%`;
   if (cores) v["sys.cores"] = cores;
   try {
@@ -755,7 +760,7 @@ export function renderSession({ data, env = process.env, now = Date.now() / 1000
   const st = mergeDiskTasks(loadState(data, env), readDiskTasks(tasksDir(data.session_id, env)));
   const cwd = data.cwd || (data.workspace || {}).current_dir;
   const values = {
-    ...buildValues(data, st.git, now), ...activityValues(st, now), ...sysValues(cwd, now), ...statsValues(data, cwd, env),
+    ...buildValues(data, st.git, now), ...activityValues(st, now), ...sysValues(cwd, now, env), ...statsValues(data, cwd, env),
   };
   const [advModel, advTs] = advisorInfo(data.transcript_path || "");
   if (advModel) values["advisor.model"] = advModel;
