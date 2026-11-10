@@ -24,9 +24,10 @@ export const sidKey = (id) => String(id || "default").replace(/[^A-Za-z0-9_-]/g,
 
 // Checkpoint (statusline-owned folded state) + journal (hook-appended events) live next to
 // each other so both processes derive the same pair from the session id. MUGSHOT_STATE
-// overrides the checkpoint path (tests, custom setups); the journal hangs off it.
-export function statePaths(sessionId) {
-  const base = process.env.MUGSHOT_STATE || path.join(os.tmpdir(), `mugshot_${sidKey(sessionId)}.json`);
+// overrides the checkpoint path (tests, custom setups); the journal hangs off it. `env` is the
+// session's environment: a long-lived renderer passes each session's own, everyone else the default.
+export function statePaths(sessionId, env = process.env) {
+  const base = env.MUGSHOT_STATE || path.join(os.tmpdir(), `mugshot_${sidKey(sessionId)}.json`);
   return { checkpoint: base, journal: base + ".jsonl" };
 }
 
@@ -49,8 +50,8 @@ const ROOT_HASH = rootHash();
 // hash, so the daemon knows where to look without being told about MUGSHOT_STATE. The `.json`
 // suffix keeps them inside the sweep's name patterns even though the frame is text. The
 // writers, the sweep and end-of-session cleanup all name files through here, so they always agree.
-export function sessionPaths(sessionId, hash = ROOT_HASH) {
-  const { checkpoint, journal } = statePaths(sessionId);
+export function sessionPaths(sessionId, hash = ROOT_HASH, env = process.env) {
+  const { checkpoint, journal } = statePaths(sessionId, env);
   const dir = path.dirname(checkpoint);
   const key = sidKey(sessionId);
   return {

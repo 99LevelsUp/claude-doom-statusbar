@@ -30,15 +30,16 @@ export function resolveTheme(name) {
   return THEME_NAMES.includes(t) ? t : null;
 }
 
-export const themeFile = () =>
-  process.env.DOOMBAR_THEME_FILE || path.join(os.homedir(), ".claude", "doombar-theme.json");
+export const themeFile = (env = process.env) =>
+  env.DOOMBAR_THEME_FILE || path.join(os.homedir(), ".claude", "doombar-theme.json");
 
 // Current theme: $DOOMBAR_THEME wins (handy for a one-off), then the saved file, then doom.
 // Anything unknown or unreadable falls back to doom, so a bad file can never blank the HUD.
-export function currentTheme() {
-  let t = process.env.DOOMBAR_THEME;
+// `env` is the session's environment (a long-lived renderer passes each session's own).
+export function currentTheme(env = process.env) {
+  let t = env.DOOMBAR_THEME;
   if (!t) {
-    try { t = JSON.parse(readFileSync(themeFile(), "utf8")).theme; } catch { t = null; }
+    try { t = JSON.parse(readFileSync(themeFile(env), "utf8")).theme; } catch { t = null; }
   }
   return resolveTheme(t) || "doom";
 }

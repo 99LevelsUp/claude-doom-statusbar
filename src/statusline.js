@@ -99,8 +99,8 @@ function advisorInfo(p) {
   return [model ? _prettyModel(model) : null, resTs];
 }
 
-function godFlash(data, advTs, now) {
-  const cache = sessionPaths(data.session_id).adv;
+function godFlash(data, advTs, now, env) {
+  const cache = sessionPaths(data.session_id, undefined, env).adv;
   let c = {};
   try { c = JSON.parse(readFileSync(cache, "utf8")); } catch { c = {}; }
   if (advTs && advTs !== c.seen) {
@@ -113,15 +113,16 @@ function godFlash(data, advTs, now) {
 
 const f = sgrFg;
 
-export function buildValues(data, git) {
+// `now` (epoch seconds) is the moment being rendered; the reset countdowns count from it.
+export function buildValues(data, git, now = Date.now() / 1000) {
   const v = {};
   const cw = data.context_window || {};
   if ("used_percentage" in cw) v["context.hp"] = pyround(cw.used_percentage);
   const rl = data.rate_limits || {};
   if (rl.five_hour) v["ratelimit.5h"] = pyround(rl.five_hour.used_percentage);
   if (rl.seven_day) v["ratelimit.7d"] = pyround(rl.seven_day.used_percentage);
-  if (rl.five_hour && rl.five_hour.resets_at) v["usage.reset5h"] = _dur(rl.five_hour.resets_at - Date.now() / 1000);
-  if (rl.seven_day && rl.seven_day.resets_at) v["usage.reset7d"] = _dur(rl.seven_day.resets_at - Date.now() / 1000);
+  if (rl.five_hour && rl.five_hour.resets_at) v["usage.reset5h"] = _dur(rl.five_hour.resets_at - now);
+  if (rl.seven_day && rl.seven_day.resets_at) v["usage.reset7d"] = _dur(rl.seven_day.resets_at - now);
   const cost = data.cost || {};
   if ("total_cost_usd" in cost) v["cost.total"] = "$" + cost.total_cost_usd.toFixed(2);
   if ("total_duration_ms" in cost) v["sys.session"] = _dur(cost.total_duration_ms / 1000);
@@ -213,11 +214,11 @@ function writeAtomic(file, data) {
 // and that survives a reboot and `claude --resume`; our journal in the temp dir doesn't. The
 // list id is CLAUDE_CODE_TASK_LIST_ID when set, otherwise the session id. DOOMBAR_TASKS_DIR
 // overrides the whole directory (tests). Returns null when there is no list directory.
-export function tasksDir(sessionId) {
-  if (process.env.DOOMBAR_TASKS_DIR) return process.env.DOOMBAR_TASKS_DIR;
-  const listId = process.env.CLAUDE_CODE_TASK_LIST_ID || sessionId;
+export function tasksDir(sessionId, env = process.env) {
+  if (env.DOOMBAR_TASKS_DIR) return env.DOOMBAR_TASKS_DIR;
+  const listId = env.CLAUDE_CODE_TASK_LIST_ID || sessionId;
   if (!listId) return null;
-  const home = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude");
+  const home = env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude");
   return path.join(home, "tasks", String(listId));
 }
 
@@ -278,8 +279,8 @@ export function mergeDiskTasks(st, disk) {
 // offset, so a multi-hour session never re-reads old events. Invariant: checkpoint.state
 // always equals fold(journal[0..offset]); state + offset are persisted together atomically,
 // so the reducer's push/increment ops never double-count across renders.
-export function loadState(data) {
-  const { checkpoint, journal } = statePaths(data.session_id);
+export function loadState(data, env = process.env) {
+  const { checkpoint, journal } = statePaths(data.session_id, env);
 
   let size = -1;
   try { size = statSync(journal).size; } catch { /* no journal yet */ }
@@ -380,7 +381,7 @@ function cpuMetrics() {
   return result;
 }
 
-function sysValues(cwd) {
+function sysValues(cwd, now) {
   const v = {};
   const ram = ramPercent();
   if (ram !== null) v["sys.ram"] = ram;
@@ -391,7 +392,7 @@ function sysValues(cwd) {
     const stat = statfsSync(cwd || process.cwd());
     v["sys.disk"] = pyround(((stat.blocks - stat.bfree) / stat.blocks) * 100);
   } catch { /* ignore */ }
-  const d = new Date();
+  const d = new Date(now * 1000);
   v["sys.clock"] = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   return v;
 }
@@ -399,8 +400,8 @@ function sysValues(cwd) {
 // --- Token-savings rows -----------------------------------------------------
 // Read from what context-optimization tools already persist on disk. No plugin
 // patching, no binary spawn. Paths are env-overridable (DOOMBAR_*) for tests.
-const eventsPath = () => process.env.DOOMBAR_EVENTS || path.join(os.homedir(), ".lean-ctx", "events.jsonl");
-const llmlinguaPath = () => process.env.DOOMBAR_LLMLINGUA || path.join(os.homedir(), ".llmlingua-stats.json");
+const eventsPath = (env) => env.DOOMBAR_EVENTS || path.join(os.homedir(), ".lean-ctx", "events.jsonl");
+const llmlinguaPath = (env) => env.DOOMBAR_LLMLINGUA || path.join(os.homedir(), ".llmlingua-stats.json");
 
 // Defensive read: missing file or malformed JSON -> null (the row simply never appears).
 function readJson(p) {
@@ -419,8 +420,8 @@ function fmtSaved(st) {
   return st.original > 0 ? `${k(st.saved)} ${Math.round(100 * st.saved / st.original)}%` : k(st.saved);
 }
 
-const savingsStatePath = (sid) =>
-  process.env.DOOMBAR_SAVINGS_STATE || sessionPaths(sid).savings;
+const savingsStatePath = (sid, env) =>
+  env.DOOMBAR_SAVINGS_STATE || sessionPaths(sid, undefined, env).savings;
 
 // Per-session lean-ctx savings. lean-ctx's mcp-live.json is a single global file clobbered
 // by every concurrent session, so it can't be per-session. events.jsonl is append-only and
@@ -430,15 +431,16 @@ const savingsStatePath = (sid) =>
 // keeps adding wherever you currently work) and stays cheap — it reads only the bytes appended
 // since the last refresh, never the whole log. Residual: two sessions concurrently in the SAME
 // project share events and both count them — unsplittable from disk, accepted.
-function leanCtxSavings(cwd, sid) {
+function leanCtxSavings(cwd, sid, env) {
   if (!cwd) return null;
   const cwdN = normPath(cwd).replace(/\/+$/, "") + "/"; // match on a path boundary, not a prefix
-  const sp = savingsStatePath(sid);
+  const sp = savingsStatePath(sid, env);
+  const events = eventsPath(env);
   let st = { offset: null, saved: 0, original: 0 };
   try { st = { ...st, ...JSON.parse(readFileSync(sp, "utf8")) }; } catch { /* fresh session */ }
 
   let size = -1;
-  try { size = statSync(eventsPath()).size; } catch { /* no log */ }
+  try { size = statSync(events).size; } catch { /* no log */ }
   if (size < 0) return st.saved > 0 ? fmtSaved(st) : null; // log gone -> keep prior total
 
   if (st.offset === null) st.offset = size; // first sight of this session: count from now on
@@ -451,7 +453,7 @@ function leanCtxSavings(cwd, sid) {
   if (size > st.offset) {
     let chunk = "";
     try {
-      const fd = openSync(eventsPath(), "r");
+      const fd = openSync(events, "r");
       const buf = Buffer.alloc(size - st.offset);
       readSync(fd, buf, 0, buf.length, st.offset);
       closeSync(fd);
@@ -478,8 +480,8 @@ function leanCtxSavings(cwd, sid) {
 // Per-session llmlingua. smart-read keys its sessions map by CLAUDE_CODE_SESSION_ID — the same
 // id the statusbar gets on stdin — so we read sessions[sid] (not a single global block).
 // Prefer last_saved_pct; else show the ratio. Flat lifetime-only writers expose no session -> absent.
-function linguaSavings(sid) {
-  const d = readJson(llmlinguaPath());
+function linguaSavings(sid, env) {
+  const d = readJson(llmlinguaPath(env));
   const s = d && d.sessions && d.sessions[sid];
   if (!s || !(s.tokens_saved > 0)) return null;
   if (s.last_saved_pct != null) return `${k(s.tokens_saved)} ${Math.round(s.last_saved_pct)}%`;
@@ -487,14 +489,14 @@ function linguaSavings(sid) {
   return k(s.tokens_saved);
 }
 
-export function statsValues(data, cwd) {
+export function statsValues(data, cwd, env = process.env) {
   const v = {};
   const rawSid = String((data && data.session_id) || "default");
   const sid = rawSid.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 48); // filesystem-safe state-file key
-  const lean = leanCtxSavings(cwd, sid);
+  const lean = leanCtxSavings(cwd, sid, env);
   if (lean) v["save.leanctx"] = lean;
   // smart-read keys sessions[] by the RAW CLAUDE_CODE_SESSION_ID -> look up with the unsanitized id.
-  const ling = linguaSavings(rawSid);
+  const ling = linguaSavings(rawSid, env);
   if (ling) v["save.lingua"] = ling;
   return v;
 }
@@ -677,12 +679,12 @@ export function mergeRateLimits(mine, shared) {
   return out;
 }
 
-const rateLimitsFile = () => process.env.DOOMBAR_RATELIMITS || path.join(TMP, "mugshot_ratelimits_global.json");
+const rateLimitsFile = (env) => env.DOOMBAR_RATELIMITS || path.join(TMP, "mugshot_ratelimits_global.json");
 
 // I/O wrapper: read the shared snapshot, merge, write it back if anything got fresher.
 // Throw-proof: the render path has no top-level catch, so failures keep the session's own.
-function syncRateLimits(mine) {
-  const file = rateLimitsFile();
+function syncRateLimits(mine, env) {
+  const file = rateLimitsFile(env);
   let shared = null;
   try { shared = JSON.parse(readFileSync(file, "utf8")); } catch { /* first reading */ }
   const merged = mergeRateLimits(mine, shared);
@@ -727,32 +729,42 @@ function maybeReap() {
   } catch { /* the HUD is already rendered; a failed reap is not worth a crash */ }
 }
 
-function main() {
-  let data = {};
-  try { data = JSON.parse(readFileSync(0, "utf8")); } catch { data = {}; }
+// Render one session: its statusline payload (`data`), its environment (`env`: COLUMNS,
+// DOOMBAR_PRESET, DOOMBAR_THEME, DOOMBAR_TEXT_OVERFLOW, DOOMBAR_INDENT, MUGSHOT_STATE and the
+// other DOOMBAR_* settings) and the moment to draw (`now`, epoch seconds). Returns the bar's
+// lines, without trailing newlines. Both the one-shot command (main below) and a long-lived
+// renderer serving many sessions go through here, so they print the same bytes. Sessions must
+// render one at a time: render.js keeps the values in one module-level slot (setValues).
+export function renderSession({ data, env = process.env, now = Date.now() / 1000 }) {
+  // A shallow copy: the rate-limit merge below rewrites data.rate_limits, and a caller that
+  // keeps the payload between renders must not see it change.
+  if (data && typeof data === "object" && !Array.isArray(data)) data = { ...data };
 
   // A non-DOOM theme (see theme.js) swaps in its own preset; doom keeps DOOMBAR_PRESET.
-  const preset = themePreset(currentTheme())
-    || process.env.DOOMBAR_PRESET || path.join(REPO, "presets", "standard.toml");
+  const preset = themePreset(currentTheme(env))
+    || env.DOOMBAR_PRESET || path.join(REPO, "presets", "standard.toml");
   const cfg = parseToml(readFileSync(preset, "utf8"));
 
-  const now = Date.now() / 1000;
   // Account-wide limits: use the freshest reading any session has seen (see syncRateLimits).
   // A brand-new chat that hasn't called the API yet gets them too. DOOMBAR_RATELIMITS_SHARE=0
   // turns it off.
-  if (process.env.DOOMBAR_RATELIMITS_SHARE !== "0") {
-    try { data.rate_limits = syncRateLimits(data.rate_limits); } catch { /* keep the session's own */ }
+  if (env.DOOMBAR_RATELIMITS_SHARE !== "0") {
+    try { data.rate_limits = syncRateLimits(data.rate_limits, env); } catch { /* keep the session's own */ }
     if (!Object.keys(data.rate_limits || {}).length) delete data.rate_limits;
   }
-  const st = mergeDiskTasks(loadState(data), readDiskTasks(tasksDir(data.session_id)));
+  const st = mergeDiskTasks(loadState(data, env), readDiskTasks(tasksDir(data.session_id, env)));
   const cwd = data.cwd || (data.workspace || {}).current_dir;
-  const values = { ...buildValues(data, st.git), ...activityValues(st, now), ...sysValues(cwd), ...statsValues(data, cwd) };
+  const values = {
+    ...buildValues(data, st.git, now), ...activityValues(st, now), ...sysValues(cwd, now), ...statsValues(data, cwd, env),
+  };
   const [advModel, advTs] = advisorInfo(data.transcript_path || "");
   if (advModel) values["advisor.model"] = advModel;
-  const god_until = godFlash(data, advTs, now);
+  const god_until = godFlash(data, advTs, now, env);
   // Rate-based mugshot health: when present, hpRow prefers it over the snapshot headroom.
   const headroom = rateHealthValue(data);
   if (headroom !== null) values["health.headroom"] = headroom;
+  // Right before the builders, which read these values: no other session's render may come
+  // between this call and the bar it feeds.
   setValues(values);
 
   let exhausted;
@@ -779,16 +791,14 @@ function main() {
     return `STFST${hp}${_pick(Math.floor(now / IDLE_CYCLE))}`;
   };
 
-  const target = parseInt(process.env.COLUMNS || "100", 10);
+  const target = parseInt(env.COLUMNS || "100", 10);
   // The in-game HUD layout (minecraft theme) draws its own screen instead of boxes.
   if ((cfg.bar || {}).layout === "hotbar") {
     const { lines } = buildHotbar(cfg, target, values, {
       sprite: spriteFor(0), exhausted, now, expr: st.expr, exprAge: now - (st.ts || 0),
-      indent: Number(process.env.DOOMBAR_INDENT ?? 2), // Claude Code draws the status line 2 cols in
+      indent: Number(env.DOOMBAR_INDENT ?? 2), // Claude Code draws the status line 2 cols in
     });
-    process.stdout.write(lines.join("\n") + "\n");
-    maybeReap();
-    return;
+    return lines;
   }
   const tick = Math.floor(now); // one marquee step per refresh (~1s); pure fn of time
   // Pick the preset that fits the terminal: the chosen preset is the ceiling; if it
@@ -801,9 +811,16 @@ function main() {
   };
   const selected = resolvePreset(cfg, target, loadByName, spriteFor);
   // Text overflow behavior: env wins, then the preset's text_overflow, default "scroll".
-  const overflow = process.env.DOOMBAR_TEXT_OVERFLOW || selected.text_overflow || cfg.text_overflow || "scroll";
-  const res = buildBar(selected, target, spriteFor, tick, overflow);
-  process.stdout.write(res.lines.join("\n") + "\n");
+  const overflow = env.DOOMBAR_TEXT_OVERFLOW || selected.text_overflow || cfg.text_overflow || "scroll";
+  return buildBar(selected, target, spriteFor, tick, overflow).lines;
+}
+
+// The one-shot command Claude Code runs on every refresh: one payload on stdin, one bar out.
+function main() {
+  let data = {};
+  try { data = JSON.parse(readFileSync(0, "utf8")); } catch { data = {}; }
+  const lines = renderSession({ data, env: process.env, now: Date.now() / 1000 });
+  process.stdout.write(lines.join("\n") + "\n");
   maybeReap(); // after the write: the HUD is already out, this only cleans up behind it
 }
 
