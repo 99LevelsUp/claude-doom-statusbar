@@ -71,11 +71,16 @@ export function maybeStartReaper(state, { now = Date.now(), env = process.env, p
   if (platform !== "win32" || env.DOOMBAR_MSYS_REAP === "0") return false;
   const tick = envNum(env.DOOMBAR_REAP_TICK, DEFAULT_REAP_TICK_MS);
   if (state.reapedAt !== undefined && now - state.reapedAt < tick) return false;
+  // A reaper that has not exited yet blocks the next one: reapers have been seen to hang, and a
+  // long-lived daemon starting one per interval would pile them up until memory runs out.
+  const prev = state.reaper;
+  if (prev && prev.exitCode === null && prev.signalCode === null) return false;
   state.reapedAt = now;
   try {
     const child = spawn(process.execPath, [HOOK_JS, "--reap"], { detached: true, stdio: "ignore", windowsHide: true });
     child.on("error", () => {});
     child.unref();
+    state.reaper = child;
   } catch {}
   return true;
 }

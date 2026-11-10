@@ -76,6 +76,7 @@ Source: [ideation/2026-10-14-bash-spawn-and-shared-statusbar.md](ideation/2026-1
 | P-1 | Find out what is expensive in a render and what really needs the 1 s refresh (refresh stays at 1 s) | open |
 | P-2 | One shared producer for account- and machine-wide data (limits, CPU/RAM, clock); renders only read | open, folds into D-1 |
 | P-3 | Shared rate limits: treat a window past its `resets_at` as reset; scope the file per Claude account, not per OS user | idea |
+| P-4 | Detached `node hook.js --reap` processes sometimes never exit and pile up (2026-11-10: 10 alive, oldest ~1 h, ~33 MB each, no children, parents gone; a reaper started by hand exits in 0.9 s). Suspected contributor to an out-of-memory crash the same day. Find where they block; the one-shot `maybeReap` path still starts one per interval regardless (the daemon now waits for its previous reaper to exit) | open |
 
 ## Mugshot health estimator
 Source: [ideation/2026-07-11-cap-ratio-accumulator-fix.md](ideation/2026-07-11-cap-ratio-accumulator-fix.md)

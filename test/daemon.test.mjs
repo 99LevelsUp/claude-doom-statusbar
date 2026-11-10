@@ -309,6 +309,14 @@ try {
     let threw = false;
     try { maybeStartReaper(throwing, { env: {}, platform: "win32", spawn: () => { throw new Error("spawn failed"); } }); } catch { threw = true; }
     ok(!threw, "a reaper that cannot be spawned never breaks the loop");
+    const hung = createState({ version: VERSION, now: 0 });
+    let spawned = 0;
+    const hangs = () => { spawned++; return { exitCode: null, signalCode: null, on() {}, unref() {} }; };
+    for (let now = 0; now <= 60000; now += 500) maybeStartReaper(hung, { now, env: {}, platform: "win32", spawn: hangs });
+    ok(spawned === 1, `a reaper that never exits blocks the next one (got ${spawned})`);
+    hung.reaper.exitCode = 0;
+    maybeStartReaper(hung, { now: 120000, env: {}, platform: "win32", spawn: hangs });
+    ok(spawned === 2, "once it has exited, the next interval starts a new reaper");
   }
 
   // ---- Real processes -------------------------------------------------------------------------
