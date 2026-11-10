@@ -4,7 +4,7 @@
 // (heights 4..16). The ANSI is parsed into rows of [char, fg, bg] (fg/bg an
 // [r,g,b] or null = transparent), then composited onto the mugshot background.
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,13 +18,18 @@ const ANS_SIZES = [4, 16];
 const SYMS = "block+half+quad+sextant+wedge+legacy";
 const TERM_BG = "term-bg";
 
+const WARM_TIMEOUT_MS = 10000; // a hung chafa must not outlive its warm-up
+
 const _cache = new Map();
+const _warming = new Map(); // key -> in-flight warm-up promise
+let _noSpawn = false;
+let _warmupsStarted = 0;
+
+const chafaArgs = (name, rows) => ["-f", "symbols", "--polite", "on", "--colors", "full",
+  "--symbols", SYMS, "--size", `9999x${rows}`, path.join(ALPHA_DIR, name + ".png")];
 
 function chafaFace(name, rows) {
-  const sprite = path.join(ALPHA_DIR, name + ".png");
-  const args = ["-f", "symbols", "--polite", "on", "--colors", "full",
-    "--symbols", SYMS, "--size", `9999x${rows}`, sprite];
-  const r = spawnSync("chafa", args, { maxBuffer: 1 << 24 });
+  const r = spawnSync("chafa", chafaArgs(name, rows), { maxBuffer: 1 << 24 });
   if (r.error) return null; // chafa not on PATH
   return r.status === 0 && r.stdout && r.stdout.length ? r.stdout.toString("utf8") : null;
 }
@@ -86,14 +91,72 @@ function parseAnsi(text) {
   return out;
 }
 
+function toFace(text, rows) {
+  const out = parseAnsi(text).slice(0, rows);
+  while (out.length < rows) out.push([]); // exactly `rows` lines (fallback clamps)
+  return out;
+}
+
+// No-spawn mode is for long-lived processes: a cache miss never waits on chafa. It returns
+// the pre-rendered .ans face at once and warms the chafa face in the background; the
+// one-shot statusline keeps the synchronous default.
+export function setFaceNoSpawn(on = true) {
+  _noSpawn = Boolean(on);
+}
+
+export const faceWarmupsStarted = () => _warmupsStarted;
+
+// Rasterise one face with an asynchronous chafa and put it in the cache. Resolves true when
+// the chafa face landed, false when chafa is missing, fails or times out (the .ans face then
+// stays). Concurrent calls for one key share a single child process.
+export function warmFace(name, rows) {
+  const key = `${name}@${rows}`;
+  const pending = _warming.get(key);
+  if (pending) return pending;
+  _warmupsStarted += 1;
+  const p = new Promise((resolve) => {
+    let settled = false;
+    const done = (text) => {
+      if (settled) return;
+      settled = true;
+      _warming.delete(key);
+      if (text) _cache.set(key, toFace(text, rows));
+      else if (!_cache.has(key)) _cache.set(key, toFace(ansiFace(name, rows), rows));
+      resolve(Boolean(text));
+    };
+    let child;
+    try {
+      child = spawn("chafa", chafaArgs(name, rows), {
+        stdio: ["ignore", "pipe", "ignore"], windowsHide: true, timeout: WARM_TIMEOUT_MS,
+      });
+    } catch {
+      done(null);
+      return;
+    }
+    const chunks = [];
+    child.stdout.on("data", (c) => chunks.push(c));
+    child.on("error", () => done(null)); // chafa not on PATH, or killed on timeout
+    child.on("close", (code) => {
+      const out = Buffer.concat(chunks);
+      done(code === 0 && out.length ? out.toString("utf8") : null);
+    });
+  });
+  _warming.set(key, p);
+  return p;
+}
+
 export function loadFace(name, rows) {
   const key = `${name}@${rows}`;
   if (_cache.has(key)) return _cache.get(key);
+  if (_noSpawn) {
+    const out = toFace(ansiFace(name, rows), rows);
+    _cache.set(key, out); // the warm-up replaces it with the chafa face when it lands
+    warmFace(name, rows);
+    return out;
+  }
   let text = chafaFace(name, rows);
   if (!text) text = ansiFace(name, rows); // no chafa -> pre-rendered ANSI
-  let out = parseAnsi(text);
-  out = out.slice(0, rows);
-  while (out.length < rows) out.push([]); // exactly `rows` lines (fallback clamps)
+  const out = toFace(text, rows);
   _cache.set(key, out);
   return out;
 }
