@@ -104,6 +104,7 @@ Source: [ideation/2026-06-06-doom-statusbar-ideation.md](ideation/2026-06-06-doo
 | S-1 | Chat jumps when a condition flips (loop length depends on the filtered list) | open (folds into G-6) |
 | S-2 | Hearts and hunger overlap below ~30 columns | open (folds into G-5) |
 | S-3 | Duplicate, outdated comment above `EFFORT_COLOR` in `hotbar.js` | open |
+| S-4 | AGENTS box mislabels and miscounts subagents. Observed 2026-11-10: two running `general-purpose` agents ("Simplify review: test value", "Simplify review: comments") both showed as `iew: comments 3m`, while Claude Code's own list showed three running agents. Leads: `SubagentStart` takes the description from the first pending `Agent` launch of the same `agent_type` (FIFO in `src/fold.js`), so parallel launches of one type can get swapped or duplicated labels; an agent that stopped while its own background work still runs gets `SubagentStop`, so the bar drops it while Claude Code still lists it. Verify against the journal before fixing | open |
 
 ## Done
 
