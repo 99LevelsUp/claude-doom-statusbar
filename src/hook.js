@@ -23,7 +23,7 @@ import { appendFileSync, writeFileSync, readFileSync, readdirSync, statSync, unl
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { base, statePaths, sessionPaths, WRITE_TOOLS } from "./fold.js";
+import { base, statePaths, sessionPaths, sidKey, ROOT_HASH_LEN, WRITE_TOOLS } from "./fold.js";
 
 // Re-export the reducer so existing tests importing from hook.js keep working.
 export { foldActivity, expression } from "./fold.js";
@@ -196,7 +196,8 @@ const msysMarkerPath = (sid) => sessionPaths(sid).msys;
 //     directory, non-recursively;
 //   * never SHARED state: the rate-health accumulator, the rate-limit pool and the CPU sample
 //     are cross-session by design (see statusline.js) and the reap throttle is process-wide, so
-//     they are keyed by a fixed name with no session id and are excluded by name;
+//     they are keyed by a fixed name with no session id and are excluded by name; the render
+//     daemon's heartbeat and claim (one pair per install hash) are excluded by pattern;
 //   * never this session's own files;
 //   * decided per session, by its newest file, so a session that is merely idle — or a
 //     concurrent one — is never touched, and a session's files go together or not at all;
@@ -206,7 +207,9 @@ const msysMarkerPath = (sid) => sessionPaths(sid).msys;
 //     `claude -p` run fires the hooks but shows no bar — after DOOMBAR_UNRENDERED_TTL
 //     (default 1 hour), because nothing will ever read its files.
 // Orphaned `<checkpoint>.<pid>.tmp` files from interrupted atomic writes belong to their
-// session. Failures are ignored per file: housekeeping must never cost a hook its exit 0.
+// session. So do the render daemon's payload and frame (and their `.tmp` leftovers), which always
+// live in the system temp dir: they are swept with their session when the checkpoint lives there
+// too (the normal case), not when MUGSHOT_STATE moves the checkpoint elsewhere. Failures are ignored per file: housekeeping must never cost a hook its exit 0.
 const JOURNAL_TTL = envNum(process.env.DOOMBAR_JOURNAL_TTL, 7 * 24 * 60 * 60 * 1000); // ms
 const UNRENDERED_TTL = envNum(process.env.DOOMBAR_UNRENDERED_TTL, 60 * 60 * 1000); // ms
 
@@ -215,11 +218,22 @@ const SHARED_STATE = new Set([
   "mugshot_ratehealth_global.json", "mugshot_ratelimits_global.json", "mugshot_cpu.json", "mugshot_reap_tick.json",
 ]);
 
+// The render daemon's own files (daemonPaths in fold.js): one heartbeat and one claim per install
+// hash, shared by every session the daemon serves. Without this rule the checkpoint pattern below
+// would read `mugshot_daemon_<hash>.json` as the checkpoint of a session named `daemon_<hash>`.
+const HASH = `[0-9a-f]{${ROOT_HASH_LEN}}`;
+const DAEMON_FILE = new RegExp(`^mugshot_daemon_${HASH}\\.(?:json|claim)(?:\\.\\d+\\.tmp)?$`);
+// Per-session payload and frame (sessionPaths in fold.js), with any install hash. The hash has a
+// fixed length, so the captured key is exact: `_x_ending` never reads as session `ending`.
+const DAEMON_SESSION_FILE = new RegExp(`^mugshot_(?:payload|frame)_${HASH}_(.+)\\.json(?:\\.\\d+\\.tmp)?$`);
+
 // The session key a file belongs to (the names sessionPaths in fold.js writes), or null when
-// the name is not one of ours. Markers are matched before the checkpoint pattern, which would
-// otherwise read `mugshot_git_<key>.json` as the checkpoint of a session named `git_<key>`.
+// the name is not one of ours. Markers, payloads and frames are matched before the checkpoint
+// pattern, which would otherwise read `mugshot_git_<key>.json` as the checkpoint of a session
+// named `git_<key>`.
 function sessionKeyOf(name) {
-  let m = /^mugshot_(?:git|msys|adv)_(.+)\.json$/.exec(name) || /^savings_(.+)\.json$/.exec(name);
+  let m = /^mugshot_(?:git|msys|adv)_(.+)\.json$/.exec(name) || /^savings_(.+)\.json$/.exec(name) ||
+    DAEMON_SESSION_FILE.exec(name);
   if (m) return m[1];
   m = /^mugshot_(.+?)\.json(?:\.jsonl|\.\d+\.tmp)?$/.exec(name); // checkpoint, journal, .tmp
   return m ? m[1] : null;
@@ -233,7 +247,7 @@ export function staleStateFiles(names, ageOf, { ttl = JOURNAL_TTL, unrenderedTtl
   const mine = new Set(keep.map((p) => path.basename(p)));
   const sessions = new Map(); // session key -> [{ name, age }]
   for (const n of all) {
-    if (SHARED_STATE.has(n) || mine.has(n)) continue; // shared state; this session's own files
+    if (SHARED_STATE.has(n) || DAEMON_FILE.test(n) || mine.has(n)) continue; // shared state; this session's own files
     const key = sessionKeyOf(n);
     if (key === null) continue;                         // not ours
     if (!sessions.has(key)) sessions.set(key, []);
@@ -293,6 +307,17 @@ function endSession(sid) {
   const p = sessionPaths(sid);
   for (const f of [p.journal, p.checkpoint, p.git, p.msys, p.adv]) {
     try { unlinkSync(f); } catch { /* never written, or already gone */ }
+  }
+  // The daemon's payload and frame (and their `.<pid>.tmp` leftovers) live in the system temp dir
+  // under an install hash. The session may have been served by more than one installation, so
+  // every hash's files for this exact key go.
+  const key = sidKey(sid), tmpDir = path.dirname(p.payload);
+  let tmpNames = [];
+  try { tmpNames = readdirSync(tmpDir); } catch { /* unreadable: nothing to clean */ }
+  for (const n of tmpNames) {
+    const m = DAEMON_SESSION_FILE.exec(n);
+    if (!m || m[1] !== key) continue;
+    try { unlinkSync(path.join(tmpDir, n)); } catch { /* in use / already gone */ }
   }
   // Orphaned `<checkpoint>.<pid>.tmp` files from this session's interrupted atomic writes.
   const dir = path.dirname(p.checkpoint), stem = path.basename(p.checkpoint);

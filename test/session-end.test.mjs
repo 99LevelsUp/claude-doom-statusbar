@@ -60,6 +60,30 @@ const hook = (event, env) => {
   rmSync(tmp, { recursive: true, force: true });
 }
 
+// --- The render daemon's payload and frame go too, under every install hash --------------------
+// They always live in the system temp dir and carry the install-root hash before the session key.
+// A session may have been served by more than one installation, so every hash's pair goes. A
+// session whose key merely ends with the ending key (`x_ending`) is a different session.
+{
+  const tmp = mkdtempSync(path.join(os.tmpdir(), "doombar-end-frames-"));
+  const env = { TEMP: tmp, TMP: tmp, TMPDIR: tmp };
+  const frames = (key) => ["0123456789", "abcdef0123"].flatMap((h) => [
+    `mugshot_payload_${h}_${key}.json`, `mugshot_frame_${h}_${key}.json`, `mugshot_frame_${h}_${key}.json.4242.tmp`]);
+  const daemon = ["mugshot_daemon_0123456789.json", "mugshot_daemon_0123456789.claim"];
+  [...frames("ending"), ...frames("x_ending"), ...frames("other"), ...daemon, "savings_ending.json"]
+    .forEach((n) => writeFileSync(path.join(tmp, n), "{}"));
+
+  ok(hook({ hook_event_name: "SessionEnd", session_id: "ending" }, env) === 0, "SessionEnd exits 0");
+  const left = readdirSync(tmp);
+  ok(frames("ending").every((n) => !left.includes(n)),
+    `the ending session's payload, frame and frame temp files are gone under both hashes (left: ${left.join(", ")})`);
+  ok(left.includes("savings_ending.json"), "the ending session's savings file is kept");
+  ok(frames("x_ending").every((n) => left.includes(n)) && frames("other").every((n) => left.includes(n)),
+    "other sessions' payloads and frames are untouched, including one whose key ends the same way");
+  ok(daemon.every((n) => left.includes(n)), "the daemon heartbeat and claim are untouched");
+  rmSync(tmp, { recursive: true, force: true });
+}
+
 // --- MUGSHOT_STATE relocates the cleanup with the files ----------------------------------------
 {
   const sandbox = mkdtempSync(path.join(os.tmpdir(), "doombar-end-sandbox-"));

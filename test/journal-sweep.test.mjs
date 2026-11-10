@@ -13,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { staleStateFiles } from "../src/hook.js";
+import { sessionPaths, daemonPaths, rootHash } from "../src/fold.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const HOOK = path.join(HERE, "..", "src", "hook.js");
@@ -114,6 +115,57 @@ const TTL = 7 * DAY;
     "a custom unrendered TTL is honoured");
 }
 
+// --- Payload and frame files belong to their session; daemon files belong to no session -----
+// The render daemon's per-session files carry the install-root hash before the session key:
+// mugshot_payload_<hash>_<key>.json and mugshot_frame_<hash>_<key>.json (plus `.<pid>.tmp`
+// leftovers of atomic writes). They are grouped with the rest of their session, so the session's
+// newest file decides for them too. The daemon-wide heartbeat and claim, one pair per install
+// hash, are shared state and never read as a session.
+{
+  const HOUR = 60 * 60 * 1000;
+  const H1 = "0123456789", H2 = "abcdef0123"; // two installations
+  const sweep = (ages) => staleStateFiles(Object.keys(ages), (n) => ages[n]);
+  const all = (names, stale) => names.every((n) => stale.includes(n));
+  const none = (names, stale) => names.every((n) => !stale.includes(n));
+
+  const dead = [`mugshot_payload_${H1}_dead.json`, `mugshot_frame_${H1}_dead.json`];
+  ok(all(dead, sweep(Object.fromEntries(dead.map((n) => [n, 2 * HOUR])))),
+    "a dead session's payload and frame go after the unrendered TTL");
+  ok(none(dead, sweep(Object.fromEntries(dead.map((n) => [n, 30 * 60 * 1000])))),
+    "a dead session's payload and frame are kept inside the unrendered TTL");
+  ok(sweep({ [`mugshot_frame_${H1}_dead.json.4242.tmp`]: 2 * HOUR }).length === 1,
+    "a frame temp file left behind by an interrupted write is swept");
+
+  const shown = [`mugshot_payload_${H1}_shown.json`, `mugshot_frame_${H2}_shown.json`];
+  ok(none(shown, sweep({ "mugshot_shown.json": 10 * 60 * 1000,
+    ...Object.fromEntries(shown.map((n) => [n, 8 * DAY])) })),
+    "8-day-old payload and frame (under either hash) are kept while their session's checkpoint is fresh");
+  ok(none([`mugshot_frame_${H1}_busy.json`], sweep({ "mugshot_busy.json.jsonl": 10 * 60 * 1000,
+    [`mugshot_frame_${H1}_busy.json`]: 8 * DAY })),
+    "an 8-day-old frame is kept while its session's journal is fresh (the newest file decides)");
+
+  const daemon = [`mugshot_daemon_${H1}.json`, `mugshot_daemon_${H1}.claim`,
+    `mugshot_daemon_${H2}.json`, `mugshot_daemon_${H2}.claim`];
+  ok(sweep(Object.fromEntries(daemon.map((n) => [n, 30 * DAY]))).length === 0,
+    "the daemon heartbeat and claim of any install hash are never swept, however old");
+
+  // The names the writers actually produce (through fold.js) are the names the sweep recognizes.
+  const sp = sessionPaths("named"), dp = daemonPaths();
+  const real = [path.basename(sp.payload), path.basename(sp.frame), path.basename(sp.frame) + ".4242.tmp"];
+  ok(all(real, sweep(Object.fromEntries(real.map((n) => [n, 2 * HOUR])))),
+    `the payload and frame names sessionPaths writes are swept with their session (${real.join(", ")})`);
+  ok(sweep({ [path.basename(dp.heartbeat)]: 30 * DAY, [path.basename(dp.claim)]: 30 * DAY }).length === 0,
+    "the heartbeat and claim names daemonPaths writes are never swept");
+  ok(path.dirname(sp.frame) === os.tmpdir() && path.dirname(dp.heartbeat) === os.tmpdir(),
+    "payload, frame and daemon files live in the system temp dir");
+
+  const h = rootHash("C:\\Users\\dev\\doombar");
+  ok(/^[0-9a-f]{10}$/.test(h), `the install-root hash is 10 hex chars (${h})`);
+  ok(rootHash("c:/users/DEV/doombar/") === h, "the hash ignores slash direction, case and a trailing slash");
+  ok(rootHash("C:\\Users\\dev\\other") !== h, "a different install root gives a different hash");
+  ok(rootHash() === rootHash(path.join(HERE, "..")), "the default root is this package's root");
+}
+
 // --- End to end: the real hook sweeps its own temp dir on SessionStart ----------------------
 {
   const tmp = mkdtempSync(path.join(os.tmpdir(), "doombar-sweep-"));
@@ -134,6 +186,11 @@ const TTL = 7 * DAY;
   stamp("mugshot_shown.json", 2 * 60 * 60 * 1000);          // rendered, 2 h old
   stamp("mugshot_shown.json.jsonl", 2 * 60 * 60 * 1000);
   stamp("unrelated.txt", 30 * DAY);
+  stamp("mugshot_payload_0123456789_gone.json", 2 * 60 * 60 * 1000); // never rendered, 2 h old
+  stamp("mugshot_frame_0123456789_gone.json", 2 * 60 * 60 * 1000);
+  stamp("mugshot_frame_0123456789_gone.json.4242.tmp", 2 * 60 * 60 * 1000);
+  stamp("mugshot_daemon_0123456789.json", 30 * DAY);
+  stamp("mugshot_daemon_0123456789.claim", 30 * DAY);
 
   // TMPDIR points the hook's os.tmpdir() at our sandbox; MUGSHOT_STATE keeps its own checkpoint
   // there too, so `keep` covers a real path inside the swept directory.
@@ -155,6 +212,10 @@ const TTL = 7 * DAY;
   ok(left.includes("mugshot_shown.json") && left.includes("mugshot_shown.json.jsonl"),
     "a rendered session of the same age is kept");
   ok(left.includes("unrelated.txt"), "unrelated file survived");
+  ok(!left.some((n) => n.startsWith("mugshot_payload_") || n.startsWith("mugshot_frame_")),
+    "a dead session's payload, frame and frame temp file are swept");
+  ok(left.includes("mugshot_daemon_0123456789.json") && left.includes("mugshot_daemon_0123456789.claim"),
+    "the daemon heartbeat and claim survive the sweep");
   ok(existsSync(path.join(tmp, `mugshot_${sid}.json.jsonl`)),
      "this session's own journal exists and was not swept");
 

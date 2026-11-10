@@ -8,6 +8,8 @@
 
 import os from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
 
 export const GEIGER_WINDOW = 30.0; // seconds of tool-run history kept for the sparkline
 export const MAX_RUN = 300.0; // drop an unclosed span after this (assume the Post was lost)
@@ -28,10 +30,26 @@ export function statePaths(sessionId) {
   return { checkpoint: base, journal: base + ".jsonl" };
 }
 
-// Every per-session file, next to the checkpoint, so MUGSHOT_STATE relocates all of them and
-// the sweep (which scans the checkpoint's directory) sees all of them. The writers, the sweep
-// and end-of-session cleanup all name files through here, so they always agree.
-export function sessionPaths(sessionId) {
+// Install-root hash: a stable short id of the directory this package runs from, so two
+// installations (say a repo checkout and a global npm copy) never read or write each other's
+// daemon files. Normalized to forward slashes and lower case, so spelling differences of the
+// same Windows path give the same hash. Only Node computes it; the installer bakes it into the
+// statusLine command.
+export const ROOT_HASH_LEN = 10;
+const PACKAGE_ROOT =path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+export function rootHash(root = PACKAGE_ROOT) {
+  const norm = path.resolve(root).replace(/\\/g, "/").toLowerCase();
+  return createHash("sha1").update(norm).digest("hex").slice(0, ROOT_HASH_LEN);
+}
+const ROOT_HASH = rootHash();
+
+// Every per-session file. Most sit next to the checkpoint, so MUGSHOT_STATE relocates them and
+// the sweep (which scans the checkpoint's directory) sees them. The render daemon's payload and
+// frame are the exception: they always live in the system temp dir, prefixed with the install
+// hash, so the daemon knows where to look without being told about MUGSHOT_STATE. The `.json`
+// suffix keeps them inside the sweep's name patterns even though the frame is text. The
+// writers, the sweep and end-of-session cleanup all name files through here, so they always agree.
+export function sessionPaths(sessionId, hash = ROOT_HASH) {
   const { checkpoint, journal } = statePaths(sessionId);
   const dir = path.dirname(checkpoint);
   const key = sidKey(sessionId);
@@ -42,6 +60,17 @@ export function sessionPaths(sessionId) {
     msys: path.join(dir, `mugshot_msys_${key}.json`),   // bash-count probe throttle marker
     adv: path.join(dir, `mugshot_adv_${key}.json`),     // advisor consult cache
     savings: path.join(dir, `savings_${key}.json`),     // lean-ctx savings accumulator
+    payload: path.join(os.tmpdir(), `mugshot_payload_${hash}_${key}.json`), // client -> daemon input
+    frame: path.join(os.tmpdir(), `mugshot_frame_${hash}_${key}.json`),     // daemon -> client output
+  };
+}
+
+// Daemon-wide files, one pair per installation, shared by every session it serves. Never a
+// session's scratch: the sweep and end-of-session cleanup leave them alone.
+export function daemonPaths(hash = ROOT_HASH) {
+  return {
+    heartbeat: path.join(os.tmpdir(), `mugshot_daemon_${hash}.json`),
+    claim: path.join(os.tmpdir(), `mugshot_daemon_${hash}.claim`), // restart throttle
   };
 }
 
