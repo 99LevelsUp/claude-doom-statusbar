@@ -11,7 +11,7 @@
 // `claude-doom-statusbar theme` (see theme.js)  State: $MUGSHOT_STATE
 
 import {
-  readFileSync, writeFileSync, renameSync, unlinkSync, openSync, fstatSync, readSync, closeSync, statfsSync, statSync, readdirSync,
+  readFileSync, writeFileSync, openSync, fstatSync, readSync, closeSync, statfsSync, statSync, readdirSync,
 } from "node:fs";
 import { spawn } from "node:child_process";
 import os from "node:os";
@@ -20,7 +20,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { parse as parseToml } from "smol-toml";
 import { pyround, sgrFg } from "./ansi.js";
 import { buildBar, setValues, resolvePreset, OK, TEXT, CRIT } from "./render.js";
-import { foldBatch, statePaths, sessionPaths, TASK_LINGER } from "./fold.js";
+import { foldBatch, statePaths, sessionPaths, writeAtomic, TASK_LINGER } from "./fold.js";
 import { currentTheme, themePreset } from "./theme.js";
 import { buildHotbar } from "./hotbar.js";
 
@@ -74,11 +74,18 @@ function _prettyModel(mid) {
   return parts.length ? `${parts[0][0].toUpperCase()}${parts[0].slice(1)} ${parts.slice(1).join(".")}`.trim() : mid;
 }
 
+// Transcript path -> { key, info }: the result depends only on the file's content.
+const advisorCache = new Map();
+
 function advisorInfo(p) {
-  let chunk;
+  let chunk, key;
   try {
     const fd = openSync(p, "r");
-    const size = fstatSync(fd).size;
+    const st = fstatSync(fd);
+    key = `${st.size}:${st.mtimeMs}`;
+    const hit = advisorCache.get(p);
+    if (hit && hit.key === key) { closeSync(fd); return hit.info; }
+    const size = st.size;
     const start = Math.max(0, size - 65536);
     const buf = Buffer.alloc(size - start);
     readSync(fd, buf, 0, buf.length, start);
@@ -96,7 +103,9 @@ function advisorInfo(p) {
     const c = (o.message || {}).content;
     if (Array.isArray(c) && c.some((b) => b.type === "advisor_tool_result")) resTs = o.timestamp || resTs;
   }
-  return [model ? _prettyModel(model) : null, resTs];
+  const info = [model ? _prettyModel(model) : null, resTs];
+  advisorCache.set(p, { key, info });
+  return info;
 }
 
 function godFlash(data, advTs, now, env) {
@@ -113,7 +122,6 @@ function godFlash(data, advTs, now, env) {
 
 const f = sgrFg;
 
-// `now` (epoch seconds) is the moment being rendered; the reset countdowns count from it.
 export function buildValues(data, git, now = Date.now() / 1000) {
   const v = {};
   const cw = data.context_window || {};
@@ -194,20 +202,6 @@ function _pick(bucket) {
   x = Math.imul(x, 0x85ebca77) >>> 0;
   x = (x ^ (x >>> 13)) >>> 0;
   return x % 3;
-}
-
-// Write via a temp file + rename, so a concurrent reader never sees a half-written file. If
-// the rename fails (on Windows: the target is open in another process) the temp file is
-// removed rather than left behind, and the error goes to the caller, which retries next render.
-function writeAtomic(file, data) {
-  const tmp = `${file}.${process.pid}.tmp`;
-  try {
-    writeFileSync(tmp, data);
-    renameSync(tmp, file);
-  } catch (e) {
-    try { unlinkSync(tmp); } catch { /* never written, or already gone */ }
-    throw e;
-  }
 }
 
 // Claude Code keeps each session's task list on disk (~/.claude/tasks/<list id>/<task id>.json),
@@ -443,6 +437,7 @@ function leanCtxSavings(cwd, sid, env) {
   const events = eventsPath(env);
   let st = { offset: null, saved: 0, original: 0 };
   try { st = { ...st, ...JSON.parse(readFileSync(sp, "utf8")) }; } catch { /* fresh session */ }
+  const before = JSON.stringify(st);
 
   let size = -1;
   try { size = statSync(events).size; } catch { /* no log */ }
@@ -478,7 +473,10 @@ function leanCtxSavings(cwd, sid, env) {
       st.offset += Buffer.byteLength(chunk.slice(0, lastNl + 1), "utf8");
     }
   }
-  try { writeFileSync(sp, JSON.stringify(st)); } catch { /* ignore */ }
+  const after = JSON.stringify(st);
+  if (after !== before) {
+    try { writeFileSync(sp, after); } catch { /* ignore */ }
+  }
   return st.saved > 0 ? fmtSaved(st) : null;
 }
 
@@ -645,10 +643,13 @@ function rateHealthValue(data) {
   // showed different health. One global file -> one shared k -> identical health everywhere, and
   // it captures movement that happened while any given session wasn't sampling.
   const file = path.join(TMP, "mugshot_ratehealth_global.json");
-  let prev = null;
-  try { prev = JSON.parse(readFileSync(file, "utf8")); } catch { /* no accumulator yet */ }
+  let raw, prev = null;
+  try { raw = readFileSync(file, "utf8"); prev = JSON.parse(raw); } catch { /* no accumulator yet */ }
   const { headroom, state } = rateHeadroom(prev, cur);
-  try { writeFileSync(file, JSON.stringify(state)); } catch { /* ignore */ }
+  const text = JSON.stringify(state);
+  if (text !== raw) {
+    try { writeFileSync(file, text); } catch { /* ignore */ }
+  }
   return headroom;
 }
 
@@ -734,12 +735,22 @@ function maybeReap() {
   } catch { /* the HUD is already rendered; a failed reap is not worth a crash */ }
 }
 
-// Render one session: its statusline payload (`data`), its environment (`env`: COLUMNS,
-// DOOMBAR_PRESET, DOOMBAR_THEME, DOOMBAR_TEXT_OVERFLOW, DOOMBAR_INDENT, MUGSHOT_STATE and the
-// other DOOMBAR_* settings) and the moment to draw (`now`, epoch seconds). Returns the bar's
-// lines, without trailing newlines. Both the one-shot command (main below) and a long-lived
-// renderer serving many sessions go through here, so they print the same bytes. Sessions must
-// render one at a time: render.js keeps the values in one module-level slot (setValues).
+// Parsed presets by file path, re-parsed when the file's mtime or size changes. The builders
+// never modify a preset, so one parse serves every render.
+const presetCache = new Map();
+function loadPreset(file) {
+  let st;
+  try { st = statSync(file); } catch { return parseToml(readFileSync(file, "utf8")); }
+  const key = `${st.mtimeMs}:${st.size}`;
+  const hit = presetCache.get(file);
+  if (hit && hit.key === key) return hit.cfg;
+  const cfg = parseToml(readFileSync(file, "utf8"));
+  presetCache.set(file, { key, cfg });
+  return cfg;
+}
+
+// Returns the bar's lines, without trailing newlines. Sessions must render one at a time:
+// render.js keeps the values in one module-level slot (setValues).
 export function renderSession({ data, env = process.env, now = Date.now() / 1000 }) {
   // A shallow copy: the rate-limit merge below rewrites data.rate_limits, and a caller that
   // keeps the payload between renders must not see it change.
@@ -748,7 +759,7 @@ export function renderSession({ data, env = process.env, now = Date.now() / 1000
   // A non-DOOM theme (see theme.js) swaps in its own preset; doom keeps DOOMBAR_PRESET.
   const preset = themePreset(currentTheme(env))
     || env.DOOMBAR_PRESET || path.join(REPO, "presets", "standard.toml");
-  const cfg = parseToml(readFileSync(preset, "utf8"));
+  const cfg = loadPreset(preset);
 
   // Account-wide limits: use the freshest reading any session has seen (see syncRateLimits).
   // A brand-new chat that hasn't called the API yet gets them too. DOOMBAR_RATELIMITS_SHARE=0
@@ -811,7 +822,7 @@ export function renderSession({ data, env = process.env, now = Date.now() / 1000
   // Sibling presets resolve relative to the chosen preset's directory.
   const presetDir = path.dirname(preset);
   const loadByName = (name) => {
-    try { return parseToml(readFileSync(path.join(presetDir, `${name}.toml`), "utf8")); }
+    try { return loadPreset(path.join(presetDir, `${name}.toml`)); }
     catch { return null; }
   };
   const selected = resolvePreset(cfg, target, loadByName, spriteFor);
@@ -820,7 +831,6 @@ export function renderSession({ data, env = process.env, now = Date.now() / 1000
   return buildBar(selected, target, spriteFor, tick, overflow).lines;
 }
 
-// The one-shot command Claude Code runs on every refresh: one payload on stdin, one bar out.
 function main() {
   let data = {};
   try { data = JSON.parse(readFileSync(0, "utf8")); } catch { data = {}; }

@@ -61,9 +61,6 @@ const hook = (event, env) => {
 }
 
 // --- The render daemon's payload and frame go too, under every install hash --------------------
-// They always live in the system temp dir and carry the install-root hash before the session key.
-// A session may have been served by more than one installation, so every hash's pair goes. A
-// session whose key merely ends with the ending key (`x_ending`) is a different session.
 {
   const tmp = mkdtempSync(path.join(os.tmpdir(), "doombar-end-frames-"));
   const env = { TEMP: tmp, TMP: tmp, TMPDIR: tmp };

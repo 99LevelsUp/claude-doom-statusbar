@@ -1,11 +1,5 @@
 #!/usr/bin/env node
-// Faces without blocking: a long-lived process must never wait on chafa. In no-spawn mode a
-// cache miss returns the pre-rendered .ans face at once and warms the chafa face in the
-// background; once the warm-up lands, the same request returns the chafa face.
-//
-// Expected faces come from separate instances of src/face.js (own cache), loaded through a
-// query string and driven down the default synchronous path, so the comparison uses the
-// exact parsed format instead of a re-implementation of the ANSI parser.
+// Faces without blocking: a long-lived process must never wait on chafa.
 
 import assert from "node:assert";
 import { spawnSync } from "node:child_process";

@@ -1,4 +1,5 @@
-// Shared, pure reducer for the DOOM HUD state. No I/O, no spawns.
+// Shared, pure reducer for the DOOM HUD state, plus the file names and atomic write every process
+// shares. No spawns.
 //
 // Two writers used to fight over one state file (hook did read-modify-write per event).
 // Now hooks only APPEND raw events to a per-session journal, and statusline FOLDS that
@@ -6,6 +7,7 @@
 // shape as before (spans, squad, pending, tasks, tasks_ts, expr, ts, errors, mode, git),
 // so every downstream consumer (activityValues, the tests) is unchanged.
 
+import { writeFileSync, renameSync, unlinkSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -24,8 +26,7 @@ export const sidKey = (id) => String(id || "default").replace(/[^A-Za-z0-9_-]/g,
 
 // Checkpoint (statusline-owned folded state) + journal (hook-appended events) live next to
 // each other so both processes derive the same pair from the session id. MUGSHOT_STATE
-// overrides the checkpoint path (tests, custom setups); the journal hangs off it. `env` is the
-// session's environment: a long-lived renderer passes each session's own, everyone else the default.
+// overrides the checkpoint path (tests, custom setups); the journal hangs off it.
 export function statePaths(sessionId, env = process.env) {
   const base = env.MUGSHOT_STATE || path.join(os.tmpdir(), `mugshot_${sidKey(sessionId)}.json`);
   return { checkpoint: base, journal: base + ".jsonl" };
@@ -37,12 +38,18 @@ export function statePaths(sessionId, env = process.env) {
 // same Windows path give the same hash. Only Node computes it; the installer bakes it into the
 // statusLine command.
 export const ROOT_HASH_LEN = 10;
-const PACKAGE_ROOT =path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+export const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export function rootHash(root = PACKAGE_ROOT) {
   const norm = path.resolve(root).replace(/\\/g, "/").toLowerCase();
   return createHash("sha1").update(norm).digest("hex").slice(0, ROOT_HASH_LEN);
 }
 const ROOT_HASH = rootHash();
+
+export const pipePath = (hash) => `\\\\.\\pipe\\doombar-${hash}`;
+
+export const payloadPrefix = (hash) => `mugshot_payload_${hash}_`;
+export const framePrefix = (hash) => `mugshot_frame_${hash}_`;
+export const daemonPrefix = (hash) => `mugshot_daemon_${hash}.`;
 
 // Every per-session file. Most sit next to the checkpoint, so MUGSHOT_STATE relocates them and
 // the sweep (which scans the checkpoint's directory) sees them. The render daemon's payload and
@@ -61,8 +68,8 @@ export function sessionPaths(sessionId, hash = ROOT_HASH, env = process.env) {
     msys: path.join(dir, `mugshot_msys_${key}.json`),   // bash-count probe throttle marker
     adv: path.join(dir, `mugshot_adv_${key}.json`),     // advisor consult cache
     savings: path.join(dir, `savings_${key}.json`),     // lean-ctx savings accumulator
-    payload: path.join(os.tmpdir(), `mugshot_payload_${hash}_${key}.json`), // client -> daemon input
-    frame: path.join(os.tmpdir(), `mugshot_frame_${hash}_${key}.json`),     // daemon -> client output
+    payload: path.join(os.tmpdir(), `${payloadPrefix(hash)}${key}.json`), // client -> daemon input
+    frame: path.join(os.tmpdir(), `${framePrefix(hash)}${key}.json`),     // daemon -> client output
   };
 }
 
@@ -70,9 +77,23 @@ export function sessionPaths(sessionId, hash = ROOT_HASH, env = process.env) {
 // session's scratch: the sweep and end-of-session cleanup leave them alone.
 export function daemonPaths(hash = ROOT_HASH) {
   return {
-    heartbeat: path.join(os.tmpdir(), `mugshot_daemon_${hash}.json`),
-    claim: path.join(os.tmpdir(), `mugshot_daemon_${hash}.claim`), // restart throttle
+    heartbeat: path.join(os.tmpdir(), `${daemonPrefix(hash)}json`),
+    claim: path.join(os.tmpdir(), `${daemonPrefix(hash)}claim`), // restart throttle
   };
+}
+
+// Write via a temp file + rename, so a concurrent reader never sees a half-written file. On
+// failure (on Windows typically a rename while another process has the target open) the temp
+// file is removed and the error is rethrown.
+export function writeAtomic(file, text) {
+  const tmp = `${file}.${process.pid}.tmp`;
+  try {
+    writeFileSync(tmp, text);
+    renameSync(tmp, file);
+  } catch (e) {
+    try { unlinkSync(tmp); } catch {}
+    throw e;
+  }
 }
 
 export function base(tool) {

@@ -73,9 +73,7 @@ try {
     ok(out2 === "doombar: offline\n", `a missing client prints the offline line (got: ${JSON.stringify(out2)})`);
   }
 
-  // The one-shot renderer: the installed command everywhere else, and on Windows the command that
-  // sessions opened before an upgrade keep running until Claude Code restarts them.
-  // Run it the way Claude Code does: through a shell, command verbatim.
+  // The one-shot renderer, run the way Claude Code does: through a shell, command verbatim.
   const out = execSync(client ? OLD_CMD : cmd, { input: sample, encoding: "utf-8", env });
 
   ok(out.length > 0, `wired command produced output (${out.length} bytes)`);

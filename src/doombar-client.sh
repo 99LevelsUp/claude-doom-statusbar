@@ -115,10 +115,7 @@ __doombar_client() {
     return
   fi
 
-  # Session key, as sidKey: missing or empty id -> "default"; every UTF-16 unit outside
-  # [A-Za-z0-9_-] -> "_"; at most 48 units. A JSON escape decodes to one character outside that
-  # set, so it becomes one "_" here as it does after JSON.parse. A UTF-8 character is one unit
-  # (its continuation bytes are dropped), or two beyond U+FFFF (a 4-byte lead byte counts twice).
+  # Session key, as sidKey counts UTF-16 units: a JSON escape is one unit, a 4-byte UTF-8 character two.
   local in= sid= key re='"session_id"[[:space:]]*:[[:space:]]*"([^"\\]*([\\].[^"\\]*)*)"'
   IFS= read -r -N 1000000 in
   [[ $in =~ $re ]] && sid=${BASH_REMATCH[1]}

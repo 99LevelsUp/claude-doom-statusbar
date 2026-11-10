@@ -29,7 +29,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import {
-  base, statePaths, sessionPaths, daemonPaths, rootHash, sidKey, ROOT_HASH_LEN, WRITE_TOOLS,
+  base, statePaths, sessionPaths, daemonPaths, rootHash, sidKey, pipePath, PACKAGE_ROOT, ROOT_HASH_LEN, WRITE_TOOLS,
 } from "./fold.js";
 
 // Re-export the reducer so existing tests importing from hook.js keep working.
@@ -113,11 +113,6 @@ function bashCount() {
 // never drops to zero, the shared section never gets an instant with no holder, and it cannot
 // heal itself. Killing the accumulated wrappers heals it at once — measured on Win11 26200:
 // 15233 ms + 0xC0000005 before, 277 ms + exit 0 immediately after. That is what we automate.
-//
-// Safety: we only ever kill bash.exe whose command line runs OUR statusline.js (the one-shot
-// renderer) or doombar-client.sh (the bash client that reads the render daemon's frames) and
-// which has outlived a healthy render many times over. Such a shell is already hung and doomed to
-// crash; its render was lost either way. Opt out with DOOMBAR_MSYS_REAP=0.
 const REAP_ON = process.env.DOOMBAR_MSYS_REAP !== "0";
 const envNum = (v, dflt) => (Number.isFinite(Number(v)) ? Number(v) : dflt);
 const REAP_MIN = envNum(process.env.DOOMBAR_MSYS_REAP_MIN, 4); // only act once a pile is forming
@@ -176,26 +171,6 @@ export function reapStaleShells() {
 }
 
 // --- Render daemon supervision ----------------------------------------------------------------
-// The bash statusLine client only reads frames that this installation's render daemon writes, and
-// nothing is ever started from a statusLine tick. So the hooks keep the daemon alive: on every
-// event but SessionEnd, for a session this installation's client serves (its payload file exists),
-// the hook judges the daemon and starts or replaces it.
-//
-//   * Pipe not bound: no daemon. Start one, kill nothing (a heartbeat left behind may name a pid
-//     that now belongs to anything).
-//   * Pipe bound, heartbeat fresh and version equal: healthy. That is the whole cost on the healthy
-//     path: one payload stat, one pipe probe, one heartbeat read (and the package version).
-//   * Pipe bound, heartbeat older than its window plus the throttle window, or another version:
-//     suspect. The first hook to see it records the sighting in the claim file and stops. A later
-//     hook, the grace period after that sighting, restarts it if the heartbeat has still not been
-//     renewed since, or the version still differs. A daemon that resumes after sleep renews within
-//     one pass and is left alone; an outdated one keeps renewing and is replaced anyway.
-//
-// Every start and restart is claimed through the claim file, so across all sessions and processes
-// the daemon is (re)started at most once per throttle window. Before a pid is stopped, the process
-// list must confirm it is node running this installation's src/daemon.js, started when the
-// heartbeat says; otherwise nothing is killed. Windows only: the client and daemon exist nowhere else.
-const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DAEMON_JS = path.join(PACKAGE_ROOT, "src", "daemon.js");
 const DAEMON_THROTTLE_MS = envNum(process.env.DOOMBAR_DAEMON_THROTTLE_MS, 15000);
 const DAEMON_GRACE_MS = envNum(process.env.DOOMBAR_DAEMON_GRACE_MS, 20000);
@@ -207,9 +182,6 @@ const DAEMON_EVENTS = new Set([
   "SessionStart", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied",
   "SubagentStart", "SubagentStop", "TaskCreated", "TaskCompleted", "Stop",
 ]);
-
-// The daemon's pipe name (pipePath in daemon.js), spelled out so a hook never loads the renderer.
-const daemonPipe = (hash) => `\\\\.\\pipe\\doombar-${hash}`;
 
 let installedVersion;
 function packageVersion() {
@@ -230,7 +202,7 @@ export function probePipe(pipe, timeoutMs = PROBE_MS) {
       if (done) return;
       done = true;
       clearTimeout(timer);
-      try { sock.destroy(); } catch { /* never connected */ }
+      try { sock.destroy(); } catch {}
       resolve(bound);
     };
     timer = setTimeout(() => finish(true), timeoutMs);
@@ -277,7 +249,7 @@ function replaceClaim(file, claim) {
   const tmp = `${file}.${process.pid}.tmp`;
   writeFileSync(tmp, JSON.stringify(claim));
   try { renameSync(tmp, file); } catch (e) {
-    try { unlinkSync(tmp); } catch { /* already gone */ }
+    try { unlinkSync(tmp); } catch {}
     throw e;
   }
 }
@@ -288,10 +260,10 @@ function withClaimLock(file, fn) {
   const lock = `${file}.lock`;
   try { closeSync(openSync(lock, "wx")); } catch (e) {
     if (!e || e.code !== "EEXIST") throw e;
-    try { if (Date.now() - statSync(lock).mtimeMs > LOCK_STALE_MS) unlinkSync(lock); } catch { /* gone meanwhile */ }
+    try { if (Date.now() - statSync(lock).mtimeMs > LOCK_STALE_MS) unlinkSync(lock); } catch {}
     return undefined;
   }
-  try { return fn(); } finally { try { unlinkSync(lock); } catch { /* already gone */ } }
+  try { return fn(); } finally { try { unlinkSync(lock); } catch {} }
 }
 
 const claimFresh = (c, now, throttleMs) => c.claimedAt > 0 && c.claimedAt <= now && now - c.claimedAt < throttleMs;
@@ -359,12 +331,10 @@ function spawnDaemon() {
   // The daemon lowers its own priority. Never awaited.
   const child = spawn(process.execPath, [DAEMON_JS],
     { detached: true, stdio: "ignore", windowsHide: true, cwd: os.tmpdir() });
-  child.on("error", () => { /* nothing to report to: the next claim window tries again */ });
+  child.on("error", () => {});
   child.unref();
 }
 
-// The restart this hook claimed: re-read the heartbeat, stop the judged pid only when it is still
-// the one serving, still suspect and confirmed as this installation's daemon, then start a new one.
 async function restartDaemon(judged, since, paths, pipe) {
   const hb = readJson(paths.heartbeat);
   if (judged && hb && hb.pid !== judged.pid) return; // another daemon took over meanwhile
@@ -372,7 +342,7 @@ async function restartDaemon(judged, since, paths, pipe) {
   if (!versionDiffers && hb && hb.renewed > since) return; // it came back
   const pid = confirmedDaemonPid(hb);
   if (pid !== null) {
-    try { spawnSync("taskkill", ["/F", "/PID", String(pid)], { timeout: 5000, windowsHide: true }); } catch { /* best effort */ }
+    try { spawnSync("taskkill", ["/F", "/PID", String(pid)], { timeout: 5000, windowsHide: true }); } catch {}
     for (const end = Date.now() + RELEASE_MS; Date.now() < end && await probePipe(pipe);) {
       await new Promise((r) => setTimeout(r, 50));
     }
@@ -385,7 +355,7 @@ async function superviseDaemon(name, sid) {
   const hash = rootHash(PACKAGE_ROOT);
   // Only where this installation's client is in use: it has written this session's payload.
   if (!existsSync(sessionPaths(sid, hash).payload)) return;
-  const paths = daemonPaths(hash), pipe = daemonPipe(hash);
+  const paths = daemonPaths(hash), pipe = pipePath(hash);
   if (!(await probePipe(pipe))) {
     if (claimRestart(paths.claim, Date.now())) spawnDaemon();
     return;
@@ -450,18 +420,14 @@ const SHARED_STATE = new Set([
 ]);
 
 // The render daemon's own files (daemonPaths in fold.js): one heartbeat and one claim per install
-// hash, shared by every session the daemon serves. Without this rule the checkpoint pattern below
-// would read `mugshot_daemon_<hash>.json` as the checkpoint of a session named `daemon_<hash>`.
-const HASH = `[0-9a-f]{${ROOT_HASH_LEN}}`;
-const DAEMON_FILE = new RegExp(`^mugshot_daemon_${HASH}\\.(?:json|claim)(?:\\.\\d+\\.tmp)?$`);
-// Per-session payload and frame (sessionPaths in fold.js), with any install hash. The hash has a
-// fixed length, so the captured key is exact: `_x_ending` never reads as session `ending`.
-const DAEMON_SESSION_FILE = new RegExp(`^mugshot_(?:payload|frame)_${HASH}_(.+)\\.json(?:\\.\\d+\\.tmp)?$`);
+// hash, shared by every session the daemon serves.
+const HASH_RE = `[0-9a-f]{${ROOT_HASH_LEN}}`;
+const DAEMON_FILE = new RegExp(`^mugshot_daemon_${HASH_RE}\\.(?:json|claim)(?:\\.\\d+\\.tmp)?$`);
+// Per-session payload and frame (sessionPaths in fold.js), with any install hash.
+const DAEMON_SESSION_FILE = new RegExp(`^mugshot_(?:payload|frame)_${HASH_RE}_(.+)\\.json(?:\\.\\d+\\.tmp)?$`);
 
 // The session key a file belongs to (the names sessionPaths in fold.js writes), or null when
-// the name is not one of ours. Markers, payloads and frames are matched before the checkpoint
-// pattern, which would otherwise read `mugshot_git_<key>.json` as the checkpoint of a session
-// named `git_<key>`.
+// the name is not one of ours.
 function sessionKeyOf(name) {
   let m = /^mugshot_(?:git|msys|adv)_(.+)\.json$/.exec(name) || /^savings_(.+)\.json$/.exec(name) ||
     DAEMON_SESSION_FILE.exec(name);
@@ -544,11 +510,11 @@ function endSession(sid) {
   // every hash's files for this exact key go.
   const key = sidKey(sid), tmpDir = path.dirname(p.payload);
   let tmpNames = [];
-  try { tmpNames = readdirSync(tmpDir); } catch { /* unreadable: nothing to clean */ }
+  try { tmpNames = readdirSync(tmpDir); } catch {}
   for (const n of tmpNames) {
     const m = DAEMON_SESSION_FILE.exec(n);
     if (!m || m[1] !== key) continue;
-    try { unlinkSync(path.join(tmpDir, n)); } catch { /* in use / already gone */ }
+    try { unlinkSync(path.join(tmpDir, n)); } catch {}
   }
   // Orphaned `<checkpoint>.<pid>.tmp` files from this session's interrupted atomic writes.
   const dir = path.dirname(p.checkpoint), stem = path.basename(p.checkpoint);

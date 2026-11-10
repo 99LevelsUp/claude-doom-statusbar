@@ -258,7 +258,7 @@ if (WIN) {
   rmSync(tmp, { recursive: true, force: true });
 }
 
-// 8. UPGRADE: a settings file wired to the old statusline.js is upgraded in place to the client.
+// 8. A settings file wired to statusline.js is rewired in place to the client.
 if (WIN) {
   const tmp = tmpdir();
   mkdirSync(path.join(tmp, ".claude"), { recursive: true });

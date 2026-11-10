@@ -10,9 +10,8 @@
 //
 // Times are microseconds since the epoch, plain decimal digits, so the client can compare them
 // with ${EPOCHREALTIME//[!0-9]/} (bash prints the locale's decimal separator, a comma in Czech).
-// Body lines never contain LF, CR or NUL. Every section states its line count, so a body line that happens to
-// read like a header or a section line is never mistaken for one. Header fields are key=value
-// pairs read by key; unknown keys are ignored so later contract versions can add fields.
+// Body lines never contain LF, CR or NUL. Header fields are key=value pairs read by key; unknown
+// keys are ignored.
 //
 // Which text to print at moment `now` (the same rules for every contract version):
 //   now > deadline                 -> the greyed copy (one per file, of the last slot)
@@ -20,8 +19,8 @@
 //                                     or the first slot when none has started yet
 // A file that is missing, malformed or declares a contract newer than FRAME_VERSION is "unknown".
 
-import { writeFileSync, renameSync, unlinkSync } from "node:fs";
 import { RESET, sgrFg } from "./ansi.js";
+import { writeAtomic } from "./fold.js";
 
 export const FRAME_VERSION = 1;
 
@@ -176,17 +175,13 @@ export function resolveFrame(text, nowMicros) {
   return { kind: "live", lines: pick.lines };
 }
 
-// Write via a temp file + rename, so a reader never sees a half-written frame. Any failure
-// (on Windows typically a rename while the client has the file open) removes the temp file and
-// returns false; the daemon simply writes again on its next pass.
+// On Windows the rename fails while the client has the file open; that returns false and the
+// daemon writes again on its next pass.
 export function writeFrame(file, frame) {
-  const tmp = `${file}.${process.pid}.tmp`;
   try {
-    writeFileSync(tmp, serializeFrame(frame));
-    renameSync(tmp, file);
+    writeAtomic(file, serializeFrame(frame));
     return true;
   } catch {
-    try { unlinkSync(tmp); } catch { /* never written, or already gone */ }
     return false;
   }
 }

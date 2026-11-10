@@ -116,11 +116,6 @@ const TTL = 7 * DAY;
 }
 
 // --- Payload and frame files belong to their session; daemon files belong to no session -----
-// The render daemon's per-session files carry the install-root hash before the session key:
-// mugshot_payload_<hash>_<key>.json and mugshot_frame_<hash>_<key>.json (plus `.<pid>.tmp`
-// leftovers of atomic writes). They are grouped with the rest of their session, so the session's
-// newest file decides for them too. The daemon-wide heartbeat and claim, one pair per install
-// hash, are shared state and never read as a session.
 {
   const HOUR = 60 * 60 * 1000;
   const H1 = "0123456789", H2 = "abcdef0123"; // two installations
@@ -163,7 +158,6 @@ const TTL = 7 * DAY;
   ok(/^[0-9a-f]{10}$/.test(h), `the install-root hash is 10 hex chars (${h})`);
   ok(rootHash("c:/users/DEV/doombar/") === h, "the hash ignores slash direction, case and a trailing slash");
   ok(rootHash("C:\\Users\\dev\\other") !== h, "a different install root gives a different hash");
-  ok(rootHash() === rootHash(path.join(HERE, "..")), "the default root is this package's root");
 }
 
 // --- End to end: the real hook sweeps its own temp dir on SessionStart ----------------------

@@ -19,7 +19,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { THEMES, THEME_NAMES, currentTheme, saveTheme, nextTheme, resolveTheme } from "../src/theme.js";
-import { rootHash, daemonPaths } from "../src/fold.js";
+import { rootHash, daemonPaths, daemonPrefix, payloadPrefix, framePrefix } from "../src/fold.js";
 import { confirmedDaemonPid } from "../src/hook.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url)); // bin/
@@ -44,7 +44,7 @@ const NODE_CMD = `node "${STATUSLINE}"`;
 // `if` rather than `[ ] && . || echo`: the client may end with a non-zero status after printing
 // a frame, and `||` would then add the offline line under it.
 // Everywhere else (macOS ships bash 3.2; without Git Bash Claude Code uses PowerShell) the
-// one-shot renderer stays, and it also keeps serving sessions opened before an upgrade.
+// one-shot renderer stays.
 const CLIENT_CMD = `DOOMBAR_ROOT_HASH=${HASH}; f="${CLIENT}"; ` +
   `if [ -r "$f" ]; then . "$f"; else echo 'doombar: offline'; fi`;
 
@@ -150,7 +150,7 @@ function install(cfg, preset, refresh, command) {
     notes.push("replaced your existing statusLine (the old one is in settings.json.bak)");
   }
   // Assigning a fresh object (rather than patching) also drops a refreshInterval left behind by
-  // an older install, and moves an old `node …/statusline.js` command over to the client in place.
+  // an older install — which is the whole point of this change on Windows.
   cfg.statusLine = { type: "command", command };
   if (refresh > 0) cfg.statusLine.refreshInterval = refresh;
   else if (existing?.refreshInterval) {
@@ -222,23 +222,23 @@ function stopDaemon() {
   const notes = [];
   const { heartbeat } = daemonPaths(HASH);
   let hb = null;
-  try { hb = JSON.parse(readFileSync(heartbeat, "utf-8")); } catch { /* no daemon recorded */ }
+  try { hb = JSON.parse(readFileSync(heartbeat, "utf-8")); } catch {}
   if (process.platform === "win32" && hb && Number.isInteger(hb.pid) && hb.pid > 0) {
     const pid = confirmedDaemonPid(hb);
     if (pid !== null) {
-      try { process.kill(pid); notes.push(`stopped the render daemon (pid ${pid})`); } catch { /* exited meanwhile */ }
+      try { process.kill(pid); notes.push(`stopped the render daemon (pid ${pid})`); } catch {}
     } else {
       notes.push(`left pid ${hb.pid} running: not confirmed as this installation's render daemon`);
     }
   }
   const dir = os.tmpdir();
-  const prefixes = [`mugshot_daemon_${HASH}.`, `mugshot_payload_${HASH}_`, `mugshot_frame_${HASH}_`];
+  const prefixes = [daemonPrefix(HASH), payloadPrefix(HASH), framePrefix(HASH)];
   let removed = 0;
   let names = [];
-  try { names = readdirSync(dir); } catch { /* no temp dir, nothing to remove */ }
+  try { names = readdirSync(dir); } catch {}
   for (const n of names) {
     if (!prefixes.some((p) => n.startsWith(p))) continue;
-    try { unlinkSync(path.join(dir, n)); removed++; } catch { /* gone meanwhile */ }
+    try { unlinkSync(path.join(dir, n)); removed++; } catch {}
   }
   if (removed) notes.push(`removed ${removed} render daemon file(s) from ${dir}`);
   return notes;

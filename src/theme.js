@@ -35,7 +35,6 @@ export const themeFile = (env = process.env) =>
 
 // Current theme: $DOOMBAR_THEME wins (handy for a one-off), then the saved file, then doom.
 // Anything unknown or unreadable falls back to doom, so a bad file can never blank the HUD.
-// `env` is the session's environment (a long-lived renderer passes each session's own).
 export function currentTheme(env = process.env) {
   let t = env.DOOMBAR_THEME;
   if (!t) {
