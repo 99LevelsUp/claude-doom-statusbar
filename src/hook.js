@@ -19,11 +19,18 @@
 //
 // Journal: <checkpoint>.jsonl where checkpoint is $MUGSHOT_STATE or <temp>/mugshot_<sid>.json.
 
-import { appendFileSync, writeFileSync, readFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import {
+  appendFileSync, writeFileSync, readFileSync, readdirSync, statSync, unlinkSync, existsSync, renameSync,
+  openSync, writeSync, closeSync,
+} from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import net from "node:net";
+import os from "node:os";
 import path from "node:path";
-import { base, statePaths, sessionPaths, sidKey, ROOT_HASH_LEN, WRITE_TOOLS } from "./fold.js";
+import {
+  base, statePaths, sessionPaths, daemonPaths, rootHash, sidKey, ROOT_HASH_LEN, WRITE_TOOLS,
+} from "./fold.js";
 
 // Re-export the reducer so existing tests importing from hook.js keep working.
 export { foldActivity, expression } from "./fold.js";
@@ -165,6 +172,229 @@ export function reapStaleShells() {
     spawnSync("taskkill", ["/F", ...args], { encoding: "utf8", timeout: 5000, windowsHide: true });
   } catch { return 0; }
   return pids.length;
+}
+
+// --- Render daemon supervision ----------------------------------------------------------------
+// The bash statusLine client only reads frames that this installation's render daemon writes, and
+// nothing is ever started from a statusLine tick. So the hooks keep the daemon alive: on every
+// event but SessionEnd, for a session this installation's client serves (its payload file exists),
+// the hook judges the daemon and starts or replaces it.
+//
+//   * Pipe not bound: no daemon. Start one, kill nothing (a heartbeat left behind may name a pid
+//     that now belongs to anything).
+//   * Pipe bound, heartbeat fresh and version equal: healthy. That is the whole cost on the healthy
+//     path: one payload stat, one pipe probe, one heartbeat read (and the package version).
+//   * Pipe bound, heartbeat older than its window plus the throttle window, or another version:
+//     suspect. The first hook to see it records the sighting in the claim file and stops. A later
+//     hook, the grace period after that sighting, restarts it if the heartbeat has still not been
+//     renewed since, or the version still differs. A daemon that resumes after sleep renews within
+//     one pass and is left alone; an outdated one keeps renewing and is replaced anyway.
+//
+// Every start and restart is claimed through the claim file, so across all sessions and processes
+// the daemon is (re)started at most once per throttle window. Before a pid is stopped, the process
+// list must confirm it is node running this installation's src/daemon.js, started when the
+// heartbeat says; otherwise nothing is killed. Windows only: the client and daemon exist nowhere else.
+const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const DAEMON_JS = path.join(PACKAGE_ROOT, "src", "daemon.js");
+const DAEMON_THROTTLE_MS = envNum(process.env.DOOMBAR_DAEMON_THROTTLE_MS, 15000);
+const DAEMON_GRACE_MS = envNum(process.env.DOOMBAR_DAEMON_GRACE_MS, 20000);
+const PROBE_MS = 150;
+const LOCK_STALE_MS = 2000; // a lock holder does a few file operations; older means it died
+const START_SLACK_MS = 2000; // heartbeat start vs the process list's creation time
+const RELEASE_MS = 2000; // how long a stopped daemon may take to release its pipe
+const DAEMON_EVENTS = new Set([
+  "SessionStart", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied",
+  "SubagentStart", "SubagentStop", "TaskCreated", "TaskCompleted", "Stop",
+]);
+
+// The daemon's pipe name (pipePath in daemon.js), spelled out so a hook never loads the renderer.
+const daemonPipe = (hash) => `\\\\.\\pipe\\doombar-${hash}`;
+
+let installedVersion;
+function packageVersion() {
+  if (installedVersion === undefined) {
+    try { installedVersion = String(JSON.parse(readFileSync(path.join(PACKAGE_ROOT, "package.json"), "utf8")).version); } catch { installedVersion = "0"; }
+  }
+  return installedVersion;
+}
+
+const readJson = (file) => { try { return JSON.parse(readFileSync(file, "utf8")); } catch { return null; } };
+
+// Is anything bound to the pipe? Only "no such pipe" means no. A timeout or any other error (all
+// instances busy, a daemon whose loop hangs) counts as bound: the heartbeat then decides.
+export function probePipe(pipe, timeoutMs = PROBE_MS) {
+  return new Promise((resolve) => {
+    let sock = null, timer = null, done = false;
+    const finish = (bound) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try { sock.destroy(); } catch { /* never connected */ }
+      resolve(bound);
+    };
+    timer = setTimeout(() => finish(true), timeoutMs);
+    sock = net.connect(pipe);
+    sock.on("connect", () => finish(true));
+    sock.on("error", (e) => finish(!(e && e.code === "ENOENT")));
+  });
+}
+
+// Pure: what a heartbeat says about the daemon at `now`. A missing heartbeat is both stale and
+// of an unknown version.
+export function daemonHealth(hb, { version, now, throttleMs = DAEMON_THROTTLE_MS }) {
+  if (!hb || typeof hb !== "object") return { stale: true, versionDiffers: true };
+  const windowMs = (Number(hb.window) > 0 ? Number(hb.window) : 3) * 1000;
+  const stale = !(Number.isFinite(hb.renewed) && now - hb.renewed <= windowMs + throttleMs);
+  return { stale, versionDiffers: String(hb.version) !== String(version) };
+}
+
+// The claim file holds { claimedAt, suspectSince? }: when the last start or restart was claimed
+// (0 for none), and when a suspect daemon was first sighted. It is created exclusively; once it
+// exists it is never deleted, only replaced (temp file plus rename) under a short exclusive lock,
+// so an exclusive create and a replacement can never both win.
+function readClaim(file) {
+  let text = null;
+  try { text = readFileSync(file, "utf8"); } catch (e) { if (e && e.code === "ENOENT") return null; }
+  try {
+    const c = JSON.parse(text);
+    if (c && typeof c === "object") {
+      return { claimedAt: Number.isFinite(c.claimedAt) ? c.claimedAt : 0,
+        suspectSince: Number.isFinite(c.suspectSince) ? c.suspectSince : null };
+    }
+  } catch { /* half-written: an exclusive create writes after it opens */ }
+  try { return { claimedAt: statSync(file).mtimeMs, suspectSince: null }; } catch { return null; }
+}
+
+function createClaim(file, claim) {
+  let fd;
+  try { fd = openSync(file, "wx"); } catch (e) { if (e && e.code === "EEXIST") return false; throw e; }
+  try { writeSync(fd, JSON.stringify(claim)); } finally { closeSync(fd); }
+  return true;
+}
+
+function replaceClaim(file, claim) {
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(claim));
+  try { renameSync(tmp, file); } catch (e) {
+    try { unlinkSync(tmp); } catch { /* already gone */ }
+    throw e;
+  }
+}
+
+// Runs `fn` holding `<claim>.lock`; returns undefined without running it when another hook holds
+// the lock. A lock left by a hook that died is removed for the next hook, never entered at once.
+function withClaimLock(file, fn) {
+  const lock = `${file}.lock`;
+  try { closeSync(openSync(lock, "wx")); } catch (e) {
+    if (!e || e.code !== "EEXIST") throw e;
+    try { if (Date.now() - statSync(lock).mtimeMs > LOCK_STALE_MS) unlinkSync(lock); } catch { /* gone meanwhile */ }
+    return undefined;
+  }
+  try { return fn(); } finally { try { unlinkSync(lock); } catch { /* already gone */ } }
+}
+
+const claimFresh = (c, now, throttleMs) => c.claimedAt > 0 && c.claimedAt <= now && now - c.claimedAt < throttleMs;
+
+// Claim a start or restart at `now`. True for exactly one caller per throttle window: a claim
+// older than the window (or one holding only a sighting) is free and is replaced.
+export function claimRestart(file, now, throttleMs = DAEMON_THROTTLE_MS) {
+  if (createClaim(file, { claimedAt: now })) return true;
+  return withClaimLock(file, () => {
+    const c = readClaim(file);
+    if (c === null) return createClaim(file, { claimedAt: now });
+    if (claimFresh(c, now, throttleMs)) return false;
+    replaceClaim(file, { claimedAt: now });
+    return true;
+  }) === true;
+}
+
+// A suspect daemon: record the first sighting, or, once the grace period after it has passed,
+// claim the restart. A sighting counts only while the heartbeat has not been renewed since it, or
+// while the version differs; otherwise this is a new first sighting.
+function suspectStep(file, { hb, versionDiffers, now, graceMs = DAEMON_GRACE_MS, throttleMs = DAEMON_THROTTLE_MS }) {
+  return withClaimLock(file, () => {
+    const c = readClaim(file);
+    const since = c && c.suspectSince !== null && (versionDiffers || !(hb && hb.renewed > c.suspectSince))
+      ? c.suspectSince : null;
+    if (since === null) {
+      const next = { claimedAt: c ? c.claimedAt : 0, suspectSince: now };
+      if (c === null) createClaim(file, next); else replaceClaim(file, next);
+      return { step: "sighted" };
+    }
+    if (now - since < graceMs) return { step: "waiting" };
+    if (claimFresh(c, now, throttleMs)) return { step: "throttled" };
+    replaceClaim(file, { claimedAt: now });
+    return { step: "restart", since };
+  }) || { step: "busy" };
+}
+
+// One process from the process list, as "name|creation epoch ms|command line". `pid` is checked
+// to be a positive integer before it is put into the query.
+const PROCESS_PS = (pid) =>
+  `Get-CimInstance Win32_Process -Filter "ProcessId=${pid}" | ForEach-Object { ` +
+  "'{0}|{1}|{2}' -f $_.Name, ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds(), $_.CommandLine }";
+
+// Pure: does this process-list row show node running `daemonJs`, created at `start` (epoch ms)?
+export function isOurDaemon(row, start, daemonJs = DAEMON_JS) {
+  const m = /^([^|]*)\|(-?\d+)\|(.*)$/.exec(String(row || "").trim());
+  if (!m || !/^node(\.exe)?$/i.test(m[1])) return false;
+  const norm = (s) => s.replace(/\\/g, "/").toLowerCase();
+  if (!norm(m[3]).includes(norm(daemonJs))) return false;
+  return Number.isFinite(start) && Math.abs(Number(m[2]) - start) <= START_SLACK_MS;
+}
+
+function confirmedDaemonPid(hb) {
+  const pid = hb && hb.pid;
+  if (!Number.isInteger(pid) || pid <= 0 || pid === process.pid) return null;
+  try {
+    const r = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", PROCESS_PS(pid)],
+      { encoding: "utf8", timeout: 5000, windowsHide: true });
+    return r.status === 0 && isOurDaemon(r.stdout, hb.start) ? pid : null;
+  } catch { return null; }
+}
+
+function spawnDaemon() {
+  // Detached and outside the package directory, so npm can replace the package while it runs.
+  // The daemon lowers its own priority. Never awaited.
+  const child = spawn(process.execPath, [DAEMON_JS],
+    { detached: true, stdio: "ignore", windowsHide: true, cwd: os.tmpdir() });
+  child.on("error", () => { /* nothing to report to: the next claim window tries again */ });
+  child.unref();
+}
+
+// The restart this hook claimed: re-read the heartbeat, stop the judged pid only when it is still
+// the one serving, still suspect and confirmed as this installation's daemon, then start a new one.
+async function restartDaemon(judged, since, paths, pipe) {
+  const hb = readJson(paths.heartbeat);
+  if (judged && hb && hb.pid !== judged.pid) return; // another daemon took over meanwhile
+  const { versionDiffers } = daemonHealth(hb, { version: packageVersion(), now: Date.now() });
+  if (!versionDiffers && hb && hb.renewed > since) return; // it came back
+  const pid = confirmedDaemonPid(hb);
+  if (pid !== null) {
+    try { spawnSync("taskkill", ["/F", "/PID", String(pid)], { timeout: 5000, windowsHide: true }); } catch { /* best effort */ }
+    for (const end = Date.now() + RELEASE_MS; Date.now() < end && await probePipe(pipe);) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  }
+  spawnDaemon();
+}
+
+async function superviseDaemon(name, sid) {
+  if (process.platform !== "win32" || !DAEMON_EVENTS.has(name)) return;
+  const hash = rootHash(PACKAGE_ROOT);
+  // Only where this installation's client is in use: it has written this session's payload.
+  if (!existsSync(sessionPaths(sid, hash).payload)) return;
+  const paths = daemonPaths(hash), pipe = daemonPipe(hash);
+  if (!(await probePipe(pipe))) {
+    if (claimRestart(paths.claim, Date.now())) spawnDaemon();
+    return;
+  }
+  const hb = readJson(paths.heartbeat);
+  const now = Date.now();
+  const { stale, versionDiffers } = daemonHealth(hb, { version: packageVersion(), now });
+  if (!stale && !versionDiffers) return;
+  const r = suspectStep(paths.claim, { hb, versionDiffers, now });
+  if (r.step === "restart") await restartDaemon(hb, r.since, paths, pipe);
 }
 
 // Best-effort per-session throttle (not a lock): a tiny marker holds the last git ts + cwd.
@@ -329,7 +559,7 @@ function endSession(sid) {
   }
 }
 
-function main() {
+async function main() {
   try {
     let ev = {};
     try { ev = JSON.parse(readFileSync(0, "utf8")); } catch { ev = {}; }
@@ -390,6 +620,9 @@ function main() {
         try { writeFileSync(msysMarkerPath(sid), JSON.stringify({ ts: nowMs })); } catch { /* ignore */ }
       }
     }
+
+    // Last, after the synchronous work, so the pipe probe's short timeout is never eaten by it.
+    await superviseDaemon(name, sid);
   } catch { /* swallow everything: a hook must never block a tool */ }
   process.exit(0);
 }
