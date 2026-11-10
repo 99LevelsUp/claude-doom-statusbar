@@ -114,9 +114,10 @@ function bashCount() {
 // heal itself. Killing the accumulated wrappers heals it at once — measured on Win11 26200:
 // 15233 ms + 0xC0000005 before, 277 ms + exit 0 immediately after. That is what we automate.
 //
-// Safety: we only ever kill bash.exe whose command line runs OUR statusline.js and which has
-// outlived a healthy render many times over. Such a shell is already hung and doomed to crash;
-// its render was lost either way. Opt out with DOOMBAR_MSYS_REAP=0.
+// Safety: we only ever kill bash.exe whose command line runs OUR statusline.js (the one-shot
+// renderer) or doombar-client.sh (the bash client that reads the render daemon's frames) and
+// which has outlived a healthy render many times over. Such a shell is already hung and doomed to
+// crash; its render was lost either way. Opt out with DOOMBAR_MSYS_REAP=0.
 const REAP_ON = process.env.DOOMBAR_MSYS_REAP !== "0";
 const envNum = (v, dflt) => (Number.isFinite(Number(v)) ? Number(v) : dflt);
 const REAP_MIN = envNum(process.env.DOOMBAR_MSYS_REAP_MIN, 4); // only act once a pile is forming
@@ -127,7 +128,7 @@ const REAP_AGE = envNum(process.env.DOOMBAR_MSYS_REAP_AGE, 10000); // ms; a heal
 export function stalePids(procs, ageMs = REAP_AGE) {
   return (procs || [])
     .filter((p) => p && Number.isInteger(p.pid) && p.pid > 0)
-    .filter((p) => /statusline\.js/i.test(String(p.cmd || "")))
+    .filter((p) => /statusline\.js|doombar-client\.sh/i.test(String(p.cmd || "")))
     .filter((p) => Number.isFinite(p.ageMs) && p.ageMs >= ageMs)
     .map((p) => p.pid);
 }

@@ -31,9 +31,11 @@
 // on the loop timer every ~2 s; no watcher, so no handle keeps the package directory from being
 // moved or replaced), so the next hook starts the new code. It runs at below-normal priority from the temp dir (npm can replace the package
 // meanwhile), and nothing in the loop waits on a child process: faces come from the .ans files
-// until an asynchronous chafa warm-up lands (setFaceNoSpawn).
+// until an asynchronous chafa warm-up lands (setFaceNoSpawn). On Windows the loop also starts the
+// detached Git Bash wrapper reaper on its own timer (maybeStartReaper), without waiting for it.
 
 import { readFileSync, readdirSync, statSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
+import { spawn as spawnChild } from "node:child_process";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -92,6 +94,28 @@ function writeAtomic(file, text) {
     try { unlinkSync(tmp); } catch { /* never written, or already gone */ }
     return false;
   }
+}
+
+// Hung Git Bash statusLine wrappers keep getting reaped while a session sits idle and no hook
+// events arrive. The one-shot renderer kicked the reaper on its own ticks (maybeReap in
+// statusline.js); with the bash client there is no node per tick, so the daemon does it on its own
+// timer: at most one detached `node src/hook.js --reap` per DOOMBAR_REAP_TICK (default 15 s),
+// Windows only, never with DOOMBAR_MSYS_REAP=0. It is never awaited, so the loop never waits on a
+// child process. Returns whether a reaper was started.
+const DEFAULT_REAP_TICK_MS = 15000;
+const HOOK_JS = path.join(HERE, "hook.js");
+export function maybeStartReaper(state, { now = Date.now(), env = process.env, platform = process.platform,
+  spawn = spawnChild } = {}) {
+  if (platform !== "win32" || env.DOOMBAR_MSYS_REAP === "0") return false;
+  const tick = envNum(env.DOOMBAR_REAP_TICK, DEFAULT_REAP_TICK_MS);
+  if (state.reapedAt !== undefined && now - state.reapedAt < tick) return false;
+  state.reapedAt = now;
+  try {
+    const child = spawn(process.execPath, [HOOK_JS, "--reap"], { detached: true, stdio: "ignore", windowsHide: true });
+    child.on("error", () => { /* a reaper that cannot start is retried next interval */ });
+    child.unref();
+  } catch { /* same */ }
+  return true;
 }
 
 // One loop pass at `now` (epoch ms) over this installation's files in `dir`. Returns
@@ -206,6 +230,7 @@ export function startDaemon({ root = PACKAGE_ROOT, env = process.env } = {}) {
           srcChecked = now;
           if (srcSnapshot(src) !== original) { stop(); return; }
         }
+        maybeStartReaper(state, { now, env });
         let idle = false;
         try {
           idle = runPass(state, { dir, hash, now }).idle;

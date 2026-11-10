@@ -110,6 +110,20 @@ try {
   ok(stalePids([{ pid: 106, ageMs: NaN, cmd: "statusline.js" }], 10000).length === 0,
     "an unparsable age is treated as not-yet-stale");
 
+  // The bash client replaces the per-tick node renderer: its wrappers hang the same way and are
+  // reaped the same way, while the long-lived node daemon beside them never is.
+  const clientProcs = [
+    { pid: 201, ageMs: 30000, cmd: 'C:\\Program Files\\Git\\bin\\bash.exe -c "DOOMBAR_HASH=0123456789 . \\"C:/x/claude-doom-statusbar/src/doombar-client.sh\\""' },
+    { pid: 202, ageMs: 30000, cmd: 'C:\\Program Files\\Git\\usr\\bin\\bash.exe -c "node \\"C:/x/claude-doom-statusbar/src/statusline.js\\""' },
+    { pid: 203, ageMs: 200, cmd: 'C:\\Program Files\\Git\\bin\\bash.exe -c ". \\"C:/x/src/doombar-client.sh\\""' },
+    { pid: 204, ageMs: 99999, cmd: '"C:\\Program Files\\nodejs\\node.exe" C:/x/src/daemon.js' },
+  ];
+  const clientPicked = stalePids(clientProcs, 10000);
+  ok(clientPicked.includes(201), "an old bash running doombar-client.sh is reaped");
+  ok(clientPicked.includes(202), "an old bash running statusline.js is still reaped");
+  ok(!clientPicked.includes(203), "a young bash running doombar-client.sh is left alone");
+  ok(!clientPicked.includes(204), "the node render daemon is never reaped");
+
   // --- Enumerator parse: only the first two "|" are structural. -------------------------
   // The wrapper we reap is literally `bash -c "node …"`, so a piped inner command is normal
   // and must not truncate the command line we match `statusline.js` against.

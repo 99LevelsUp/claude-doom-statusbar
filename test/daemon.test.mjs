@@ -52,7 +52,7 @@ const { renderSession } = await import("../src/statusline.js");
 const { sessionPaths, daemonPaths, rootHash } = await import("../src/fold.js");
 const { parseFrame } = await import("../src/frame.js");
 const { setFaceNoSpawn } = await import("../src/face.js");
-const { createState, runPass, pipePath } = await import("../src/daemon.js");
+const { createState, runPass, pipePath, maybeStartReaper } = await import("../src/daemon.js");
 setFaceNoSpawn(true);
 
 const HASH = rootHash();
@@ -273,6 +273,42 @@ try {
       writeFileSync(cache, pinned);
       unlinkSync(payloadFile("collect"));
     }
+  }
+
+  // The daemon starts the detached reaper (`node src/hook.js --reap`) on its own timer: at most one
+  // per DOOMBAR_REAP_TICK (default 15 s), on Windows only, never with DOOMBAR_MSYS_REAP=0, and
+  // never waits for it. Driven with a simulated clock and a recording spawn, so no reaper runs.
+  {
+    const fakeSpawn = () => {
+      const calls = [];
+      const fn = (cmd, args, opts) => {
+        const child = { unrefd: false, unref() { this.unrefd = true; }, on() { return this; } };
+        calls.push({ cmd, args, opts, child });
+        return child;
+      };
+      return { fn, calls };
+    };
+    const drive = ({ env = {}, platform = "win32", ms = 60000 } = {}) => {
+      const sp = fakeSpawn();
+      const t0 = Date.now();
+      const state = createState({ version: VERSION, now: t0 });
+      for (let now = t0; now <= t0 + ms; now += 500) maybeStartReaper(state, { now, env, platform, spawn: sp.fn });
+      return sp.calls;
+    };
+    const calls = drive();
+    ok(calls.length === 5, `over 60 s the default 15 s tick starts one reaper per interval (got ${calls.length})`);
+    const c = calls[0];
+    ok(c && c.cmd === process.execPath && /[\\/]src[\\/]hook\.js$/.test(c.args[0]) && c.args[1] === "--reap"
+      && c.args.length === 2, "the reaper is `node src/hook.js --reap`");
+    ok(c && c.opts.detached === true && c.opts.stdio === "ignore" && c.opts.windowsHide === true && c.child.unrefd,
+      "it is detached, silent and unref'd, so the daemon never waits for it");
+    ok(drive({ env: { DOOMBAR_REAP_TICK: "1000" }, ms: 10000 }).length === 11, "DOOMBAR_REAP_TICK sets the interval");
+    ok(drive({ env: { DOOMBAR_MSYS_REAP: "0" } }).length === 0, "DOOMBAR_MSYS_REAP=0 starts no reaper");
+    ok(drive({ platform: "linux" }).length === 0, "no reaper outside Windows");
+    const throwing = createState({ version: VERSION });
+    let threw = false;
+    try { maybeStartReaper(throwing, { env: {}, platform: "win32", spawn: () => { throw new Error("spawn failed"); } }); } catch { threw = true; }
+    ok(!threw, "a reaper that cannot be spawned never breaks the loop");
   }
 
   // ---- Real processes -------------------------------------------------------------------------
