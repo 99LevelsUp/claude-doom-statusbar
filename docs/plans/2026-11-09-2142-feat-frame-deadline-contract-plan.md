@@ -119,7 +119,7 @@ flowchart TB
 - AE8. **Covers R8.** Given a package upgrade while the old daemon keeps running, when the next hook event arrives, then the hook replaces it with the daemon from the installed package.
 - AE9. **Covers R10.** Given an idle session whose payload and frame body stay unchanged for 60 s, when ticks continue, then the bar never shows the greyed copy.
 - AE10. **Covers R15.** Given two sessions where one session's render throws on every attempt, when ticks continue, then only that session greys and no hook restarts the daemon.
-- AE11. **Covers R8.** Given the laptop resumes from sleep with every frame hours old, when the first hook event arrives within the start-up grace period of a daemon that is renewing again, then nothing is restarted.
+- AE11. **Covers R8.** Given the laptop resumes from sleep with every frame and the heartbeat hours old, when the first hook event arrives and the daemon renews within the grace period after that, then nothing is restarted.
 - AE12. **Covers R12.** Given the repo install and the global install each have a session open, when both sessions' hooks fire, then each installation keeps exactly one daemon and neither replaces the other's.
 - AE13. **Covers R13.** Given the same payload, preset and moment, when the daemon renders a session, then its frame equals today's `src/statusline.js` output byte for byte.
 
@@ -140,6 +140,7 @@ flowchart TB
 - A generation number in the header: considered, not built until something reads it; the contract version lets it be added later.
 - A backup copy of the previous frame to hide a failed read: considered, not built; the client retries the read once instead (KTD5). Revisit if the owner sees the minimal line flash on a healthy daemon.
 - A second reaper home outside hooks and the daemon: considered, not built (Key Decisions).
+- The client and daemon on macOS, Linux, or Windows without Git Bash: those keep today's one-shot renderer (KTD14).
 
 <!-- ce-section: work-relationships -->
 ### How This Work Fits Together
@@ -172,23 +173,30 @@ This plan covers the render daemon (D-1) with its frame contract and liveness. T
 
 ## Planning Contract
 
-**Product Contract preservation:** changed: scope extended from the client/frame contract to the whole D-1 daemon (owner decision); R8 now judges liveness by a daemon-wide heartbeat with a start-up grace period and adds `SessionStart` to its triggers (planning finding: one session's frame cannot judge a shared daemon); R6 wording allows forwarding the session's environment; added R12–R19, F3, AE10–AE13; removed the "daemon internals" scope boundary.
+**Product Contract preservation:** changed: scope extended from the client/frame contract to the whole D-1 daemon (owner decision); R8 now judges liveness by a daemon-wide heartbeat with a start-up grace period and adds `SessionStart` to its triggers (planning finding: one session's frame cannot judge a shared daemon); R6 wording allows forwarding the session's environment; added R12–R19, F3, AE10–AE13; removed the "daemon internals" scope boundary; AE11 reworded to the suspect-then-confirm grace rule (KTD3); added a scope boundary keeping non-Windows platforms on the one-shot renderer (KTD14).
 
 ### Key Technical Decisions
 
-- KTD1. **One daemon per installation, guarded by a named pipe whose name hashes the install root.** Binding `\\.\pipe\doombar-<hash of package root>` is the singleton: "address in use" means one already runs. The pipe also answers a one-line status request (pid, version, start time) that hooks use. Daemon-wide files carry the same hash. Governs R12 (Key Decision "One daemon per installation"); absorbs D-11.
+- KTD1. **One daemon per installation, guarded by a named pipe whose name hashes the install root.** Binding `\\.\pipe\doombar-<rootHash>` is the singleton: "address in use" means one already runs. The pipe answers nothing; hooks only probe whether it exists. Every file of an installation, per session or daemon-wide, carries the same hash (KTD9), so two installations never read or write each other's files. Governs R12 (Key Decision "One daemon per installation"); absorbs D-11.
 - KTD2. **The daemon keeps no state that cannot be rebuilt.** Per-session state comes from the existing checkpoint and journal fold (`src/fold.js`); caches are warm-up only. Killing the daemon is always safe, so upgrade, crash and hang recovery share one path: stop by pid, start fresh.
-- KTD3. **Liveness is a daemon-wide heartbeat file plus a start-up grace period.** The daemon rewrites `mugshot_daemon_<rootHash>.json` (pid, version, start time, last renewal) on every renewal pass. A hook restarts when the heartbeat is older than the validity window plus the throttle window and the daemon started longer ago than the grace period, when the pid is gone, or when the version differs. Default throttle window 15 s, grace 20 s. Governs R8, R15.
+- KTD3. **The pipe says whether a daemon exists; the heartbeat says whether it serves; an identity check gates every kill.** The daemon rewrites `mugshot_daemon_<rootHash>.json` (pid, process start time, version, the largest validity window it uses, last renewal) on every renewal pass and deletes it on idle exit. A hook decides:
+  1. Pipe not bound: no daemon; start one and kill nothing.
+  2. Pipe bound and version differs, or heartbeat older than its recorded window plus the throttle window: the daemon is suspect. The first hook that sees it suspect records the time in the claim file; a later hook restarts only if the heartbeat has still not been renewed a grace period after that first sighting. A daemon that resumes after sleep renews within one loop pass and is left alone.
+  3. Before stopping a pid, the hook confirms through the process list (the same Get-CimInstance query shape as `LIST_SHELLS_PS` in `src/hook.js`) that it is a node process running this installation's `src/daemon.js` with the heartbeat's start time; otherwise it kills nothing.
+
+  Default throttle window 15 s, grace 20 s. Governs R8, R15.
 - KTD4. **Frame file: plain text, one header line, slot bodies, greyed copy.** Directional shape: a header line `doombar-frame v=1 daemon=<version> deadline=<microseconds> slots=<n>`, then for each slot a `slot <start-microseconds>` line followed by its body lines, then a `grey` line followed by the greyed body. The client accepts every contract version up to its own. Slot rules for v1 and later: before the first slot, print the first; between slots, print the latest slot that has started; past the deadline, print the greyed copy (one per file, of the last slot). Governs R4, R5, R7.
-- KTD5. **The client reads with builtins and retries a failed read once.** It extracts `session_id` from the stdin JSON with `[[ =~ ]]`, reproduces `sidKey` (`src/fold.js:21`), derives paths from `MUGSHOT_STATE` or the temp directory, writes the payload with a redirect, reads the frame with `read -r -d ''` (never branching on its exit status), compares `$EPOCHREALTIME` digits with the deadline, and prints. All stderr of the client is discarded so it never becomes bar output. Governs R1, R2, R7.
+- KTD5. **The client reads with builtins and retries a failed read once.** It extracts `session_id` from the stdin JSON with `[[ =~ ]]`, reproduces `sidKey` (`src/fold.js:21`), derives paths from the temp directory and the install hash that the statusLine command sets in front of the sourced client (KTD9), writes the payload with a redirect, reads the frame with `read -r -d ''` (never branching on its exit status), compares `$EPOCHREALTIME` digits with the deadline, and prints. All stderr of the client is discarded so it never becomes bar output. Governs R1, R2, R7.
 - KTD6. **The payload file carries the session's environment.** The client writes the stdin JSON to the payload file preceded by one line with the forwarded variables (`COLUMNS`, `DOOMBAR_PRESET`, `DOOMBAR_THEME`, `DOOMBAR_TEXT_OVERFLOW`, `DOOMBAR_INDENT`, `DOOMBAR_FRAME_WINDOW`, `MUGSHOT_STATE`). The daemon keeps the last payload that parsed and ignores a half-written one. Governs R6, R14.
 - KTD7. **Rendering is extracted, not rewritten.** `src/statusline.js` `main()` splits into a pure-as-possible `renderSession(input)` used by both the old one-shot path and the daemon. Sessions render one at a time because `src/render.js` keeps one global `VALUES` (`:55-56`). The snapshot tests prove both paths print the same bytes. Governs R13, R19.
 - KTD8. **No synchronous child process inside the daemon.** chafa faces are warmed asynchronously at start and on first need; until a face is warm, the daemon uses the pre-rendered `.ans` fallback that `src/face.js` already has. The reaper runs as today's detached `node src/hook.js --reap`, started by the daemon on its own timer. Governs R18, R11.
-- KTD9. **Flat files next to the checkpoint, named through `sessionPaths`.** Per session: `mugshot_payload_<key>.json` and `mugshot_frame_<key>.json` (the `.json` suffix keeps them inside the existing sweep pattern even though the frame is text). Per installation: `mugshot_daemon_<rootHash>.json` (heartbeat) and `mugshot_daemon_<rootHash>.claim` (restart throttle), both outside the per-session patterns and listed with the shared files. Every new name goes into `sessionPaths`, `sessionKeyOf`, `endSession` and `SHARED_STATE` (`src/fold.js`, `src/hook.js`). Governs R10, R17.
+- KTD9. **Flat files in the temp directory, prefixed with the install hash, named through `sessionPaths`.** Per session: `mugshot_payload_<rootHash>_<key>.json` and `mugshot_frame_<rootHash>_<key>.json` (the `.json` suffix keeps them inside the sweep even though the frame is text). They live in the temp directory, not next to a relocated `MUGSHOT_STATE` checkpoint, so the daemon always knows where to look; `MUGSHOT_STATE` still travels in the payload and decides where the checkpoint and journal live. Per installation: `mugshot_daemon_<rootHash>.json` (heartbeat) and `mugshot_daemon_<rootHash>.claim` (restart throttle and first suspect sighting). The installer writes the hash into the statusLine command, so the client never computes it. Every new name goes into `sessionPaths`, `sessionKeyOf`, `endSession` and the sweep's shared-file rule; `mugshot_daemon_*` is never treated as a session (today `src/hook.js:224` would match it as a checkpoint). Governs R10, R12, R17.
 - KTD10. **Restart throttle is an atomic, expiring claim.** A hook claims a restart by creating the `.claim` file exclusively; a claim older than the throttle window is free and is replaced. The hook re-reads the heartbeat after winning the claim and kills only the pid it judged, never "whatever runs". Governs R9.
 - KTD11. **The daemon starts detached, outside the package directory, at below-normal priority.** Same spawn shape as today's `maybeReap` (`src/statusline.js:644-659`), with the working directory set to the temp directory so npm can replace the package while it runs, and `os.setPriority` to below normal. If U1 shows a hook-spawned child dies with its Claude Code window, U1 also picks a breakaway launch. Governs R8, R18.
 - KTD12. **The daemon loop runs on its own clock.** Every 500 ms with jitter (avoiding phase lock with Claude Code's 1 s reads): pick up changed payloads, render changed sessions, renew every active session's frame and the heartbeat. The collector (rate-limit pooling, CPU sample) runs on its own interval, `DOOMBAR_COLLECT_MS`, default 1000. A session is active from its first payload until `SessionEnd` deletes its files or it sends no payload for the idle period. Idle exit after `DOOMBAR_DAEMON_IDLE_MS`, default 10 minutes with no payload from any session. Governs R10, R16, R17.
 - KTD13. **Frame writes are temp file plus rename, retried within the window.** A rename that fails because the client has the file open is retried on the next loop pass, well inside the 3 s window; repeated failures are counted in the heartbeat for diagnosis. Governs R10.
+- KTD14. **The client and daemon run on Windows with Git Bash only.** The client needs bash 5 builtins (`$EPOCHREALTIME`) and the singleton needs a Windows named pipe; Claude Code falls back to PowerShell when Git Bash is absent, and macOS ships bash 3.2. Everywhere else the installer keeps `node "<ROOT>/src/statusline.js"`, which U4 keeps working unchanged. Governs R3, R19.
+- KTD15. **The daemon exits when its own package's source changes.** It watches its `src/` directory (no child process) and exits on a change, so the next hook starts the new code. In the owner's repo checkout the `package.json` version does not change between edits, and without this an edited renderer would keep running until Claude Code closed. Governs R8.
 
 ### High-Level Technical Design
 
@@ -230,14 +238,18 @@ Hook restart decision:
 
 ```mermaid
 flowchart TB
-  E[SessionStart, tool event or Stop] --> A{daemon pid alive and version matches?}
-  A -->|no| C{claim free?}
-  A -->|yes| H{heartbeat older than window + throttle and start older than grace?}
+  E[SessionStart, tool event or Stop] --> P{pipe of this installation bound?}
+  P -->|no| C{claim free?}
+  P -->|yes| H{version differs or heartbeat older than window + throttle?}
   H -->|no| X[do nothing]
-  H -->|yes| C
+  H -->|yes| G{suspect for longer than grace?}
+  G -->|no, first sighting| M[record sighting in claim file]
+  G -->|yes| C
   C -->|no| X
-  C -->|yes| K[re-check; stop judged pid]
-  K --> S[spawn daemon detached]
+  C -->|yes| I{pid is this installation's daemon.js with matching start time?}
+  I -->|yes| K[stop that pid]
+  I -->|no or no pid| S[spawn daemon detached]
+  K --> S
 ```
 
 Daemon lifecycle:
@@ -271,7 +283,7 @@ U1 measures first, because its results can change U3, U6 and U7. U2 and U3 are i
 | U1 | Measure the platform assumptions | `lab/daemon-spike/` (gitignored) | none |
 | U2 | Session and daemon file names | `src/fold.js`, `src/hook.js` | none |
 | U3 | Frame format module | `src/frame.js` | none |
-| U4 | Extract the session render | `src/statusline.js`, `src/render.js` | none |
+| U4 | Extract the session render | `src/statusline.js`, `src/fold.js`, `src/theme.js` | none |
 | U5 | Faces without blocking | `src/face.js` | none |
 | U6 | Render daemon | `src/daemon.js` | U2, U3, U4, U5 |
 | U7 | Bash client | `src/doombar-client.sh` | U2, U3 |
@@ -291,9 +303,10 @@ U1 measures first, because its results can change U3, U6 and U7. U2 and U3 are i
 2. Start a detached node child from an async hook of session A, close A, and check the child survives while session B stays open; if it dies, try a breakaway launch and record which one works.
 3. Rename-replace a file in a tight loop while bash reads it every second; record whether renames fail and how often.
 4. Record `TEMP`, `TMP`, `TMPDIR` and `COLUMNS` as seen by the statusLine bash that Claude Code starts.
+5. Run a below-normal-priority node loop on a 500 ms timer while a build saturates every core at normal priority; record the longest gap between timer firings next to the 3 s default window.
 **Execution note:** measurement only; nothing here ships. Stop per the Goal Capsule if item 1 or 2 fails without a workaround.
 **Test expectation:** none -- measurement spike; its outputs become assumptions recorded in this plan.
-**Verification:** each of the four questions has a recorded answer, and the plan's assumptions are updated where an answer differs.
+**Verification:** each of the five questions has a recorded answer, and the plan's assumptions are updated where an answer differs.
 
 ### U2. Session and daemon file names
 
@@ -302,15 +315,15 @@ U1 measures first, because its results can change U3, U6 and U7. U2 and U3 are i
 **Dependencies:** none.
 **Files:** `src/fold.js`, `src/hook.js`, `test/journal-sweep.test.mjs`, `test/session-end.test.mjs`.
 **Approach:**
-1. Add payload and frame paths to `sessionPaths`.
-2. Add the daemon-wide heartbeat and claim names (per install-root hash) beside the shared-state names.
-3. Teach `sessionKeyOf` the new per-session names and their temp-file variants; add the daemon files to `SHARED_STATE`.
-4. Add payload and frame to `endSession`'s delete list.
+1. Add hash-prefixed payload and frame paths in the temp directory to `sessionPaths` (KTD9).
+2. Add the daemon-wide heartbeat and claim names per install hash.
+3. Teach `sessionKeyOf` the new per-session names and their temp-file variants; make `mugshot_daemon_*` a shared-file pattern that is never read as a session.
+4. Add payload and frame to `endSession`'s delete list; since an ending session may have files under either installation's hash, delete every hash's payload and frame for that session key.
 **Patterns to follow:** `sessionPaths` comment at `src/fold.js:31-33`; `staleStateFiles` pure decision half in `src/hook.js:230-255`.
 **Test scenarios:**
 - A stale payload and frame of a dead session are swept after the unrendered TTL.
 - A frame temp file `mugshot_frame_<k>.json.<pid>.tmp` left behind is swept.
-- The heartbeat and claim files are never swept as a session named `daemon`.
+- The heartbeat and claim files of any install hash are never swept as a session named `daemon`.
 - `endSession` removes the session's payload and frame and keeps its savings file.
 **Verification:** the sweep and session-end tests pass with the new names and nothing outside them is deleted.
 
@@ -341,9 +354,9 @@ U1 measures first, because its results can change U3, U6 and U7. U2 and U3 are i
 **Goal:** the daemon and the old one-shot command render through the same function and print the same bytes.
 **Requirements:** R13, R14, R19; KTD7.
 **Dependencies:** none.
-**Files:** `src/statusline.js`, `src/render.js` (only if `setValues` needs a scoped form), `test/render-snapshot.test.mjs`, `test/statusline-tasks.test.mjs`.
+**Files:** `src/statusline.js`, `src/fold.js`, `src/theme.js`, `src/render.js` (only if `setValues` needs a scoped form), `test/render-snapshot.test.mjs`, `test/statusline-tasks.test.mjs`.
 **Approach:**
-1. Move the body of `main()` after stdin parsing into `renderSession({ data, env, now })`, reading settings from the passed `env` instead of `process.env`.
+1. Move the body of `main()` after stdin parsing into `renderSession({ data, env, now })`, reading settings from the passed `env` instead of `process.env`. This includes the two readers outside `statusline.js`: `statePaths` (`MUGSHOT_STATE`, `src/fold.js:27`) and `currentTheme` (`DOOMBAR_THEME`, `src/theme.js:39`) take the environment as an argument, defaulting to `process.env`.
 2. Keep `main()` as a thin wrapper: read stdin, call `renderSession` with `process.env`, write output, run `maybeReap`.
 3. Keep `setValues` immediately before the builders so sessions rendered one after another cannot see each other's values.
 **Execution note:** characterization first: run the snapshot tests before the move and keep them byte-identical after.
@@ -378,9 +391,9 @@ U1 measures first, because its results can change U3, U6 and U7. U2 and U3 are i
 **Dependencies:** U2, U3, U4, U5.
 **Files:** `src/daemon.js`, `test/daemon.test.mjs`, `package.json`.
 **Approach:**
-1. Bind the per-installation named pipe; exit at once if it is taken. Answer status requests on it.
-2. Lower own priority; set the working directory to the temp directory.
-3. Loop on a jittered ~500 ms timer: find payload files whose mtime changed, parse each (keep the last good one), render changed sessions through `renderSession` with the payload's environment, write each active session's frame with a fresh deadline, write the heartbeat.
+1. Bind the per-installation named pipe; exit at once if it is taken.
+2. Lower own priority; set the working directory to the temp directory; watch the package's `src/` and exit on a change (KTD15).
+3. Loop on a jittered ~500 ms timer: find this installation's payload files (its hash prefix only) whose mtime changed, parse each (keep the last good one), render changed sessions through `renderSession` with the payload's environment, write each active session's frame with a fresh deadline, write the heartbeat.
 4. Wrap each session's render; a session that throws keeps its previous frame body and stops getting renewed until it renders again, so only it greys.
 5. Run the collector on its own interval and hand its results to every render.
 6. Drop a session when its payload file disappears or after the idle period; exit when no session remains for the idle period.
@@ -392,8 +405,9 @@ U1 measures first, because its results can change U3, U6 and U7. U2 and U3 are i
 - Covers AE10. One session whose render throws keeps its old body without renewal while a second session keeps renewing.
 - A half-written payload is ignored and the previous payload is used.
 - A second daemon for the same install root exits without writing anything.
-- Covers AE12. A daemon for another install root runs beside it with its own heartbeat.
-- With no payload for the idle period, the daemon exits and removes nothing but its own pipe.
+- Covers AE12. A daemon for another install root runs beside it with its own heartbeat, and neither renders nor writes a frame for a payload carrying the other's hash.
+- With no payload for the idle period, the daemon exits and removes its pipe and heartbeat, nothing else.
+- Touching a file under the daemon's own `src/` makes it exit.
 - The collector runs once per interval regardless of the number of sessions.
 **Verification:** the daemon test passes with fake payloads in a sandboxed temp directory; frames match U4's output for the same input.
 
@@ -404,7 +418,7 @@ U1 measures first, because its results can change U3, U6 and U7. U2 and U3 are i
 **Dependencies:** U2, U3.
 **Files:** `src/doombar-client.sh`, `test/client.test.mjs`, `package.json`.
 **Approach:**
-1. Read stdin into a variable; extract `session_id`; derive the session key exactly as `sidKey`; derive paths from `MUGSHOT_STATE`'s directory or the temp directory.
+1. Read stdin into a variable; extract `session_id`; derive the session key exactly as `sidKey`; derive paths from the temp directory and the install hash the command provides.
 2. Write the payload file: one line of forwarded environment, then the JSON.
 3. Read the frame; on failure retry once; parse the header; pick the slot, the greyed copy or the built-in offline line.
 4. Print; send all stderr to nowhere.
@@ -418,7 +432,7 @@ U1 measures first, because its results can change U3, U6 and U7. U2 and U3 are i
 - Covers AE6. A three-slot frame prints the slot for the current moment.
 - A session id with characters outside `[A-Za-z0-9_-]` and longer than 48 characters maps to the same file name `sidKey` produces.
 - The payload file holds the forwarded `COLUMNS` and `DOOMBAR_PRESET` followed by the stdin JSON.
-- With `MUGSHOT_STATE` set, payload and frame live in its directory.
+- With `MUGSHOT_STATE` set, payload and frame stay in the temp directory under the install hash, and the payload's environment line carries `MUGSHOT_STATE`.
 - A run prints nothing to stderr even when the payload directory is unwritable.
 **Verification:** the client test passes under Git Bash; U1's process count shows no extra process per tick.
 
@@ -429,16 +443,20 @@ U1 measures first, because its results can change U3, U6 and U7. U2 and U3 are i
 **Dependencies:** U2, U6.
 **Files:** `src/hook.js`, `test/daemon-restart.test.mjs`, `package.json`.
 **Approach:**
-1. On `SessionStart`, tool events and `Stop`, read the heartbeat and judge it per KTD3; this stays cheap (one file read, one pid check).
-2. When not serving, claim the restart exclusively; on success re-read, stop the judged pid, spawn the daemon detached.
-3. Everything stays inside the existing `try`/`catch` so the hook still exits 0.
+1. On `SessionStart`, tool events and `Stop`, probe this installation's pipe and read its heartbeat, judging per KTD3; the healthy path stays at one pipe probe and one file read.
+2. On a first suspect sighting, record it in the claim file and stop.
+3. When a restart is due, claim it exclusively; on success confirm the pid's identity, stop it only if confirmed, then spawn the daemon detached.
+4. Run only where the client is installed (KTD14).
+5. Everything stays inside the existing `try`/`catch` so the hook still exits 0.
 **Patterns to follow:** `maybeReap` spawn (`src/statusline.js:644-659`); `shouldSnapshotGit` gating (`src/hook.js:172-183`).
 **Test scenarios:**
-- With no heartbeat, a `SessionStart` event spawns one daemon.
+- With the pipe unbound and no heartbeat, a `SessionStart` event spawns one daemon and kills nothing.
 - Covers AE4. Ten concurrent hook processes against a dead daemon spawn exactly one.
-- Covers AE7. A heartbeat older than window plus throttle, with a start older than grace, stops the recorded pid and spawns a new daemon.
-- Covers AE11. A stale heartbeat with a start inside the grace period spawns nothing.
-- Covers AE8. A heartbeat whose version differs from the package version replaces the daemon.
+- Covers AE7. A bound pipe with a heartbeat that stays stale past the grace period after the first sighting stops the confirmed daemon pid and spawns a new daemon.
+- Covers AE11. A stale heartbeat that is renewed within the grace period after the first sighting causes no restart.
+- Covers AE8. A heartbeat whose version differs from the package version replaces the daemon after the same grace.
+- A stale heartbeat left from before a reboot, whose pid now belongs to an unrelated live process, never kills that process; with the pipe unbound the hook only spawns.
+- A heartbeat pid that is alive but not this installation's `daemon.js` is not killed.
 - A claim older than the throttle window is taken over; a fresh claim blocks.
 - A hook whose restart path throws still exits 0.
 **Verification:** the restart test passes; the hook's added latency on a healthy daemon stays within one file read.
@@ -466,14 +484,15 @@ U1 measures first, because its results can change U3, U6 and U7. U2 and U3 are i
 **Dependencies:** U7, U8.
 **Files:** `bin/cli.js`, `test/installer.test.mjs`, `test/smoke.test.mjs`, `README.md`.
 **Approach:**
-1. The statusLine command sources the client with a guard that prints the offline line when the file is missing, still without a process.
+1. On Windows with Git Bash present, the statusLine command sets the install hash and sources the client, with a guard that prints the offline line when the file is missing, still without a process; everywhere else it keeps `node "<ROOT>/src/statusline.js"` (KTD14).
 2. Add the client path to `SL_MARKS` and point the install guard at the client.
-3. `uninstall` asks the daemon of this installation to exit and removes its files; `uninstall --project` leaves another installation's daemon alone.
+3. `uninstall` stops this installation's daemon by its confirmed pid (KTD3) and removes its files; `uninstall --project` leaves another installation's daemon alone.
 4. Keep `src/statusline.js` runnable for sessions on the old command.
 5. Update the README's architecture and troubleshooting notes.
 **Patterns to follow:** numbered blocks in `test/installer.test.mjs`; re-pointing logic in `bin/cli.js:144-152`.
 **Test scenarios:**
-- Install writes the sourced client command and reinstall is idempotent.
+- Install on Windows with Git Bash writes the sourced client command with the install hash; reinstall is idempotent.
+- Install with Git Bash absent (simulated) writes the old `node` command.
 - Uninstall removes the client command and reports nothing left behind.
 - An existing settings file with the old `statusline.js` command is upgraded in place.
 - The smoke test runs the installed command through Git Bash and gets the offline line when no daemon runs.
