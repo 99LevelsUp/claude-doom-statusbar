@@ -115,7 +115,7 @@ flowchart TB
 - AE4. **Covers R9.** Given a daemon that crashes right after every start, when many hook events fire, then it is started at most once per throttle window and the bar stays greyed in between.
 - AE5. **Covers R7.** Given a new session whose daemon has not written a frame yet, when the first tick runs, then the client prints the built-in offline line instead of nothing.
 - AE6. **Covers R4.** Given a later daemon writes several slots for the coming seconds, when an unchanged client reads the file, then it prints the slot for the current second.
-- AE7. **Covers R8.** Given a daemon whose process is alive but has stopped renewing, when the first hook event arrives after the validity window plus one throttle window, then the hook stops it, starts a new one, and the bar returns to live.
+- AE7. **Covers R8.** Given a daemon whose process is alive but has stopped renewing, when a hook event after the validity window plus one throttle window records it as suspect and a later hook event arrives after the grace period with the heartbeat still not renewed, then that later hook stops it, starts a new one, and the bar returns to live.
 - AE8. **Covers R8.** Given a package upgrade while the old daemon keeps running, when the next hook event arrives, then the hook replaces it with the daemon from the installed package.
 - AE9. **Covers R10.** Given an idle session whose payload and frame body stay unchanged for 60 s, when ticks continue, then the bar never shows the greyed copy.
 - AE10. **Covers R15.** Given two sessions where one session's render throws on every attempt, when ticks continue, then only that session greys and no hook restarts the daemon.
@@ -173,7 +173,7 @@ This plan covers the render daemon (D-1) with its frame contract and liveness. T
 
 ## Planning Contract
 
-**Product Contract preservation:** changed: scope extended from the client/frame contract to the whole D-1 daemon (owner decision); R8 now judges liveness by a daemon-wide heartbeat with a start-up grace period and adds `SessionStart` to its triggers (planning finding: one session's frame cannot judge a shared daemon); R6 wording allows forwarding the session's environment; added R12–R19, F3, AE10–AE13; removed the "daemon internals" scope boundary; AE11 reworded to the suspect-then-confirm grace rule (KTD3); added a scope boundary keeping non-Windows platforms on the one-shot renderer (KTD14).
+**Product Contract preservation:** changed: scope extended from the client/frame contract to the whole D-1 daemon (owner decision); R8 now judges liveness by a daemon-wide heartbeat with a start-up grace period and adds `SessionStart` to its triggers (planning finding: one session's frame cannot judge a shared daemon); R6 wording allows forwarding the session's environment; added R12–R19, F3, AE10–AE13; removed the "daemon internals" scope boundary; AE7 and AE11 reworded to the suspect-then-confirm grace rule (KTD3); added a scope boundary keeping non-Windows platforms on the one-shot renderer (KTD14).
 
 ### Key Technical Decisions
 
@@ -181,7 +181,7 @@ This plan covers the render daemon (D-1) with its frame contract and liveness. T
 - KTD2. **The daemon keeps no state that cannot be rebuilt.** Per-session state comes from the existing checkpoint and journal fold (`src/fold.js`); caches are warm-up only. Killing the daemon is always safe, so upgrade, crash and hang recovery share one path: stop by pid, start fresh.
 - KTD3. **The pipe says whether a daemon exists; the heartbeat says whether it serves; an identity check gates every kill.** The daemon rewrites `mugshot_daemon_<rootHash>.json` (pid, process start time, version, the largest validity window it uses, last renewal) on every renewal pass and deletes it on idle exit. A hook decides:
   1. Pipe not bound: no daemon; start one and kill nothing.
-  2. Pipe bound and version differs, or heartbeat older than its recorded window plus the throttle window: the daemon is suspect. The first hook that sees it suspect records the time in the claim file; a later hook restarts only if the heartbeat has still not been renewed a grace period after that first sighting. A daemon that resumes after sleep renews within one loop pass and is left alone.
+  2. Pipe bound and version differs, or heartbeat older than its recorded window plus the throttle window: the daemon is suspect. The first hook that sees it suspect records the time in the claim file; a later hook, a grace period after that first sighting, restarts when the heartbeat has still not been renewed or when the version, read again, still differs (a healthy old daemon keeps renewing, so a version mismatch never waits on a stale heartbeat). A daemon that resumes after sleep renews within one loop pass and is left alone.
   3. Before stopping a pid, the hook confirms through the process list (the same Get-CimInstance query shape as `LIST_SHELLS_PS` in `src/hook.js`) that it is a node process running this installation's `src/daemon.js` with the heartbeat's start time; otherwise it kills nothing.
 
   Default throttle window 15 s, grace 20 s. Governs R8, R15.
@@ -193,7 +193,7 @@ This plan covers the render daemon (D-1) with its frame contract and liveness. T
 - KTD9. **Flat files in the temp directory, prefixed with the install hash, named through `sessionPaths`.** Per session: `mugshot_payload_<rootHash>_<key>.json` and `mugshot_frame_<rootHash>_<key>.json` (the `.json` suffix keeps them inside the sweep even though the frame is text). They live in the temp directory, not next to a relocated `MUGSHOT_STATE` checkpoint, so the daemon always knows where to look; `MUGSHOT_STATE` still travels in the payload and decides where the checkpoint and journal live. Per installation: `mugshot_daemon_<rootHash>.json` (heartbeat) and `mugshot_daemon_<rootHash>.claim` (restart throttle and first suspect sighting). The installer writes the hash into the statusLine command, so the client never computes it. Every new name goes into `sessionPaths`, `sessionKeyOf`, `endSession` and the sweep's shared-file rule; `mugshot_daemon_*` is never treated as a session (today `src/hook.js:224` would match it as a checkpoint). Governs R10, R12, R17.
 - KTD10. **Restart throttle is an atomic, expiring claim.** A hook claims a restart by creating the `.claim` file exclusively; a claim older than the throttle window is free and is replaced. The hook re-reads the heartbeat after winning the claim and kills only the pid it judged, never "whatever runs". Governs R9.
 - KTD11. **The daemon starts detached, outside the package directory, at below-normal priority.** Same spawn shape as today's `maybeReap` (`src/statusline.js:644-659`), with the working directory set to the temp directory so npm can replace the package while it runs, and `os.setPriority` to below normal. If U1 shows a hook-spawned child dies with its Claude Code window, U1 also picks a breakaway launch. Governs R8, R18.
-- KTD12. **The daemon loop runs on its own clock.** Every 500 ms with jitter (avoiding phase lock with Claude Code's 1 s reads): pick up changed payloads, render changed sessions, renew every active session's frame and the heartbeat. The collector (rate-limit pooling, CPU sample) runs on its own interval, `DOOMBAR_COLLECT_MS`, default 1000. A session is active from its first payload until `SessionEnd` deletes its files or it sends no payload for the idle period. Idle exit after `DOOMBAR_DAEMON_IDLE_MS`, default 10 minutes with no payload from any session. Governs R10, R16, R17.
+- KTD12. **The daemon loop runs on its own clock.** Every 500 ms with jitter (avoiding phase lock with Claude Code's 1 s reads): pick up changed payloads, render every active session (the clock, the marquee, mugshot animation and the collector's shared data all change without a new payload), write every active session's frame with a fresh deadline, write the heartbeat. The collector (rate-limit pooling, CPU sample) runs on its own interval, `DOOMBAR_COLLECT_MS`, default 1000. A session is active from its first payload until `SessionEnd` deletes its files or it sends no payload for the idle period. Idle exit after `DOOMBAR_DAEMON_IDLE_MS`, default 10 minutes with no payload from any session. Governs R10, R16, R17.
 - KTD13. **Frame writes are temp file plus rename, retried within the window.** A rename that fails because the client has the file open is retried on the next loop pass, well inside the 3 s window; repeated failures are counted in the heartbeat for diagnosis. Governs R10.
 - KTD14. **The client and daemon run on Windows with Git Bash only.** The client needs bash 5 builtins (`$EPOCHREALTIME`) and the singleton needs a Windows named pipe; Claude Code falls back to PowerShell when Git Bash is absent, and macOS ships bash 3.2. Everywhere else the installer keeps `node "<ROOT>/src/statusline.js"`, which U4 keeps working unchanged. Governs R3, R19.
 - KTD15. **The daemon exits when its own package's source changes.** It watches its `src/` directory (no child process) and exits on a change, so the next hook starts the new code. In the owner's repo checkout the `package.json` version does not change between edits, and without this an edited renderer would keep running until Claude Code closed. Governs R8.
@@ -393,7 +393,7 @@ U1 measures first, because its results can change U3, U6 and U7. U2 and U3 are i
 **Approach:**
 1. Bind the per-installation named pipe; exit at once if it is taken.
 2. Lower own priority; set the working directory to the temp directory; watch the package's `src/` and exit on a change (KTD15).
-3. Loop on a jittered ~500 ms timer: find this installation's payload files (its hash prefix only) whose mtime changed, parse each (keep the last good one), render changed sessions through `renderSession` with the payload's environment, write each active session's frame with a fresh deadline, write the heartbeat.
+3. Loop on a jittered ~500 ms timer: find this installation's payload files (its hash prefix only) whose mtime changed, parse each (keep the last good one), render every active session through `renderSession` with its last good payload, its environment and the collector's latest data (KTD12), write each active session's frame with a fresh deadline, write the heartbeat.
 4. Wrap each session's render; a session that throws keeps its previous frame body and stops getting renewed until it renders again, so only it greys.
 5. Run the collector on its own interval and hand its results to every render.
 6. Drop a session when its payload file disappears or after the idle period; exit when no session remains for the idle period.
@@ -402,6 +402,7 @@ U1 measures first, because its results can change U3, U6 and U7. U2 and U3 are i
 **Test scenarios:**
 - A payload file for a new session produces a frame for it within one loop pass.
 - Covers AE9. With an unchanged payload for 60 simulated seconds, every pass renews the deadline.
+- With an unchanged payload, the frame body still follows the clock and a new collector value (for example a changed shared rate limit) within one pass.
 - Covers AE10. One session whose render throws keeps its old body without renewal while a second session keeps renewing.
 - A half-written payload is ignored and the previous payload is used.
 - A second daemon for the same install root exits without writing anything.
@@ -452,9 +453,9 @@ U1 measures first, because its results can change U3, U6 and U7. U2 and U3 are i
 **Test scenarios:**
 - With the pipe unbound and no heartbeat, a `SessionStart` event spawns one daemon and kills nothing.
 - Covers AE4. Ten concurrent hook processes against a dead daemon spawn exactly one.
-- Covers AE7. A bound pipe with a heartbeat that stays stale past the grace period after the first sighting stops the confirmed daemon pid and spawns a new daemon.
+- Covers AE7. A bound pipe with a stale heartbeat: the first hook only records the sighting; a hook after the grace period, with the heartbeat still stale, stops the confirmed daemon pid and spawns a new daemon.
 - Covers AE11. A stale heartbeat that is renewed within the grace period after the first sighting causes no restart.
-- Covers AE8. A heartbeat whose version differs from the package version replaces the daemon after the same grace.
+- Covers AE8. A daemon with a different version and a heartbeat that keeps renewing is replaced by the first hook after the grace period that still reads the different version.
 - A stale heartbeat left from before a reboot, whose pid now belongs to an unrelated live process, never kills that process; with the pipe unbound the hook only spawns.
 - A heartbeat pid that is alive but not this installation's `daemon.js` is not killed.
 - A claim older than the throttle window is taken over; a fresh claim blocks.
@@ -508,7 +509,7 @@ U1 measures first, because its results can change U3, U6 and U7. U2 and U3 are i
 **Test scenarios:**
 - Covers AE1. Killing the daemon greys the client's output within 4 s.
 - Covers AE3. After a kill, a `Stop` hook brings the client's output back to live within two ticks.
-- Covers AE7. A daemon suspended (no renewals) is replaced by the next hook after window plus throttle.
+- Covers AE7. A daemon suspended (no renewals) is recorded as suspect by the first hook after window plus throttle and replaced by the first hook after the grace period.
 - Covers AE9. An idle session stays live for 60 s.
 - Covers AE2. With the daemon artificially delayed 2 s, the output never greys.
 **Verification:** the e2e test passes on Windows; the owner's bar-on/bar-off measurement shows no difference outside noise.
