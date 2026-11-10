@@ -164,6 +164,21 @@ try {
     ok(claimRestart(f, now, 15000) === true && readJson(f)?.suspectSince === undefined,
       "a claim file holding only a sighting is free, and the restart replaces the sighting");
     ok(!existsSync(f + ".lock"), "no lock file is left behind");
+
+    // A lock left by a hook that died: the next call removes it without entering, the one after
+    // claims. A free claim (older than the window) makes the lock the only thing that can refuse.
+    const lock = f + ".lock";
+    writeFileSync(f, JSON.stringify({ claimedAt: now - 20000 }));
+    writeFileSync(lock, "");
+    const past = new Date(Date.now() - 10000);
+    utimesSync(lock, past, past);
+    ok(claimRestart(f, now, 15000) === false && !existsSync(lock),
+      "a lock older than its stale limit refuses this call and is removed");
+    ok(claimRestart(f, now, 15000) === true && readJson(f)?.claimedAt === now, "the next call claims the restart");
+    writeFileSync(f, JSON.stringify({ claimedAt: now - 20000 }));
+    writeFileSync(lock, "");
+    ok(claimRestart(f, now, 15000) === false && existsSync(lock), "a fresh lock refuses the call and is left in place");
+    rmSync(lock);
   }
 
   if (process.platform !== "win32") {
@@ -222,6 +237,8 @@ try {
       ok(r2.code === 0 && r3.code === 0, `the later hooks exit 0 ${r3.err}`);
       ok(await exitWithin(hung, 5000) !== "timeout", "after the grace period the hung daemon is stopped");
       ok(await waitFor(() => lines(pkg, "bound").length === 2), "and a new daemon is spawned and binds the pipe");
+      // "bound" is logged before the first heartbeat write, so wait for the heartbeat to change hands.
+      await waitFor(() => { const h = readJson(pkg.heartbeat); return h && h.pid !== hung.pid; });
       const fresh = readJson(pkg.heartbeat);
       ok(fresh && fresh.pid !== hung.pid && alive(fresh.pid), "the new daemon serves the heartbeat");
     }

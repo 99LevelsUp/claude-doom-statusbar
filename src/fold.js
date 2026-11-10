@@ -7,7 +7,7 @@
 // shape as before (spans, squad, pending, tasks, tasks_ts, expr, ts, errors, mode, git),
 // so every downstream consumer (activityValues, the tests) is unchanged.
 
-import { writeFileSync, renameSync, unlinkSync } from "node:fs";
+import { readFileSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -94,6 +94,18 @@ export function writeAtomic(file, text) {
     try { unlinkSync(tmp); } catch {}
     throw e;
   }
+}
+
+// A numeric environment setting: unset, empty or not a number means the default.
+export const envNum = (v, dflt) => (v !== undefined && v !== "" && Number.isFinite(Number(v)) ? Number(v) : dflt);
+
+// The version in <root>/package.json, or "0" when it is missing or not one non-blank word. The
+// daemon reports it and the hooks compare against it, so both must read it through here.
+export function packageVersion(root = PACKAGE_ROOT) {
+  try {
+    const v = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")).version;
+    return /^\S+$/.test(String(v)) ? String(v) : "0";
+  } catch { return "0"; }
 }
 
 export function base(tool) {

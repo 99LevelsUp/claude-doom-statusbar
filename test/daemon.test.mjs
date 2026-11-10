@@ -218,6 +218,59 @@ try {
     unlinkSync(payloadFile("foreign", OTHER));
   }
 
+  // A forwarded variable the session leaves unset stays unset for that session's render, even
+  // when the daemon's own environment (inherited from whichever session's hook started it) sets it.
+  {
+    const saved = { theme: process.env.DOOMBAR_THEME, state: process.env.MUGSHOT_STATE };
+    process.env.DOOMBAR_THEME = "minecraft";
+    process.env.MUGSHOT_STATE = path.join(SB, "spawner-state.json");
+    try {
+      const s = session("unset");
+      delete s.fwd.MUGSHOT_STATE;
+      s.write();
+      const now = Date.now();
+      const state = createState({ version: VERSION, now });
+      runPass(state, { dir: TMPDIR, hash: HASH, now });
+      const own = { ...process.env, ...s.fwd };
+      delete own.DOOMBAR_THEME;
+      delete own.MUGSHOT_STATE;
+      const want = renderSession({ data: s.data, env: own, now: now / 1000 });
+      const inherited = renderSession({ data: s.data, env: { ...process.env, ...s.fwd }, now: now / 1000 });
+      ok(!sameLines(want, inherited), "the daemon's own DOOMBAR_THEME would change the render (so the next case can tell)");
+      ok(sameLines(frameOf(s)?.slots[0].lines, want), "a session without DOOMBAR_THEME renders the default theme, not the daemon's");
+      ok(state.sessions.get("unset")?.env.MUGSHOT_STATE === undefined,
+        "a session without MUGSHOT_STATE does not take the daemon's checkpoint path");
+    } finally {
+      process.env.DOOMBAR_THEME = saved.theme;
+      if (saved.state === undefined) delete process.env.MUGSHOT_STATE; else process.env.MUGSHOT_STATE = saved.state;
+      try { unlinkSync(payloadFile("unset")); } catch {}
+    }
+  }
+
+  // A payload the client has not rewritten for the idle period (a session that ended without
+  // SessionEnd) gets no frame after a daemon start and does not keep the daemon alive. A payload
+  // written within the idle period still renders.
+  {
+    const idleMs = 10000;
+    const t0 = Date.now();
+    const orphan = session("orphan");
+    const old = new Date(t0 - 2 * idleMs);
+    utimesSync(payloadFile("orphan"), old, old);
+    const state = createState({ version: VERSION, now: t0 - idleMs, idleMs });
+    const r = runPass(state, { dir: TMPDIR, hash: HASH, now: t0 });
+    ok(readFrame(orphan) === null && r.rendered === 0, "a payload older than the idle period gets no frame");
+    ok(r.idle === true, "and it does not keep the daemon alive: the pass reports idle");
+    unlinkSync(payloadFile("orphan"));
+    const recent = session("recent");
+    const written = new Date(t0 - 2000);
+    utimesSync(payloadFile("recent"), written, written);
+    const fresh = createState({ version: VERSION, now: t0 - idleMs, idleMs });
+    const r2 = runPass(fresh, { dir: TMPDIR, hash: HASH, now: t0 });
+    ok(r2.rendered === 1 && r2.idle === false && frameOf(recent)?.deadline === t0 * 1000 + 3e6,
+      "a payload written within the idle period still renders");
+    unlinkSync(payloadFile("recent"));
+  }
+
   // Session lifecycle: a deleted payload ends the session; no payload for the idle period ends it
   // too, and the pass reports idle once no session has been active for that long.
   {
@@ -309,14 +362,31 @@ try {
     let threw = false;
     try { maybeStartReaper(throwing, { env: {}, platform: "win32", spawn: () => { throw new Error("spawn failed"); } }); } catch { threw = true; }
     ok(!threw, "a reaper that cannot be spawned never breaks the loop");
+    // A reaper that never exits blocks the next interval, but only until it has run for 30 s:
+    // then it is killed and the next one starts in the same call.
     const hung = createState({ version: VERSION, now: 0 });
-    let spawned = 0;
-    const hangs = () => { spawned++; return { exitCode: null, signalCode: null, on() {}, unref() {} }; };
-    for (let now = 0; now <= 60000; now += 500) maybeStartReaper(hung, { now, env: {}, platform: "win32", spawn: hangs });
-    ok(spawned === 1, `a reaper that never exits blocks the next one (got ${spawned})`);
-    hung.reaper.exitCode = 0;
-    maybeStartReaper(hung, { now: 120000, env: {}, platform: "win32", spawn: hangs });
-    ok(spawned === 2, "once it has exited, the next interval starts a new reaper");
+    const reapers = [];
+    const hangs = () => {
+      const child = { exitCode: null, signalCode: null, kills: 0, on() {}, unref() {}, kill() { this.kills += 1; } };
+      reapers.push(child);
+      return child;
+    };
+    for (let now = 0; now <= 30000; now += 500) maybeStartReaper(hung, { now, env: {}, platform: "win32", spawn: hangs });
+    ok(reapers.length === 1 && reapers[0].kills === 0,
+      `a reaper that never exits blocks the next interval for 30 s (got ${reapers.length} started)`);
+    maybeStartReaper(hung, { now: 30500, env: {}, platform: "win32", spawn: hangs });
+    ok(reapers[0].kills === 1 && reapers.length === 2, "after 30 s the hung reaper is killed and a new one starts");
+    reapers[1].exitCode = 0;
+    maybeStartReaper(hung, { now: 45500, env: {}, platform: "win32", spawn: hangs });
+    ok(reapers.length === 3 && reapers[1].kills === 0, "once a reaper has exited, the next interval starts a new one without a kill");
+    const stuck = createState({ version: VERSION, now: 0 });
+    let started = 0;
+    const unkillable = () => { started++; return { exitCode: null, signalCode: null, on() {}, unref() {}, kill() { throw new Error("EPERM"); } }; };
+    let killThrew = false;
+    try {
+      for (let now = 0; now <= 31000; now += 500) maybeStartReaper(stuck, { now, env: {}, platform: "win32", spawn: unkillable });
+    } catch { killThrew = true; }
+    ok(!killThrew && started === 2, `a reaper that cannot be killed never breaks the loop, and the next one still starts (got ${started})`);
   }
 
   // ---- Real processes -------------------------------------------------------------------------

@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import { renderSession } from "./statusline.js";
 import { writeFrame } from "./frame.js";
 import {
-  rootHash, daemonPaths, payloadPrefix, framePrefix, writeAtomic, pipePath, PACKAGE_ROOT,
+  rootHash, daemonPaths, payloadPrefix, framePrefix, writeAtomic, pipePath, PACKAGE_ROOT, envNum, packageVersion,
 } from "./fold.js";
 import { setFaceNoSpawn } from "./face.js";
 
@@ -32,7 +32,18 @@ const TICK_MS = 500;
 const JITTER_MS = 50;
 const SRC_CHECK_MS = 2000;
 
-const envNum = (v, dflt) => (v !== undefined && v !== "" && Number.isFinite(Number(v)) ? Number(v) : dflt);
+// The variables the client forwards in the payload, as listed in src/doombar-client.sh. A session
+// that leaves one unset gets it unset, never the value in the daemon's own environment (which is
+// the environment of whichever session's hook started the daemon).
+export const FORWARDED_ENV = [
+  "COLUMNS", "DOOMBAR_PRESET", "DOOMBAR_THEME", "DOOMBAR_TEXT_OVERFLOW", "DOOMBAR_INDENT", "DOOMBAR_FRAME_WINDOW",
+  "MUGSHOT_STATE", "CLAUDE_CODE_TASK_LIST_ID", "CLAUDE_CONFIG_DIR",
+];
+const sessionEnv = (forwarded) => {
+  const env = { ...process.env };
+  for (const name of FORWARDED_ENV) delete env[name];
+  return Object.assign(env, forwarded);
+};
 const windowOf = (env) => { const w = envNum(env.DOOMBAR_FRAME_WINDOW, DEFAULT_WINDOW_S); return w > 0 ? w : DEFAULT_WINDOW_S; };
 const inDir = (dir, file) => path.join(dir, path.basename(file));
 
@@ -65,6 +76,7 @@ export function createState({ version, now = Date.now(), idleMs = DEFAULT_IDLE_M
 // detached `node src/hook.js --reap` per DOOMBAR_REAP_TICK, never awaited. Returns whether a
 // reaper was started.
 const DEFAULT_REAP_TICK_MS = 15000;
+const REAPER_MAX_MS = 30000; // a healthy reaper takes about 1 s
 const HOOK_JS = path.join(HERE, "hook.js");
 export function maybeStartReaper(state, { now = Date.now(), env = process.env, platform = process.platform,
   spawn = spawnChild } = {}) {
@@ -72,10 +84,16 @@ export function maybeStartReaper(state, { now = Date.now(), env = process.env, p
   const tick = envNum(env.DOOMBAR_REAP_TICK, DEFAULT_REAP_TICK_MS);
   if (state.reapedAt !== undefined && now - state.reapedAt < tick) return false;
   // A reaper that has not exited yet blocks the next one: reapers have been seen to hang, and a
-  // long-lived daemon starting one per interval would pile them up until memory runs out.
+  // long-lived daemon starting one per interval would pile them up until memory runs out. One
+  // that has run for longer than REAPER_MAX_MS is killed, so a hang never stops reaping for good.
   const prev = state.reaper;
-  if (prev && prev.exitCode === null && prev.signalCode === null) return false;
+  if (prev && prev.exitCode === null && prev.signalCode === null) {
+    if (now - state.reaperStartedAt <= REAPER_MAX_MS) return false;
+    try { prev.kill(); } catch {}
+    state.reaper = undefined;
+  }
   state.reapedAt = now;
+  state.reaperStartedAt = now;
   try {
     const child = spawn(process.execPath, [HOOK_JS, "--reap"], { detached: true, stdio: "ignore", windowsHide: true });
     child.on("error", () => {});
@@ -108,9 +126,11 @@ export function runPass(state, { dir = os.tmpdir(), hash = rootHash(), now = Dat
     let parsed = null;
     try { parsed = parsePayload(readFileSync(full, "utf8")); } catch {}
     if (!parsed) continue; // half-written by the client: keep the last good payload
-    const env = { ...process.env, ...parsed.env };
+    const env = sessionEnv(parsed.env);
+    // Liveness is when the client last wrote the payload, so a payload left by a session that
+    // ended without SessionEnd is never rendered after a daemon start and never keeps it alive.
     state.sessions.set(key, {
-      data: parsed.data, env, window: windowOf(env), stamp, seenAt: now,
+      data: parsed.data, env, window: windowOf(env), stamp, seenAt: Math.min(now, st.mtimeMs),
       frame: s ? s.frame : path.join(dir, `${framePrefix(hash)}${key}.json`),
     });
   }
@@ -147,13 +167,6 @@ function srcSnapshot(dir) {
       try { const st = statSync(path.join(dir, f)); return `${f}:${st.size}:${st.mtimeMs}`; } catch { return `${f}:gone`; }
     }).join("\n");
   } catch { return "unreadable"; }
-}
-
-function packageVersion(root) {
-  try {
-    const v = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")).version;
-    return /^\S+$/.test(String(v)) ? String(v) : "0";
-  } catch { return "0"; }
 }
 
 // Resolves once the daemon serves. Exits at once when another daemon of this installation

@@ -20,7 +20,7 @@
 // Journal: <checkpoint>.jsonl where checkpoint is $MUGSHOT_STATE or <temp>/mugshot_<sid>.json.
 
 import {
-  appendFileSync, writeFileSync, readFileSync, readdirSync, statSync, unlinkSync, existsSync, renameSync,
+  appendFileSync, writeFileSync, readFileSync, readdirSync, statSync, unlinkSync, existsSync,
   openSync, writeSync, closeSync,
 } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
@@ -30,6 +30,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   base, statePaths, sessionPaths, daemonPaths, rootHash, sidKey, pipePath, PACKAGE_ROOT, ROOT_HASH_LEN, WRITE_TOOLS,
+  writeAtomic, envNum, packageVersion as readPackageVersion,
 } from "./fold.js";
 
 // Re-export the reducer so existing tests importing from hook.js keep working.
@@ -114,7 +115,6 @@ function bashCount() {
 // heal itself. Killing the accumulated wrappers heals it at once — measured on Win11 26200:
 // 15233 ms + 0xC0000005 before, 277 ms + exit 0 immediately after. That is what we automate.
 const REAP_ON = process.env.DOOMBAR_MSYS_REAP !== "0";
-const envNum = (v, dflt) => (Number.isFinite(Number(v)) ? Number(v) : dflt);
 const REAP_MIN = envNum(process.env.DOOMBAR_MSYS_REAP_MIN, 4); // only act once a pile is forming
 const REAP_AGE = envNum(process.env.DOOMBAR_MSYS_REAP_AGE, 10000); // ms; a healthy render ~300 ms
 
@@ -185,9 +185,7 @@ const DAEMON_EVENTS = new Set([
 
 let installedVersion;
 function packageVersion() {
-  if (installedVersion === undefined) {
-    try { installedVersion = String(JSON.parse(readFileSync(path.join(PACKAGE_ROOT, "package.json"), "utf8")).version); } catch { installedVersion = "0"; }
-  }
+  if (installedVersion === undefined) installedVersion = readPackageVersion(PACKAGE_ROOT);
   return installedVersion;
 }
 
@@ -246,12 +244,7 @@ function createClaim(file, claim) {
 }
 
 function replaceClaim(file, claim) {
-  const tmp = `${file}.${process.pid}.tmp`;
-  writeFileSync(tmp, JSON.stringify(claim));
-  try { renameSync(tmp, file); } catch (e) {
-    try { unlinkSync(tmp); } catch {}
-    throw e;
-  }
+  writeAtomic(file, JSON.stringify(claim));
 }
 
 // Runs `fn` holding `<claim>.lock`; returns undefined without running it when another hook holds
