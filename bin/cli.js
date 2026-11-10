@@ -14,14 +14,17 @@
 // It merges into your existing settings (other hooks / statusline are preserved or
 // backed up), is safe to re-run, and prints what to do next.
 
-import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { THEMES, THEME_NAMES, currentTheme, saveTheme, nextTheme, resolveTheme } from "../src/theme.js";
+import { rootHash, daemonPaths } from "../src/fold.js";
+import { confirmedDaemonPid } from "../src/hook.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url)); // bin/
 const ROOT = path.dirname(HERE); // package root
+const HASH = rootHash(ROOT); // this installation's daemon, pipe and temp files
 
 // Normalise to forward slashes, like install.py's `.replace("\\", "/")`. The marker we
 // DETECT below must match the command we WRITE byte-for-byte, including slash direction —
@@ -29,8 +32,43 @@ const ROOT = path.dirname(HERE); // package root
 const slash = (p) => p.replace(/\\/g, "/");
 
 const STATUSLINE = slash(path.join(ROOT, "src", "statusline.js"));
+const CLIENT = slash(path.join(ROOT, "src", "doombar-client.sh"));
 const HOOK = slash(path.join(ROOT, "src", "hook.js"));
-const STATUSLINE_CMD = `node "${STATUSLINE}"`;
+const NODE_CMD = `node "${STATUSLINE}"`;
+
+// On Windows with Git Bash, Claude Code runs the statusLine through Git Bash, and the command
+// sources the bash client into that very bash: no second bash, no node, no process at all. The
+// client prints the frame the render daemon prepared (see src/doombar-client.sh, src/daemon.js).
+// It lives in the package, so an upgrade in the same place reaches it without touching
+// settings.json; the guard keeps a removed package from printing bash errors into the bar.
+// `if` rather than `[ ] && . || echo`: the client may end with a non-zero status after printing
+// a frame, and `||` would then add the offline line under it.
+// Everywhere else (macOS ships bash 3.2; without Git Bash Claude Code uses PowerShell) the
+// one-shot renderer stays, and it also keeps serving sessions opened before an upgrade.
+const CLIENT_CMD = `DOOMBAR_ROOT_HASH=${HASH}; f="${CLIENT}"; ` +
+  `if [ -r "$f" ]; then . "$f"; else echo 'doombar: offline'; fi`;
+
+// The bash Claude Code would run the statusLine with. It finds Git Bash on its own, not through
+// PATH (whose bash.exe may well be WSL's): an explicit CLAUDE_CODE_GIT_BASH_PATH, the standard
+// Git for Windows locations, then the install around a git.exe on PATH. Existence checks only.
+function gitBash(env = process.env) {
+  if (process.platform !== "win32") return null;
+  const bin = (root) => path.join(root, "bin", "bash.exe");
+  const cands = [env.CLAUDE_CODE_GIT_BASH_PATH];
+  for (const pf of [env.ProgramFiles, env["ProgramFiles(x86)"]]) if (pf) cands.push(bin(path.join(pf, "Git")));
+  if (env.LOCALAPPDATA) cands.push(bin(path.join(env.LOCALAPPDATA, "Programs", "Git")));
+  for (const dir of String(env.PATH || "").split(path.delimiter)) {
+    if (!dir) continue;
+    const git = path.join(dir.replace(/^"|"$/g, ""), "git.exe");
+    if (!existsSync(git)) continue;
+    // <git>\cmd\git.exe or <git>\bin\git.exe, and <git>\mingw64\bin\git.exe one level deeper.
+    // No early stop: a git.exe that is not Git for Windows (a scoop shim) must not hide a later one.
+    cands.push(bin(path.dirname(path.dirname(git))), bin(path.dirname(path.dirname(path.dirname(git)))));
+  }
+  return cands.find((p) => p && existsSync(p)) ?? null;
+}
+
+const useClient = () => gitBash() !== null;
 
 // refreshInterval re-runs the render command every N seconds ON TOP of the event-driven updates.
 // 1 s is the documented minimum and the default here on every platform: a live clock and a
@@ -65,7 +103,7 @@ const HOOK_EVENTS = [
 // How we recognise our own entries — current JS scripts plus legacy Python ones, so a
 // user who ran install.py earlier still gets cleaned up by `uninstall`.
 const HOOK_MARKS = ["src/hook.js", "mugshot_hook.py"];
-const SL_MARKS = ["src/statusline.js", "statusline.py"];
+const SL_MARKS = ["src/doombar-client.sh", "src/statusline.js", "statusline.py"];
 const hasMark = (s, marks) => marks.some((m) => slash(String(s || "")).includes(m));
 
 function die(msg) {
@@ -105,15 +143,15 @@ function save(p, data) {
 const ours = (entry) => (entry.hooks || [])
   .some((h) => hasMark([h.command, ...(h.args || [])].join(" "), HOOK_MARKS));
 
-function install(cfg, preset, refresh) {
+function install(cfg, preset, refresh, command) {
   const notes = [];
   const existing = cfg.statusLine;
   if (existing && !hasMark(JSON.stringify(existing), SL_MARKS)) {
     notes.push("replaced your existing statusLine (the old one is in settings.json.bak)");
   }
   // Assigning a fresh object (rather than patching) also drops a refreshInterval left behind by
-  // an older install — which is the whole point of this change on Windows.
-  cfg.statusLine = { type: "command", command: STATUSLINE_CMD };
+  // an older install, and moves an old `node …/statusline.js` command over to the client in place.
+  cfg.statusLine = { type: "command", command };
   if (refresh > 0) cfg.statusLine.refreshInterval = refresh;
   else if (existing?.refreshInterval) {
     notes.push("dropped refreshInterval — the HUD now renders on events only (see --refresh)");
@@ -174,6 +212,38 @@ function uninstall(cfg) {
   if (Object.keys(hooks).length === 0) delete cfg.hooks;
 }
 
+// Stop this installation's render daemon and delete its temp files: heartbeat, claim (and the
+// claim's lock and temp copies), and every session's payload and frame. Only this install's hash,
+// so another installation's daemon (a global copy next to a checkout) is never touched. A pid is
+// stopped only when the process list confirms it is node running this package's src/daemon.js,
+// started when the heartbeat says; a stale heartbeat may name a pid reused by anything.
+// The kill comes first, or the daemon would rewrite its files on its next pass.
+function stopDaemon() {
+  const notes = [];
+  const { heartbeat } = daemonPaths(HASH);
+  let hb = null;
+  try { hb = JSON.parse(readFileSync(heartbeat, "utf-8")); } catch { /* no daemon recorded */ }
+  if (process.platform === "win32" && hb && Number.isInteger(hb.pid) && hb.pid > 0) {
+    const pid = confirmedDaemonPid(hb);
+    if (pid !== null) {
+      try { process.kill(pid); notes.push(`stopped the render daemon (pid ${pid})`); } catch { /* exited meanwhile */ }
+    } else {
+      notes.push(`left pid ${hb.pid} running: not confirmed as this installation's render daemon`);
+    }
+  }
+  const dir = os.tmpdir();
+  const prefixes = [`mugshot_daemon_${HASH}.`, `mugshot_payload_${HASH}_`, `mugshot_frame_${HASH}_`];
+  let removed = 0;
+  let names = [];
+  try { names = readdirSync(dir); } catch { /* no temp dir, nothing to remove */ }
+  for (const n of names) {
+    if (!prefixes.some((p) => n.startsWith(p))) continue;
+    try { unlinkSync(path.join(dir, n)); removed++; } catch { /* gone meanwhile */ }
+  }
+  if (removed) notes.push(`removed ${removed} render daemon file(s) from ${dir}`);
+  return notes;
+}
+
 function parseArgs(argv) {
   const out = { cmd: "install", preset: "full", project: false, refresh: DEFAULT_REFRESH, theme: null };
   for (let i = 0; i < argv.length; i++) {
@@ -229,19 +299,23 @@ function main() {
     uninstall(cfg);
     save(p, cfg);
     if (!args.project) saveTheme("doom"); // drop the saved theme choice too
+    const notes = stopDaemon();
     console.log(`✓ removed claude-doom-statusbar from ${p}`);
+    for (const n of notes) console.log(`  note       : ${n}`);
     console.log("  restart Claude Code to apply.");
     return;
   }
 
-  if (!existsSync(fileURLToPath(new URL("../src/statusline.js", import.meta.url)))) {
-    die(`! can't find ${STATUSLINE} — reinstall the package.`);
-  }
-  const notes = install(cfg, args.preset, args.refresh);
+  const client = useClient();
+  const script = client ? CLIENT : STATUSLINE;
+  if (!existsSync(script)) die(`! can't find ${script} — reinstall the package.`);
+  const command = client ? CLIENT_CMD : NODE_CMD;
+  const notes = install(cfg, args.preset, args.refresh, command);
   save(p, cfg);
 
   console.log(`✓ installed claude-doom-statusbar into ${p}`);
-  console.log(`  statusline : ${STATUSLINE_CMD}`);
+  console.log(`  statusline : ${command}`);
+  if (client) console.log("  renderer   : per-installation render daemon, started by the hooks");
   console.log(`  refresh    : ${args.refresh > 0 ? `every ${args.refresh}s + events` : "events only"}`);
   console.log(`  preset     : ${args.preset}`);
   console.log(`  hooks      : ${HOOK_EVENTS.join(", ")}`);

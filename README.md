@@ -56,6 +56,8 @@ npm i -g claude-doom-statusbar@latest    # global install
 npx claude-doom-statusbar@latest install
 ```
 
+After a global upgrade from a version without the render daemon, run `claude-doom-statusbar install` once. That moves the statusLine to the client on Windows with Git Bash. Later upgrades in the same place reach the client without it.
+
 ### Windows: Git Bash and the 1-second tick
 
 The refresh interval is **1 second on every platform, Windows included**. On Windows that costs something, and this section explains what and how it's paid — the answer is not a slower tick.
@@ -72,7 +74,7 @@ From then on the failure sustains itself. A healthy `bash -c` returns in ~0.3 s;
 
 **The reaper is what makes 1 Hz safe.** It kills hung wrappers so the section gets its empty instant and heals. Measured on Win11 26200: a Git Bash spawn went from 15 233 ms + `0xC0000005` to **277 ms + exit 0** the moment the accumulated wrappers were killed.
 
-It only ever targets `bash.exe` whose command line runs *this package's* `statusline.js` and which has outlived `DOOMBAR_MSYS_REAP_AGE` (default 10 000 ms, against ~300 ms for a healthy render). Such a shell is already hung and its render is lost either way; nothing else is ever touched.
+It only ever targets `bash.exe` whose command line runs *this package's* `statusline.js` or `doombar-client.sh` and which has outlived `DOOMBAR_MSYS_REAP_AGE` (default 10 000 ms, against ~300 ms for a healthy render). Such a shell is already hung and its render is lost either way; nothing else is ever touched.
 
 It runs from two places, because neither alone covers a whole session:
 
@@ -151,11 +153,36 @@ As the terminal narrows, the HUD shrinks: bars contract and text columns shrink 
 
 ## How it works
 
-- **`src/statusline.js`** is the statusLine command. Claude Code pipes session JSON on stdin; it maps that (plus the hook's git snapshot, system metrics from Node built-ins, and the hook state file) to metric values, picks the mugshot sprite, and renders the preset. It spawns nothing — git moved into the hook precisely to keep the render path free of child processes.
+On **Windows with Git Bash** the statusLine command is a bash client, not a renderer. The installer writes `DOOMBAR_ROOT_HASH=<install hash>; f="<package>/src/doombar-client.sh"; if [ -r "$f" ]; then . "$f"; else echo 'doombar: offline'; fi`, which sources `src/doombar-client.sh` into the bash Claude Code already starts for each tick. The client uses bash builtins only and starts no process. It hands the session JSON to the **render daemon** and prints the frame the daemon prepared. There is one daemon per installation (`src/daemon.js`, single instance through the named pipe `\\.\pipe\doombar-<install hash>`). The hooks start it and restart it when it dies or is outdated, and it exits on its own after `DOOMBAR_DAEMON_IDLE_MS` (default 10 minutes) with no active session. Upgrading the package in place updates the client without touching `settings.json`.
+
+**Everywhere else** (macOS, Linux, Windows without Git Bash) the statusLine stays the one-shot renderer `node "<package>/src/statusline.js"`. That command also keeps working on Windows, so sessions opened before an upgrade keep their bar until Claude Code restarts them.
+
+- **`src/statusline.js`** is the one-shot statusLine command (and the renderer the daemon calls). Claude Code pipes session JSON on stdin; it maps that (plus the hook's git snapshot, system metrics from Node built-ins, and the hook state file) to metric values, picks the mugshot sprite, and renders the preset. It spawns nothing — git moved into the hook precisely to keep the render path free of child processes.
 - **`src/hook.js`** is an event bus. Lifecycle hooks write a small state file (face reaction with decay, tool-run intervals for the geiger, the running-subagent squad). The status line reads it on each refresh — the two never block each other. Those files live in the temp directory keyed by session id (or next to `MUGSHOT_STATE` when set). `SessionEnd` deletes a session's files when it ends, keeping only its savings total for a later resume. `SessionStart` sweeps what is left by sessions that ended without it: a session that never showed a bar (a headless `claude -p` run) after `DOOMBAR_UNRENDERED_TTL` (default 1 hour), any other after `DOOMBAR_JOURNAL_TTL` (default 7 days, `off` to disable). Shared state and a live session's files are never touched. Re-run `install` after upgrading to add the `SessionEnd` hook.
 - **`src/render.js`** is the rendering engine; **`src/face.js`** rasterises the mugshot via chafa (with pre-baked transparent sprites as the fallback). **`bin/cli.js`** is the installer.
 
 See [`docs/ideation/`](docs/ideation/) for the full design write-up.
+
+### OFFLINE: when the bar is not live
+
+The daemon gives every frame a validity window (`DOOMBAR_FRAME_WINDOW`, default 3 s) and renews it about twice a second. The client never shows stale values as if they were live:
+
+- **Greyed bar ending in `OFFLINE`**: the last frame is past its deadline. The layout is the last one rendered with every colour turned grey, so the values are old. A daemon that died or hangs looks like this within seconds. If only one session greys, its render failed and the other sessions are still served.
+- **A plain `doombar: offline` line**: there is no usable frame at all. When no daemon is running yet, a new session shows this until its first hook event (the first tool call, or the end of the first reply) starts one. It also shows when the package was removed from under the command.
+
+### Troubleshooting the daemon
+
+- **Heartbeat**: `mugshot_daemon_<install hash>.json` in the temp directory (`%TEMP%`) holds the daemon's pid, start time, version, window and last renewal. The `<install hash>` is the one after `DOOMBAR_ROOT_HASH=` in your statusLine command. Per-session files sit next to it as `mugshot_payload_<hash>_<session>.json` and `mugshot_frame_<hash>_<session>.json`.
+- **Restart**: run any tool in Claude Code. Every hook checks the daemon and starts a missing one, at most once per throttle window. A hung or outdated daemon is replaced after it has stayed suspect for the grace period. To force a fresh start, end the `node … src/daemon.js` process and the next tool call starts a new one.
+- **Knobs** go in the `env` block of `settings.json`. The hooks and the daemon they start inherit them.
+  - `DOOMBAR_FRAME_WINDOW` (seconds, default 3): how long a frame stays valid before it greys. It is forwarded per session.
+  - `DOOMBAR_COLLECT_MS` (ms, default 1000): minimum interval between CPU samples.
+  - `DOOMBAR_DAEMON_IDLE_MS` (ms, default 600000): how long the daemon runs without an active session.
+  - `DOOMBAR_DAEMON_THROTTLE_MS` (ms, default 15000): at most one start or restart per window. A heartbeat older than the frame window plus this is suspect.
+  - `DOOMBAR_DAEMON_GRACE_MS` (ms, default 20000): how long a suspect daemon gets to recover before it is replaced.
+
+  The daemon reads its own settings when it starts, so a change takes effect once it is restarted.
+- **Uninstall** stops this installation's daemon and removes its temp files. It stops a pid only after the process list confirms it is node running this package's `src/daemon.js`. A heartbeat that names any other process is reported and left alone.
 
 ## Credits
 

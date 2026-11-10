@@ -344,7 +344,7 @@ export function isOurDaemon(row, start, daemonJs = DAEMON_JS) {
   return Number.isFinite(start) && Math.abs(Number(m[2]) - start) <= START_SLACK_MS;
 }
 
-function confirmedDaemonPid(hb) {
+export function confirmedDaemonPid(hb) {
   const pid = hb && hb.pid;
   if (!Number.isInteger(pid) || pid <= 0 || pid === process.pid) return null;
   try {
