@@ -167,7 +167,7 @@ See [`docs/ideation/`](docs/ideation/) for the full design write-up.
 
 The daemon gives every frame a validity window (`DOOMBAR_FRAME_WINDOW`, default 3 s) and renews it about twice a second. The client never shows stale values as if they were live:
 
-- **Greyed bar ending in `OFFLINE`**: the last frame is past its deadline. The layout is the last one rendered with every colour turned grey, so the values are old. A daemon that died or hangs looks like this within seconds. If only one session greys, its render failed and the other sessions are still served. A build that keeps every core busy also greys it: the daemon runs at below-normal priority on purpose, so it yields the CPU to Claude Code and to the build (measured: 20 s without a frame while 12 cores were saturated), and the bar turns live again when the load drops.
+- **Greyed bar ending in `OFFLINE`**: the last frame is past its deadline. The layout is the last one rendered with every colour turned grey, so the values are old. A daemon that died or hangs looks like this within seconds. If only one session greys, its render failed and the other sessions are still served. A build that keeps every core busy also greys it: the daemon runs at below-normal priority on purpose, so it yields the CPU to Claude Code and to the build (measured: 20 s without a frame while 12 cores were saturated), and the bar turns live again when the load drops. The hooks do not restart a daemon while the machine is that busy, so the bar spends nothing on recovering in the middle of a build.
 - **A plain `doombar: offline` line**: there is no usable frame at all. A new session shows it for its first second or few, until the daemon has rendered the session's first frame. When no daemon is running, the session's `SessionStart` hook starts one as soon as the client has written the session's first payload. It also shows when the package was removed from under the command.
 
 ### Troubleshooting the daemon
@@ -180,6 +180,7 @@ The daemon gives every frame a validity window (`DOOMBAR_FRAME_WINDOW`, default 
   - `DOOMBAR_DAEMON_IDLE_MS` (ms, default 600000): how long the daemon runs without an active session.
   - `DOOMBAR_DAEMON_THROTTLE_MS` (ms, default 15000): at most one start or restart per window. A heartbeat older than the frame window plus this is suspect.
   - `DOOMBAR_DAEMON_GRACE_MS` (ms, default 20000): how long a suspect daemon gets to recover before it is replaced.
+- `DOOMBAR_BUSY_IDLE_PCT` (percent, default 10): below this much idle CPU the machine counts as busy, and the hooks leave a daemon with an old heartbeat alone, because it is starved rather than hung. They deal with it once the machine has room again.
 - `DOOMBAR_PAYLOAD_WAIT_MS` (ms, default 10000): how long the `SessionStart` hook waits for the session's first payload before it decides this installation's client is not in use there and starts nothing.
 
   The daemon reads its own settings when it starts, so a change takes effect once it is restarted.

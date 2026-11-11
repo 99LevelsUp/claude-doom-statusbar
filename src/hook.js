@@ -176,6 +176,8 @@ const DAEMON_THROTTLE_MS = envNum(process.env.DOOMBAR_DAEMON_THROTTLE_MS, 15000)
 const DAEMON_GRACE_MS = envNum(process.env.DOOMBAR_DAEMON_GRACE_MS, 20000);
 const PAYLOAD_WAIT_MS = envNum(process.env.DOOMBAR_PAYLOAD_WAIT_MS, 10000);
 const PAYLOAD_POLL_MS = 200;
+const BUSY_IDLE_PCT = envNum(process.env.DOOMBAR_BUSY_IDLE_PCT, 10);
+const BUSY_SAMPLE_MS = 250;
 const PROBE_MS = 150;
 const LOCK_STALE_MS = 2000; // a lock holder does a few file operations; older means it died
 const START_SLACK_MS = 2000; // heartbeat start vs the process list's creation time
@@ -345,6 +347,27 @@ async function restartDaemon(judged, since, paths, pipe) {
   spawnDaemon();
 }
 
+// Pure: the share of CPU time all cores spent idle between two os.cpus() samples, in percent.
+export function idlePercent(before, after) {
+  let idle = 0, total = 0;
+  after.forEach((cpu, i) => {
+    const prev = before[i];
+    if (!prev) return;
+    for (const k of Object.keys(cpu.times)) {
+      const d = cpu.times[k] - (prev.times[k] || 0);
+      total += d;
+      if (k === "idle") idle += d;
+    }
+  });
+  return total > 0 ? (100 * idle) / total : 100;
+}
+
+async function machineBusy() {
+  const before = os.cpus();
+  await new Promise((r) => setTimeout(r, BUSY_SAMPLE_MS));
+  return idlePercent(before, os.cpus()) < BUSY_IDLE_PCT;
+}
+
 // Resolves true once `file` exists, polling until `waitMs` has passed.
 export async function waitForFile(file, waitMs, pollMs = PAYLOAD_POLL_MS) {
   for (const end = Date.now() + waitMs; !existsSync(file);) {
@@ -372,6 +395,11 @@ async function superviseDaemon(name, sid) {
   const now = Date.now();
   const { stale, versionDiffers } = daemonHealth(hb, { version: packageVersion(), now });
   if (!stale && !versionDiffers) return;
+  // On a saturated machine the below-normal daemon is starved, not hung (a build kept one from
+  // renewing for over 80 s). Restarting it would spend CPU on a PowerShell identity check and a
+  // new node exactly when there is none, and the new daemon would starve the same way. A daemon
+  // that really hangs is handled once the machine has room again.
+  if (await machineBusy()) return;
   const r = suspectStep(paths.claim, { hb, versionDiffers, now });
   if (r.step === "restart") await restartDaemon(hb, r.since, paths, pipe);
 }

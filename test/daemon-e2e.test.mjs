@@ -193,7 +193,9 @@ for (const k of Object.keys(scrubbed)) {
 }
 const baseEnv = { ...scrubbed, TEMP: TMP, TMP, TMPDIR: TMP, DOOMBAR_MSYS_REAP: "0", DOOMBAR_JOURNAL_TTL: "off" };
 const hookEnv = { ...baseEnv, DOOMBAR_DAEMON_THROTTLE_MS: String(THROTTLE), DOOMBAR_DAEMON_GRACE_MS: String(GRACE),
-  DOOMBAR_DAEMON_IDLE_MS: String(IDLE_MS) };
+  DOOMBAR_DAEMON_IDLE_MS: String(IDLE_MS),
+  // The hung-daemon case must restart it whatever else keeps this machine busy meanwhile.
+  DOOMBAR_BUSY_IDLE_PCT: "0" };
 const clientEnv = { ...baseEnv, COLUMNS: "120" };
 
 // A realistic statusLine payload, the same on every tick: an idle session.

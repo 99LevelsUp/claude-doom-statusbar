@@ -28,7 +28,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const SB = mkdtempSync(path.join(os.tmpdir(), "doombar-restart-"));
 const { sessionPaths, daemonPaths, rootHash } = await import("../src/fold.js");
-const { claimRestart } = await import("../src/hook.js");
+const { claimRestart, idlePercent } = await import("../src/hook.js");
 
 const THROTTLE = 500;
 const GRACE = 1500;
@@ -102,6 +102,8 @@ const baseEnv = (pkg) => ({
   ...process.env, TEMP: pkg.tmp, TMP: pkg.tmp, TMPDIR: pkg.tmp, MUGSHOT_STATE: "",
   DOOMBAR_MSYS_REAP: "0", DOOMBAR_JOURNAL_TTL: "off", DOOMBAR_DAEMON_IDLE_MS: "20000",
   DOOMBAR_DAEMON_THROTTLE_MS: String(THROTTLE), DOOMBAR_DAEMON_GRACE_MS: String(GRACE),
+  // Never count the machine as busy unless a case says so, whatever else runs during the tests.
+  DOOMBAR_BUSY_IDLE_PCT: "0",
   FAKE_MODE: "", FAKE_VERSION: "",
 });
 delete process.env.MUGSHOT_STATE;
@@ -181,6 +183,14 @@ try {
     rmSync(lock);
   }
 
+  // ---- The busy-machine measure, in-process (every platform) --------------------------------
+  {
+    const cpu = (idle, user) => ({ times: { user, nice: 0, sys: 0, idle, irq: 0 } });
+    ok(idlePercent([cpu(0, 0), cpu(0, 0)], [cpu(50, 50), cpu(50, 50)]) === 50, "idle share is idle time over all time, across cores");
+    ok(idlePercent([cpu(0, 0)], [cpu(5, 95)]) < 10, "a saturated core counts as busy at the default threshold");
+    ok(idlePercent([cpu(7, 7)], [cpu(7, 7)]) === 100, "no elapsed CPU time counts as idle, never as busy");
+  }
+
   if (process.platform !== "win32") {
     console.log("  skip real-process cases: the daemon and its pipe exist on Windows only");
   } else {
@@ -258,6 +268,23 @@ try {
       await waitFor(() => { const h = readJson(pkg.heartbeat); return h && h.pid !== hung.pid; });
       const fresh = readJson(pkg.heartbeat);
       ok(fresh && fresh.pid !== hung.pid && alive(fresh.pid), "the new daemon serves the heartbeat");
+    }
+
+    // The same stale heartbeat on a saturated machine (forced: every idle share counts as busy):
+    // the daemon is starved, not hung, so the hooks record nothing, stop nothing, start nothing.
+    {
+      const pkg = copyPackage();
+      writePayload(pkg);
+      const starved = startFake(pkg, { FAKE_MODE: "stale" });
+      ok(await waitFor(() => readJson(pkg.heartbeat)?.pid === starved.pid), "the starved daemon holds the pipe with a stale heartbeat");
+      const busy = { DOOMBAR_BUSY_IDLE_PCT: "101" };
+      const r1 = await runHook(pkg, "PostToolUse", busy);
+      await sleep(GRACE + 200);
+      const r2 = await runHook(pkg, "PostToolUse", busy);
+      await sleep(500);
+      ok(r1.code === 0 && r2.code === 0, `hooks on a busy machine exit 0 ${r1.err}${r2.err}`);
+      ok(readJson(pkg.claim) === null, "a busy machine records no sighting");
+      ok(alive(starved.pid) && lines(pkg, "spawn").length === 1, "and the starved daemon is neither stopped nor replaced");
     }
 
     // A stale heartbeat renewed within the grace period after the sighting: no restart.
