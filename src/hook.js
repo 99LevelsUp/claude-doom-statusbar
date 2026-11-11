@@ -29,7 +29,8 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import {
-  base, statePaths, sessionPaths, daemonPaths, rootHash, sidKey, pipePath, PACKAGE_ROOT, ROOT_HASH_LEN, WRITE_TOOLS,
+  base, statePaths, sessionPaths, daemonPaths, rootHash, sidKey, daemonSocket, procStartTicks, PACKAGE_ROOT,
+  ROOT_HASH_LEN, WRITE_TOOLS,
   writeAtomic, envNum, packageVersion as readPackageVersion, runtimeDir, ensureRuntimeDir,
 } from "./fold.js";
 
@@ -195,8 +196,9 @@ function packageVersion() {
 
 const readJson = (file) => { try { return JSON.parse(readFileSync(file, "utf8")); } catch { return null; } };
 
-// Is anything bound to the pipe? Only "no such pipe" means no. A timeout or any other error (all
-// instances busy, a daemon whose loop hangs) counts as bound: the heartbeat then decides.
+// Is anything bound to the daemon's address? Only "no such pipe or socket" and, for a socket file
+// a killed daemon left behind, "connection refused" mean no. A timeout or any other error (all
+// pipe instances busy, a daemon whose loop hangs) counts as bound: the heartbeat then decides.
 export function probePipe(pipe, timeoutMs = PROBE_MS) {
   return new Promise((resolve) => {
     let sock = null, timer = null, done = false;
@@ -210,7 +212,7 @@ export function probePipe(pipe, timeoutMs = PROBE_MS) {
     timer = setTimeout(() => finish(true), timeoutMs);
     sock = net.connect(pipe);
     sock.on("connect", () => finish(true));
-    sock.on("error", (e) => finish(!(e && e.code === "ENOENT")));
+    sock.on("error", (e) => finish(!(e && (e.code === "ENOENT" || e.code === "ECONNREFUSED"))));
   });
 }
 
@@ -313,14 +315,50 @@ export function isOurDaemon(row, start, daemonJs = DAEMON_JS) {
   return Number.isFinite(start) && Math.abs(Number(m[2]) - start) <= START_SLACK_MS;
 }
 
-export function confirmedDaemonPid(hb) {
+// Pure (Linux): do /proc/<pid>/stat and /proc/<pid>/cmdline show a process running `daemonJs`
+// that started at `startTicks` (the clock ticks the daemon recorded in its heartbeat)? Compared
+// exactly, so a slow start under load cannot make a hung daemon unrecognizable.
+export function isOurLinuxDaemon({ stat, cmdline }, startTicks, daemonJs = DAEMON_JS) {
+  if (!startTicks || procStartTicks(0, () => stat) !== String(startTicks)) return false;
+  return String(cmdline || "").split("\0").some((arg) => arg && path.resolve(arg) === path.resolve(daemonJs));
+}
+
+// Pure (macOS and other systems with ps): does `ps -o lstart=,command=` show `daemonJs` started at
+// `start` (epoch ms)? lstart has whole seconds, so the slack grows by one.
+export function isOurPsDaemon(row, start, daemonJs = DAEMON_JS) {
+  const m = /^\s*\w{3}\s+(\w{3})\s+(\d+)\s+([\d:]+)\s+(\d{4})\s+(.*)$/.exec(String(row || "").trim());
+  if (!m || !m[5].includes(daemonJs)) return false;
+  const created = Date.parse(`${m[1]} ${m[2]} ${m[4]} ${m[3]}`);
+  return Number.isFinite(start) && Number.isFinite(created) && Math.abs(created - start) <= START_SLACK_MS + 1000;
+}
+
+// The heartbeat's pid, once the process list confirms it is this installation's daemon, else null.
+export function confirmedDaemonPid(hb, platform = process.platform) {
   const pid = hb && hb.pid;
   if (!Number.isInteger(pid) || pid <= 0 || pid === process.pid) return null;
   try {
-    const r = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", PROCESS_PS(pid)],
-      { encoding: "utf8", timeout: 5000, windowsHide: true });
-    return r.status === 0 && isOurDaemon(r.stdout, hb.start) ? pid : null;
+    if (platform === "win32") {
+      const r = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", PROCESS_PS(pid)],
+        { encoding: "utf8", timeout: 5000, windowsHide: true });
+      return r.status === 0 && isOurDaemon(r.stdout, hb.start) ? pid : null;
+    }
+    if (platform === "linux") {
+      const read = (f) => readFileSync(f, "utf8");
+      return isOurLinuxDaemon({ stat: read(`/proc/${pid}/stat`), cmdline: read(`/proc/${pid}/cmdline`) }, hb.startTicks)
+        ? pid : null;
+    }
+    const r = spawnSync("ps", ["-o", "lstart=,command=", "-p", String(pid)], { encoding: "utf8", timeout: 5000 });
+    return r.status === 0 && isOurPsDaemon(r.stdout, hb.start) ? pid : null;
   } catch { return null; }
+}
+
+// Stops a confirmed daemon at once: it is hung or outdated, and its socket file, if any, is
+// taken over by the next daemon.
+function killDaemon(pid) {
+  try {
+    if (process.platform === "win32") spawnSync("taskkill", ["/F", "/PID", String(pid)], { timeout: 5000, windowsHide: true });
+    else process.kill(pid, "SIGKILL");
+  } catch {}
 }
 
 function spawnDaemon() {
@@ -339,7 +377,7 @@ async function restartDaemon(judged, since, paths, pipe) {
   if (!versionDiffers && hb && hb.renewed > since) return; // it came back
   const pid = confirmedDaemonPid(hb);
   if (pid !== null) {
-    try { spawnSync("taskkill", ["/F", "/PID", String(pid)], { timeout: 5000, windowsHide: true }); } catch {}
+    killDaemon(pid);
     for (const end = Date.now() + RELEASE_MS; Date.now() < end && await probePipe(pipe);) {
       await new Promise((r) => setTimeout(r, 50));
     }
@@ -378,7 +416,7 @@ export async function waitForFile(file, waitMs, pollMs = PAYLOAD_POLL_MS) {
 }
 
 async function superviseDaemon(name, sid) {
-  if (process.platform !== "win32" || !DAEMON_EVENTS.has(name)) return;
+  if (!DAEMON_EVENTS.has(name)) return;
   const hash = rootHash(PACKAGE_ROOT);
   // Only where this installation's client is in use: it has written this session's payload.
   // SessionStart usually comes before the client's first tick, so it waits for the payload
@@ -386,7 +424,7 @@ async function superviseDaemon(name, sid) {
   // no daemon running shows the offline line until its first tool call or Stop.
   const waitMs = name === "SessionStart" ? PAYLOAD_WAIT_MS : 0;
   if (!(await waitForFile(sessionPaths(sid, hash).payload, waitMs))) return;
-  const paths = daemonPaths(hash), pipe = pipePath(hash);
+  const paths = daemonPaths(hash), pipe = daemonSocket(hash);
   if (!(await probePipe(pipe))) {
     if (claimRestart(paths.claim, Date.now())) spawnDaemon();
     return;

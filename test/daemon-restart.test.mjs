@@ -2,20 +2,20 @@
 // The hooks start and restart this installation's render daemon.
 //
 // Every real-process case runs the hook from a COPY of the package in a sandbox, so the copy has
-// its own install hash, pipe, heartbeat and claim and never meets the live bar of this machine.
-// In most copies src/daemon.js is replaced by a small fake that logs each start, binds the pipe
-// and writes a heartbeat the way the test asks (renewing, stale, or with another version). Counting
-// the logged starts is what proves "exactly one spawn": the singleton pipe alone would make the
-// number of SURVIVING daemons look right even if every hook had spawned one.
+// its own install hash, address, heartbeat and claim and never meets the live bar of this machine.
+// In most copies src/daemon.js is replaced by a small fake that logs each start, binds the
+// daemon's address (the named pipe on Windows, the socket file elsewhere) and writes a heartbeat
+// the way the test asks (renewing, stale, or with another version). Counting the logged starts is
+// what proves "exactly one spawn": the singleton address alone would make the number of SURVIVING
+// daemons look right even if every hook had spawned one.
 //
-// Windows only for the real processes (the pipe is a Windows named pipe); the claim rule is also
-// tested in-process everywhere. Every daemon this file starts, directly or through a hook, is
-// found by its command line and killed in `finally`.
+// The claim rule is also tested in-process. Every daemon this file starts, directly or through a
+// hook, is found by its command line and killed in `finally`.
 
 import { spawn, spawnSync } from "node:child_process";
 import { sandboxEnv } from "./_sandbox-env.mjs";
 import {
-  mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, cpSync, symlinkSync, utimesSync,
+  mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, cpSync, symlinkSync, utimesSync, readdirSync,
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -29,7 +29,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const SB = mkdtempSync(path.join(os.tmpdir(), "doombar-restart-"));
 const { sessionPaths, daemonPaths, rootHash } = await import("../src/fold.js");
-const { claimRestart, idlePercent } = await import("../src/hook.js");
+const { claimRestart, idlePercent, isOurLinuxDaemon, isOurPsDaemon } = await import("../src/hook.js");
 
 const THROTTLE = 500;
 const GRACE = 1500;
@@ -40,12 +40,12 @@ const SID = "restart-session";
 // FAKE_MODE=stale writes one heartbeat a minute old and never renews (a hung daemon); otherwise
 // it renews every 100 ms. FAKE_VERSION overrides the version it reports.
 const FAKE_DAEMON = `
-import { appendFileSync, writeFileSync, renameSync, readFileSync } from "node:fs";
+import { appendFileSync, writeFileSync, renameSync, readFileSync, unlinkSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { rootHash, daemonPaths } from "./fold.js";
+import { rootHash, daemonPaths, daemonSocket, procStartTicks } from "./fold.js";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const hash = rootHash(root);
 const log = path.join(os.tmpdir(), "fake-daemon.log");
@@ -55,24 +55,34 @@ const hb = daemonPaths(hash).heartbeat;
 const start = Math.round(performance.timeOrigin);
 const beat = (renewed) => {
   const tmp = hb + "." + process.pid + ".tmp";
-  writeFileSync(tmp, JSON.stringify({ pid: process.pid, start, version, window: 1, renewed, renameFailures: 0 }));
+  writeFileSync(tmp, JSON.stringify({ pid: process.pid, start, startTicks: procStartTicks() || undefined, version, window: 1, renewed, renameFailures: 0 }));
   renameSync(tmp, hb);
 };
 const srv = net.createServer((s) => s.end());
-srv.once("error", () => process.exit(0));
-srv.listen("\\\\\\\\.\\\\pipe\\\\doombar-" + hash, () => {
+const addr = daemonSocket(hash);
+const bound = () => {
   appendFileSync(log, "bound " + process.pid + "\\n");
   if (process.env.FAKE_MODE === "stale") beat(Date.now() - 60000);
   else { beat(Date.now()); setInterval(() => beat(Date.now()), 100); }
+};
+// Like the real daemon: a socket file nobody answers on is taken over, a live one is left alone.
+srv.once("error", (e) => {
+  if (e.code !== "EADDRINUSE" || process.platform === "win32") process.exit(0);
+  const c = net.connect(addr);
+  c.once("connect", () => process.exit(0));
+  c.once("error", () => { try { unlinkSync(addr); } catch {} srv.once("error", () => process.exit(0)); srv.listen(addr, bound); });
 });
+srv.listen(addr, bound);
 setTimeout(() => process.exit(0), 60000);
 `;
 
 // A node process that runs a file named daemon.js, but not this installation's: it records its
 // own pid and start the way a daemon heartbeat would, then sleeps.
 const OTHER_DAEMON = `
-import { writeFileSync } from "node:fs";
-writeFileSync(process.argv[2], JSON.stringify({ pid: process.pid, start: Math.round(performance.timeOrigin) }));
+import { writeFileSync, readFileSync } from "node:fs";
+let startTicks;
+try { const st = readFileSync("/proc/self/stat", "utf8"); startTicks = st.slice(st.lastIndexOf(")") + 2).split(" ")[19]; } catch {}
+writeFileSync(process.argv[2], JSON.stringify({ pid: process.pid, start: Math.round(performance.timeOrigin), startTicks }));
 setTimeout(() => {}, 60000);
 `;
 
@@ -142,6 +152,17 @@ const writePayload = (pkg) => writeFileSync(pkg.payload, "doombar-env\tCOLUMNS=1
 
 // Every node process whose command line points into the sandbox: the daemons and helpers here.
 function sandboxProcesses() {
+  if (process.platform !== "win32") {
+    const found = [];
+    let pids = [];
+    try { pids = readdirSync("/proc").filter((n) => /^\d+$/.test(n)); } catch {}
+    for (const p of pids) {
+      let cmd = "";
+      try { cmd = readFileSync(`/proc/${p}/cmdline`, "utf8").split("\0").join(" "); } catch { continue; }
+      if (cmd.includes(SB)) found.push({ pid: Number(p), cmd });
+    }
+    return found.filter((p) => p.pid !== process.pid);
+  }
   const r = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
     "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -and " +
     "$_.CommandLine.ToLower().Contains($env:DOOMBAR_TEST_SB) } | ForEach-Object { '{0}|{1}' -f $_.ProcessId, $_.CommandLine }"],
@@ -192,9 +213,25 @@ try {
     ok(idlePercent([cpu(7, 7)], [cpu(7, 7)]) === 100, "no elapsed CPU time counts as idle, never as busy");
   }
 
-  if (process.platform !== "win32") {
-    console.log("  skip real-process cases: the daemon and its pipe exist on Windows only");
-  } else {
+  // ---- The identity checks before a kill, in-process (every platform) ------------------------
+  {
+    const js = "/opt/pkg/src/daemon.js";
+    // /proc/<pid>/stat: the start time is field 22, the 20th value after the command name.
+    const stat = (ticks, comm = "node") => `4242 (${comm}) S 1 4242 4242 0 -1 4194560 100 0 0 0 1 2 0 0 30 10 7 0 ${ticks} 100000 50`;
+    const cmd = `node\0${js}\0`;
+    ok(isOurLinuxDaemon({ stat: stat("12345"), cmdline: cmd }, "12345", js), "Linux: the recorded start time and our daemon.js");
+    ok(!isOurLinuxDaemon({ stat: stat("12346"), cmdline: cmd }, "12345", js), "Linux: another start time is not ours (the pid was reused)");
+    ok(!isOurLinuxDaemon({ stat: stat("12345"), cmdline: "node\0/other/src/daemon.js\0" }, "12345", js), "Linux: another daemon.js is not ours");
+    ok(isOurLinuxDaemon({ stat: stat("12345", "we ird) name"), cmdline: cmd }, "12345", js),
+      "Linux: a command name with spaces and ) does not shift the fields");
+    ok(!isOurLinuxDaemon({ stat: stat("12345"), cmdline: cmd }, undefined, js), "Linux: a heartbeat without a start time confirms nothing");
+    const t = Date.parse("Nov 12 2026 00:01:02");
+    ok(isOurPsDaemon(`Thu Nov 12 00:01:02 2026 /usr/local/bin/node ${js}`, t + 400, js), "ps: the recorded start and our daemon.js");
+    ok(!isOurPsDaemon(`Thu Nov 12 00:01:02 2026 /usr/local/bin/node ${js}`, t + 10000, js), "ps: another start time is not ours");
+    ok(!isOurPsDaemon("Thu Nov 12 00:01:02 2026 /usr/local/bin/node /x/src/daemon.js", t, js), "ps: another daemon.js is not ours");
+  }
+
+  {
     // A session this installation's client does not serve (no payload) starts nothing: SessionStart
     // gives up once its wait for the payload is over, other events do not wait at all.
     {
@@ -347,8 +384,8 @@ try {
       const info = path.join(SB, "other", "info.json");
       const other = startProcess([path.join(otherDir, "daemon.js"), info], process.env);
       ok(await waitFor(() => readJson(info)?.pid === other.pid), "another installation's daemon.js runs");
-      const { start } = readJson(info);
-      writeFileSync(pkg.heartbeat, JSON.stringify({ pid: other.pid, start, version: VERSION, window: 1,
+      const { start, startTicks } = readJson(info);
+      writeFileSync(pkg.heartbeat, JSON.stringify({ pid: other.pid, start, startTicks, version: VERSION, window: 1,
         renewed: Date.now() - 60000, renameFailures: 0 }));
       await runHook(pkg);
       await sleep(GRACE + 200);
@@ -366,7 +403,8 @@ try {
       const daemon = startFake(pkg, { FAKE_MODE: "stale" });
       ok(await waitFor(() => readJson(pkg.heartbeat)?.pid === daemon.pid), "a hung daemon holds the pipe");
       const hb = readJson(pkg.heartbeat);
-      writeFileSync(pkg.heartbeat, JSON.stringify({ ...hb, start: hb.start - 10000 }));
+      writeFileSync(pkg.heartbeat, JSON.stringify({ ...hb, start: hb.start - 10000,
+        startTicks: hb.startTicks ? String(Number(hb.startTicks) - 1000) : undefined }));
       await runHook(pkg);
       await sleep(GRACE + 200);
       const r = await runHook(pkg);
@@ -402,9 +440,12 @@ try {
   }
 } finally {
   for (const c of children) if (c.exitCode === null && c.signalCode === null) c.kill();
-  if (process.platform === "win32") {
+  {
     // Daemons started by a hook are detached: no handle here, so find them by command line.
-    for (const p of sandboxProcesses()) spawnSync("taskkill", ["/F", "/PID", String(p.pid)], { windowsHide: true });
+    for (const p of sandboxProcesses()) {
+      if (process.platform === "win32") spawnSync("taskkill", ["/F", "/PID", String(p.pid)], { windowsHide: true });
+      else try { process.kill(p.pid, "SIGKILL"); } catch {}
+    }
     await sleep(500);
     const left = sandboxProcesses();
     ok(left.length === 0, `no daemon or helper process is left running (${left.map((p) => p.pid).join(",")})`);
