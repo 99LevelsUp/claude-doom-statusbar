@@ -197,9 +197,13 @@ export async function startDaemon({ root = PACKAGE_ROOT, env = process.env } = {
   let timer = null;
   let stopping = false;
 
+  // A failed listen leaves its listeners behind, so each attempt removes the other's.
   const listen = () => new Promise((resolve) => {
-    server.once("error", resolve);
-    server.listen(addr, () => { server.removeListener("error", resolve); resolve(null); });
+    const onError = (e) => { server.removeListener("listening", onListening); resolve(e); };
+    const onListening = () => { server.removeListener("error", onError); resolve(null); };
+    server.once("error", onError);
+    server.once("listening", onListening);
+    server.listen(addr);
   });
   let err = await listen();
   // A socket file nobody answers on was left by a daemon that was killed: take it over.

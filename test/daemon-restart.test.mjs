@@ -70,7 +70,7 @@ srv.once("error", (e) => {
   if (e.code !== "EADDRINUSE" || process.platform === "win32") process.exit(0);
   const c = net.connect(addr);
   c.once("connect", () => process.exit(0));
-  c.once("error", () => { try { unlinkSync(addr); } catch {} srv.once("error", () => process.exit(0)); srv.listen(addr, bound); });
+  c.once("error", () => { try { unlinkSync(addr); } catch {} srv.removeAllListeners("listening"); srv.once("error", () => process.exit(0)); srv.listen(addr, bound); });
 });
 srv.listen(addr, bound);
 setTimeout(() => process.exit(0), 60000);
