@@ -167,6 +167,16 @@ function buildClasses() {
 
 const CLASSES = Object.freeze(buildClasses());
 
+// Shapes of the octant patterns the search leaves out; chafa may still print them, and scoring its
+// output needs their shape.
+const LEFT_OUT = [[0x01, 0x1cea8], [0x02, 0x1ceab], [0x40, 0x1cea3], [0x80, 0x1cea0], [0x14, 0x1fbe6], [0x28, 0x1fbe7]]
+  .map(([bits, cp]) => make(cp, gridPolys(bits, 4), "octant"));
+
+// Any glyph this table knows by its character, the left-out octant characters included; null for
+// a character it does not know.
+const _byChar = new Map([SPACE, FULL, ...Object.values(CLASSES).flat(), ...LEFT_OUT].map((g) => [g.ch, g]));
+export const glyphByChar = (ch) => _byChar.get(ch) || null;
+
 export const stepIndex = (step) => STEPS.indexOf(step);
 
 // The glyphs a step adds over the one below it, in table order (for the test card).

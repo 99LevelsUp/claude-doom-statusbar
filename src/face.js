@@ -130,7 +130,8 @@ function parseAnsi(text) {
   return out;
 }
 
-function toFace(text, rows) {
+// chafa's ANSI output as exactly `rows` face rows.
+export function toFace(text, rows) {
   const out = parseAnsi(text).slice(0, rows);
   while (out.length < rows) out.push([]); // exactly `rows` lines
   return out;
