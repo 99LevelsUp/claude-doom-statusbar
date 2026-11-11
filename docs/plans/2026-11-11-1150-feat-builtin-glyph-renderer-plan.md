@@ -6,6 +6,7 @@ topic: builtin-glyph-renderer
 artifact_contract: ce-unified-plan/v1
 product_contract_source: ce-brainstorm
 execution: code
+deepened: 2026-11-11
 ---
 
 # Built-in Glyph Renderer - Plan
@@ -18,7 +19,7 @@ execution: code
 - **Execution profile:** one pull request from a feature branch, committed often, merged into `master` once the Definition of Done holds (the owner merges directly; no PR review is required by the project).
 - **Owner gates inside the work:** the test card verdict after U4 sets the Windows Terminal level (KTD4); the side-by-side verdict after U7 decides D-4 and therefore what U9 does.
 - **Stop conditions:** stop and ask when the measured one-shot cost exceeds the chafa process it replaces even with the KTD10 disk cache, or when the owner's verdict is negative and the chafa-wasm question (Deferred / Open Questions) has to be decided first.
-- **Who finishes:** `ce-work` implements U1–U9; the owner runs the two gates and merges.
+- **Who finishes:** `ce-work` implements U1–U10 (order: U1, U2, U3, U4 gate, U5, U10, U6, U7 gate, U8, U9); the owner runs the two gates and merges.
 - **Open blockers:** none.
 
 ---
@@ -111,14 +112,6 @@ This plan covers the built-in conversion and its quality gate, used by the DOOM 
 - Terminal type is a guess from environment variables such as `WT_SESSION` and `TERM_PROGRAM`. A terminal reached over SSH, or Windows Terminal with an old font, can get the wrong default; R8 is the remedy.
 - The bash client forwards a fixed list of variables today (`src/doombar-client.sh`), without the terminal-identifying ones; R8 needs them per session.
 
-### Outstanding Questions
-
-**Deferred to Planning**
-
-- Where wedges sit in the ladder relative to sextants and octants follows from the test card result, not from a decision now.
-- Which terminals count as "known modern" beyond Windows Terminal, and the name and form of the override setting.
-- The colour space and error measure of the score (the ideation suggests OKLab).
-
 ### Sources / Research
 
 - `docs/ideation/2026-11-09-render-daemon-and-minimap.md`: Part 2 (renderer), Part 5 (3D prototype and the 35 ms chafa cost), Part 6 ideas 2 and 6.
@@ -128,7 +121,7 @@ This plan covers the built-in conversion and its quality gate, used by the DOOM 
 
 ### Product Contract preservation
 
-Changed: Scope Boundaries gained the fine-bars non-goal, confirmed with the owner before the plan was written. Requirements, Key Decisions and their IDs are unchanged.
+Changed: Scope Boundaries gained the fine-bars non-goal, confirmed with the owner before the plan was written; the three questions deferred to planning are resolved by KTD3 (ladder order), KTD4 (terminals and the `DOOMBAR_GLYPHS` override) and KTD9 (OKLab score) and were removed. Requirements, Key Decisions and their IDs are unchanged.
 
 ---
 
@@ -190,6 +183,12 @@ flowchart TB
 - The daemon runs at below-normal priority and renders one session at a time; the per-render slot of KTD6 relies on that.
 - Tests run on a machine whose own terminal must not leak into results: every test that renders a face pins the step through the environment.
 - Resource caution on the owner's PC: run the test suite at below-normal priority and the end-to-end test alone.
+
+### Risks
+
+- **One Windows Terminal level for every Windows Terminal.** The level comes from the owner's terminal and font; an older Windows Terminal (before the 1.25 built-in sextants and wedges) or a font without octants shows boxes. Accepted: `DOOMBAR_GLYPHS` is the remedy and the test card shows which step to set.
+- **Wedge masks are approximations.** Rasterising the polygons onto 8×8 differs from how a terminal draws them; chafa's hand-drawn masks differ by about 3 of 64 pixels. Accepted: the U7 render-back uses the exact polygons, so the owner's verdict sees the real error.
+- **The one-shot cost on Linux and macOS is unmeasured.** Decided by KTD10: measure in U6, cache only if needed.
 
 ---
 
@@ -320,31 +319,52 @@ flowchart TB
 
 **Requirements:** R5, R8, R12 (KTD6, KTD7, KTD8, KTD10).
 
-**Dependencies:** U3, U5.
+**Dependencies:** U3, U5, U10.
 
 **Files:**
 - `src/face.js` (built-in default, chafa opt-in with matching symbols and size, cache key)
 - `src/render.js`, `src/statusline.js` (step in the per-render slot)
-- `src/doombar-client.sh`, `src/daemon.js` (forwarded variables)
-- `test/client.test.mjs`, `test/daemon.test.mjs`, `test/render-session.test.mjs`, `test/render-snapshot.test.mjs` and `test/snapshots/doom-*.txt`, `test/face-warm.test.mjs`, `test/resolve-preset.test.mjs`, `test/preset-bands.test.mjs`
+- `test/render-session.test.mjs`, `test/render-snapshot.test.mjs` and `test/snapshots/doom-*.txt`, `test/face-warm.test.mjs`, `test/resolve-preset.test.mjs`, `test/preset-bands.test.mjs`
 
 **Approach:**
 1. `loadFace` takes the step from the per-render slot, converts with U3 and caches by sprite, rows, step and renderer.
 2. With `DOOMBAR_FACE_RENDERER=chafa`, run chafa (asynchronously in the daemon, as the warm-up does today) with the step's symbols and the KTD1 size; fall back to the built-in face.
-3. Add the KTD7 variables to the client loop and `FORWARDED_ENV`, updating the client header comment.
-4. Tests that copy `process.env` scrub the terminal variables; every face-rendering test pins `DOOMBAR_GLYPHS`; regenerate the nine DOOM snapshots at a pinned step.
-5. Measure the cold one-shot render with built-in faces against the same render with chafa on this PC; add the KTD10 disk cache only if the built-in render is slower.
+3. Every face-rendering test pins `DOOMBAR_GLYPHS`; regenerate the nine DOOM snapshots at a pinned step.
+4. Measure the cold one-shot render with built-in faces against the same render with chafa on this PC; add the KTD10 disk cache only if the built-in render is slower.
 
 **Test scenarios:**
 - Covers AE2. Two sessions in one daemon, one with `WT_SESSION` and one without, render the same sprite at the same height: the first face contains sextant or richer glyphs, the second only half blocks.
 - Covers AE4. With chafa on `PATH` and `DOOMBAR_FACE_RENDERER` unset, rendering a face starts no chafa process (spawn counter stays 0).
 - With `DOOMBAR_FACE_RENDERER=chafa` and chafa missing, the face is the built-in one at the same size.
-- The client's env line contains `WT_SESSION` and `TERM_PROGRAM` when set and omits them when unset.
-- A session that does not forward `WT_SESSION` never gets the daemon's own value.
+- With `DOOMBAR_FACE_RENDERER=chafa` and the console-host step, chafa receives only half-block symbols.
 - The DOOM snapshots render identically on any terminal once the step is pinned; their mugshot column widths equal the old ones.
 - `resolve-preset` and `preset-bands` expectations still hold (turn sprites one column wider than idle).
 
 **Verification:** `npm test` passes at below-normal priority; `npm run test:e2e` passes on its own; the one-shot cost measurement meets the Success Criteria line, with or without the cache.
+
+### U10. Forward the terminal variables per session
+
+**Goal:** the daemon sees each session's own terminal variables and glyph settings, never its own.
+
+**Requirements:** R8 (KTD7).
+
+**Dependencies:** none; lands before U6.
+
+**Files:** `src/doombar-client.sh` (loop and header comment), `src/daemon.js` (`FORWARDED_ENV`), `test/client.test.mjs`, `test/daemon.test.mjs`.
+
+**Approach:**
+1. Add the KTD7 names to the client loop with builtins only, keeping the unset-stays-absent contract.
+2. Add the same names to `FORWARDED_ENV`.
+3. Tests that copy `process.env` scrub these names so results do not depend on the terminal that runs them.
+
+**Patterns to follow:** the existing forwarded names and the unset-stays-unset test in `test/daemon.test.mjs`.
+
+**Test scenarios:**
+- The client's env line contains `WT_SESSION=…` and `TERM_PROGRAM=…` when set, and neither name when unset.
+- A forwarded value containing a TAB or newline arrives with those characters stripped.
+- A session that does not forward `WT_SESSION` renders without it even when the daemon's own environment has one.
+
+**Verification:** `test/client.test.mjs` and `test/daemon.test.mjs` pass in Windows Terminal and in the console host alike.
 
 ### U7. Side-by-side comparison and score
 
