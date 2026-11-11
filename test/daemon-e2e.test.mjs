@@ -2,16 +2,16 @@
 // End to end: a real render daemon, real hooks and the real bash client keep the promises the bar
 // makes about liveness.
 //
-// Everything runs from a COPY of the package in a sandbox temp dir, so the copy has its own install
-// hash, pipe, heartbeat and claim and never meets the live bar of this machine. The client runs
-// through Git Bash with the command shape the installer writes, fed the same statusLine JSON on a
-// ~1 s rhythm, the way Claude Code runs it. The daemon is started by a SessionStart hook once the
+// Everything runs from a COPY of the package in a sandbox runtime dir, so the copy has its own
+// install hash, address, heartbeat and claim and never meets the live bar of this machine. The
+// client runs with the command shape the installer writes, through the shell Claude Code uses
+// (Git Bash on Windows, /bin/sh on Linux), fed the same statusLine JSON on a ~1 s rhythm. The daemon is started by a SessionStart hook once the
 // first tick has written the session's payload, and every later start or restart comes from a hook.
 //
 // To pause or hang the daemon, the copy's src/daemon.js is a thin shim: it runs the real daemon
 // (the original file, renamed daemon-real.js) and, when a control file appears in its temp dir,
 // blocks its own event loop with Atomics.wait for the number of milliseconds the file holds. So
-// the "suspended" daemon is the real daemon with its loop stopped: the pipe stays bound, nothing is
+// the "suspended" daemon is the real daemon with its loop stopped: the address stays bound, nothing is
 // renewed, and its command line is this installation's src/daemon.js. The control file is consumed
 // on read, so a replacement daemon never inherits a pause, and every pause is capped at 30 s.
 //
@@ -19,32 +19,35 @@
 // both), every child has a timeout and is killed as a tree, the daemons (detached by the hook) are
 // found by command line and killed in `finally`, and a watchdog ends the run after 150 s.
 //
-// Windows only: the daemon's pipe is a Windows named pipe and the client runs in Git Bash.
+// Windows and Linux. Not macOS: the process scan reads /proc.
 
 import { spawn, spawnSync } from "node:child_process";
 import { sandboxEnv } from "./_sandbox-env.mjs";
 import {
-  mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, cpSync, symlinkSync, renameSync,
+  mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, cpSync, symlinkSync, renameSync, readdirSync,
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-if (process.platform !== "win32") {
-  console.log("  skip: the render daemon, its pipe and the Git Bash client exist on Windows only");
+const WIN = process.platform === "win32";
+if (!WIN && process.platform !== "linux") {
+  console.log("  skip: the process scan needs Windows or Linux /proc");
   console.log("\nALL PASS");
   process.exit(0);
 }
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const BASH = process.env.DOOMBAR_TEST_BASH || "C:/Program Files/Git/bin/bash.exe";
+// The shell Claude Code runs the statusLine with, and (Linux) the bash 5 the command execs.
+const SHELL = WIN ? (process.env.DOOMBAR_TEST_BASH || "C:/Program Files/Git/bin/bash.exe") : "/bin/sh";
+const POSIX_BASH = WIN ? null : (process.env.DOOMBAR_TEST_BASH || "/bin/bash");
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const T_START = Date.now();
 const at = () => `${((Date.now() - T_START) / 1000).toFixed(1)}s`;
 
-const { sessionPaths, daemonPaths, rootHash } = await import("../src/fold.js");
+const { sessionPaths, daemonPaths, rootHash, daemonSocket } = await import("../src/fold.js");
 const { OFFLINE_MARKER } = await import("../src/frame.js");
 
 const THROTTLE = 1000;
@@ -65,19 +68,34 @@ const TMP = path.join(SB, "tmp");
 const live = new Set();
 let peakForeground = 0;
 const killTree = (pid) => {
+  if (!WIN) { try { process.kill(pid, "SIGKILL"); } catch { /* gone */ } return; }
   try { spawnSync("taskkill", ["/T", "/F", "/PID", String(pid)], { timeout: 10000, windowsHide: true, stdio: "ignore" }); } catch { /* gone */ }
 };
 
-// Every node.exe and bash.exe whose command line points into the sandbox, either slash spelling:
-// the daemons, the hooks and the client ticks of this run.
+// Every node and bash (sh) process whose command line points into the sandbox, either slash
+// spelling: the daemons, the hooks and the client ticks of this run. Names come without ".exe".
 function sandboxProcesses() {
+  if (!WIN) {
+    const found = [];
+    let pids = [];
+    try { pids = readdirSync("/proc").filter((n) => /^\d+$/.test(n)); } catch { /* none */ }
+    for (const p of pids) {
+      let argv;
+      try { argv = readFileSync(`/proc/${p}/cmdline`, "utf8").split("\0").filter(Boolean); } catch { continue; }
+      const cmd = argv.join(" ");
+      if (Number(p) !== process.pid && cmd.toLowerCase().includes(SB_NORM)) {
+        found.push({ pid: Number(p), name: path.basename(argv[0] || ""), cmd });
+      }
+    }
+    return found;
+  }
   const r = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
     "Get-CimInstance Win32_Process -Filter \"Name='node.exe' OR Name='bash.exe'\" | Where-Object { $_.CommandLine -and " +
     "$_.CommandLine.Replace('\\','/').ToLower().Contains($env:DOOMBAR_TEST_SB) } | " +
     "ForEach-Object { '{0}|{1}|{2}' -f $_.ProcessId, $_.Name, $_.CommandLine }"],
   { encoding: "utf8", timeout: 20000, windowsHide: true, maxBuffer: 1 << 20, env: { ...process.env, DOOMBAR_TEST_SB: SB_NORM } });
   return String(r.stdout || "").split(/\r?\n/).map((l) => /^(\d+)\|([^|]*)\|(.*)$/.exec(l.trim())).filter(Boolean)
-    .map((m) => ({ pid: Number(m[1]), name: m[2].toLowerCase(), cmd: m[3] }));
+    .map((m) => ({ pid: Number(m[1]), name: m[2].toLowerCase().replace(/\.exe$/, ""), cmd: m[3] }));
 }
 
 let cleaned = false;
@@ -181,10 +199,14 @@ const PAYLOAD = inTmp(sessionPaths(SID, HASH).payload);
 const PAUSE = path.join(TMP, "e2e-daemon-pause");
 const PAUSE_LOG = path.join(TMP, "e2e-daemon-pause.log");
 
-// The statusLine command exactly as the installer writes it for Git Bash (CLIENT_CMD in bin/cli.js).
+// The statusLine command exactly as the installer writes it (WIN_CLIENT_CMD and posixClientCmd
+// in bin/cli.js): sourced into Git Bash on Windows, exec'd bash with the hash elsewhere.
 const CLIENT = path.join(PKG, "src", "doombar-client.sh").replace(/\\/g, "/");
-const CLIENT_CMD = `DOOMBAR_ROOT_HASH=${HASH}; f="${CLIENT}"; ` +
-  `if [ -r "$f" ]; then . "$f"; else echo 'doombar: offline'; fi`;
+const CLIENT_CMD = WIN
+  ? `DOOMBAR_ROOT_HASH=${HASH}; f="${CLIENT}"; if [ -r "$f" ]; then . "$f"; else echo 'doombar: offline'; fi`
+  : `b="${POSIX_BASH}"; f="${CLIENT}"; if [ -r "$f" ] && [ -x "$b" ]; then unset BASH_ENV; ` +
+    `exec "$b" --norc --noprofile "$f" ${HASH}; else echo 'doombar: offline'; fi`;
+const SOCKET = daemonSocket(HASH, { DOOMBAR_RUNTIME_DIR: TMP });
 
 // The developer's own bar settings must not leak in: they would reach the daemon through the
 // payload line (client) or the inherited environment (hook), and change every timing below.
@@ -227,7 +249,7 @@ let ticking = false;
 let tickLoop = null;
 const tickOnce = () => exclusive(async () => {
   const t0 = Date.now();
-  const r = await runChild(BASH, ["-c", CLIENT_CMD], { env: clientEnv, input: STATUSLINE_JSON, timeoutMs: 5000, capture: true });
+  const r = await runChild(SHELL, ["-c", CLIENT_CMD], { env: clientEnv, input: STATUSLINE_JSON, timeoutMs: 5000, capture: true });
   const tick = { t0, t1: Date.now(), kind: r.timedOut ? "timeout" : kindOf(r.out) };
   // A grey tick: was the daemon late (old heartbeat), or did the client see an old frame?
   if (tick.kind === "grey") tick.hbAge = tick.t1 - (readJson(HEARTBEAT)?.renewed ?? NaN);
@@ -283,7 +305,7 @@ try {
     ok(await waitFor(() => Number.isInteger(readJson(HEARTBEAT)?.pid), 10000), "the SessionStart hook started a daemon that writes its heartbeat");
     ok(await firstLiveAfter(r.end, 10000), `the client turns live (${at()})`);
     const procs = scan("after start");
-    ok(procs.filter((p) => p.name === "node.exe" && p.cmd.includes("daemon.js")).length === 1, "exactly one daemon runs");
+    ok(procs.filter((p) => p.name === "node" && p.cmd.includes("daemon.js")).length === 1, "exactly one daemon runs");
   }
 
   // ---- An idle session stays live (payload unchanged on every tick) --------------------------
@@ -319,9 +341,12 @@ try {
   let killedAt;
   {
     const hb = readJson(HEARTBEAT);
-    spawnSync("taskkill", ["/F", "/PID", String(hb.pid)], { timeout: 10000, windowsHide: true, stdio: "ignore" });
+    killTree(hb.pid);
     killedAt = Date.now();
     ok(await waitFor(() => !alive(hb.pid), 3000), "the daemon is killed");
+    // Linux: a daemon killed outright leaves its socket file; the Stop hook below starts one that
+    // takes it over.
+    if (!WIN) ok(existsSync(SOCKET), "the killed daemon left its socket file behind");
     await sleepUntil(killedAt + 5500);
     const early = ticksFrom(killedAt, killedAt + 2000);
     ok(early.length >= 1 && early.every((t) => t.kind === "live"), `ticks within 2 s of the kill still show the last live frame (${summary(early)})`);
@@ -339,7 +364,7 @@ try {
     const two = ticksFrom(r.end).slice(0, 2);
     ok(two.length === 2 && two[1].kind === "live", `the output is live again within two ticks (${summary(two)})`);
     const procs = scan("after Stop restart");
-    ok(procs.filter((p) => p.name === "node.exe" && p.cmd.includes("daemon.js")).length === 1, "exactly one daemon runs");
+    ok(procs.filter((p) => p.name === "node" && p.cmd.includes("daemon.js")).length === 1, "exactly one daemon runs");
   }
 
   // ---- A hung daemon is sighted, then replaced after the grace period ---------------------------
@@ -381,7 +406,7 @@ try {
       "a new daemon serves the heartbeat");
     ok(await firstLiveAfter(h4.end, 6000), `the output is live again (${summary(ticksFrom(h4.end))})`);
     const procs = scan("after hung restart");
-    ok(procs.filter((p) => p.name === "node.exe" && p.cmd.includes("daemon.js")).length === 1, "exactly one daemon runs");
+    ok(procs.filter((p) => p.name === "node" && p.cmd.includes("daemon.js")).length === 1, "exactly one daemon runs");
   }
 
   await stopTicker();

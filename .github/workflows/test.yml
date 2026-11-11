@@ -30,3 +30,23 @@ jobs:
 
       - name: Test
         run: npm test
+
+  # The render daemon end to end on Linux: real daemon, real hooks and the bash client on a 1 s
+  # rhythm, through /bin/sh as Claude Code runs it. About 90 s, so it runs beside the suite.
+  e2e:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Daemon end to end
+        run: npm run test:e2e
