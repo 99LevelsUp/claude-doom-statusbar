@@ -13,7 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { staleStateFiles } from "../src/hook.js";
-import { sessionPaths, daemonPaths, rootHash } from "../src/fold.js";
+import { sessionPaths, daemonPaths, rootHash, runtimeDir } from "../src/fold.js";
 import { sandboxEnv } from "./_sandbox-env.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -152,8 +152,8 @@ const TTL = 7 * DAY;
     `the payload and frame names sessionPaths writes are swept with their session (${real.join(", ")})`);
   ok(sweep({ [path.basename(dp.heartbeat)]: 30 * DAY, [path.basename(dp.claim)]: 30 * DAY }).length === 0,
     "the heartbeat and claim names daemonPaths writes are never swept");
-  ok(path.dirname(sp.frame) === os.tmpdir() && path.dirname(dp.heartbeat) === os.tmpdir(),
-    "payload, frame and daemon files live in the system temp dir");
+  ok(path.dirname(sp.frame) === runtimeDir() && path.dirname(dp.heartbeat) === runtimeDir(),
+    "payload, frame and daemon files live in the bar's runtime dir");
 
   const h = rootHash("C:\\Users\\dev\\doombar");
   ok(/^[0-9a-f]{10}$/.test(h), `the install-root hash is 10 hex chars (${h})`);
