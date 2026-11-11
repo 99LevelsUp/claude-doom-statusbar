@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Glyph table: code points, masks and the ladder of steps.
-import { STEPS, GRID, classGlyphs, glyphsFor, inverseGlyph } from "../src/glyphs.js";
+import { STEPS, GRID, classGlyphs, glyphsFor } from "../src/glyphs.js";
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
@@ -70,14 +70,6 @@ const ones = (g) => g.mask.reduce((a, b) => a + b, 0);
   ok(on(0, 7) && on(0, 6) && !on(0, 4) && !on(5, 7) && !on(7, 0), "U+1FB3C covers only the lower-left corner");
   const tri = w.find((x) => cp(x) === 0x1fb6c); // left triangle with its apex at the centre
   ok(tri.mask[3 * GRID + 0] === 1 && tri.mask[3 * GRID + 7] === 0, "U+1FB6C is the left triangle");
-}
-
-// Inverse glyphs exist where the conversion needs them.
-{
-  const upper = glyphsFor("half").find((g) => g.ch === "▀");
-  ok(inverseGlyph(upper, "half")?.ch === "▄", "the inverse of the upper half block is the lower half block");
-  const lonely = classGlyphs("octant").find((g) => g.mask.reduce((a, b) => a + b, 0) === 56 && g.mask[0] === 0 && g.mask[1] === 0);
-  ok(lonely && inverseGlyph(lonely, "octant") === null, "an octant whose inverse needs a left-out character has no inverse");
 }
 
 console.log(fails ? `\n${fails} FAILED` : "\nALL PASS");

@@ -178,11 +178,10 @@ export function classGlyphs(step) {
 const maskKey = (m) => m.join("");
 
 // Every glyph usable at `step`: space, the full block and all classes up to the step, each 8x8
-// mask once (the first glyph in ladder order keeps it). Inverse pairs both stay: the conversion
-// needs the inverse to put a transparent area on the background side.
+// mask once (the first glyph in ladder order keeps it).
 const _forStep = new Map();
 export function glyphsFor(step) {
-  if (_forStep.has(step)) return _forStep.get(step).list;
+  if (_forStep.has(step)) return _forStep.get(step);
   const top = stepIndex(step);
   if (top < 0) throw new Error(`unknown glyph step: ${step}`);
   const byMask = new Map();
@@ -191,14 +190,8 @@ export function glyphsFor(step) {
     if (!byMask.has(k)) byMask.set(k, g);
   }
   const list = Object.freeze([...byMask.values()]);
-  _forStep.set(step, { list, byMask });
+  _forStep.set(step, list);
   return list;
-}
-
-// The glyph at `step` whose mask is the exact inverse of `glyph`'s, or null when none is allowed.
-export function inverseGlyph(glyph, step) {
-  glyphsFor(step);
-  return _forStep.get(step).byMask.get(maskKey(glyph.mask.map((b) => 1 - b))) || null;
 }
 
 export const spaceGlyph = SPACE;
