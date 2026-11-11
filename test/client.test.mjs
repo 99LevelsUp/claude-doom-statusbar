@@ -23,7 +23,8 @@ const BASH = process.env.DOOMBAR_TEST_BASH || (WIN ? "C:/Program Files/Git/bin/b
 const HASH = "abc1234567";
 const OFFLINE = "doombar: offline\n";
 const FORWARDED = ["COLUMNS", "DOOMBAR_PRESET", "DOOMBAR_THEME", "DOOMBAR_TEXT_OVERFLOW",
-  "DOOMBAR_INDENT", "DOOMBAR_FRAME_WINDOW", "MUGSHOT_STATE", "CLAUDE_CODE_TASK_LIST_ID", "CLAUDE_CONFIG_DIR"];
+  "DOOMBAR_INDENT", "DOOMBAR_FRAME_WINDOW", "MUGSHOT_STATE", "CLAUDE_CODE_TASK_LIST_ID", "CLAUDE_CONFIG_DIR",
+  "WT_SESSION", "TERM_PROGRAM", "TMUX", "DOOMBAR_GLYPHS", "DOOMBAR_FACE_RENDERER"];
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
@@ -176,6 +177,12 @@ try {
     ok(envLine === "doombar-env\tCOLUMNS=137\tDOOMBAR_PRESET=compact\tDOOMBAR_THEME=doomx\tDOOMBAR_INDENT=\tCLAUDE_CODE_TASK_LIST_ID=list-7\tCLAUDE_CONFIG_DIR=C:\\cfg\\claude",
       `environment line forwards set variables, drops tabs and newlines in values (got ${show(envLine)})`);
     ok(payload.slice(nl + 1) === json, "the stdin JSON follows the environment line byte for byte");
+
+    // The terminal's identity travels too, so the daemon picks each session's glyphs.
+    const tsid = "payload-term";
+    run({ sid: tsid, input: JSON.stringify({ session_id: tsid }), env: { WT_SESSION: "a1\tb2", TERM_PROGRAM: "vscode" } });
+    const tline = existsSync(inSandbox(tsid, "payload")) ? readFileSync(inSandbox(tsid, "payload"), "utf8").split("\n")[0] : "";
+    ok(tline === "doombar-env\tWT_SESSION=a1b2\tTERM_PROGRAM=vscode", `WT_SESSION and TERM_PROGRAM are forwarded when set (got ${show(tline)})`);
     ok(r.out === OFFLINE, "with no frame yet the payload is still written and the offline line printed");
   }
 

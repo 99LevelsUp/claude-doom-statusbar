@@ -21,7 +21,8 @@
 #   line 1  "doombar-env", then for each forwarded variable that is set: a TAB and NAME=value.
 #           Forwarded, in this order: COLUMNS DOOMBAR_PRESET DOOMBAR_THEME
 #           DOOMBAR_TEXT_OVERFLOW DOOMBAR_INDENT DOOMBAR_FRAME_WINDOW MUGSHOT_STATE
-#           CLAUDE_CODE_TASK_LIST_ID CLAUDE_CONFIG_DIR.
+#           CLAUDE_CODE_TASK_LIST_ID CLAUDE_CONFIG_DIR WT_SESSION TERM_PROGRAM TMUX
+#           DOOMBAR_GLYPHS DOOMBAR_FACE_RENDERER (the terminal's identity picks the face's glyphs).
 #           An unset variable is absent; a variable set to the empty string appears as "NAME=".
 #           TAB, CR and LF are removed from values, so neither an item nor the line can break.
 #           Read it by splitting the line on TAB and each item at its first "=".
@@ -134,7 +135,7 @@ __doombar_client() {
   # Hand the payload over: the environment line, then the JSON. See the layout at the top.
   local envline=doombar-env name val ws=$'\t\r\n'
   for name in COLUMNS DOOMBAR_PRESET DOOMBAR_THEME DOOMBAR_TEXT_OVERFLOW DOOMBAR_INDENT DOOMBAR_FRAME_WINDOW MUGSHOT_STATE \
-    CLAUDE_CODE_TASK_LIST_ID CLAUDE_CONFIG_DIR; do
+    CLAUDE_CODE_TASK_LIST_ID CLAUDE_CONFIG_DIR WT_SESSION TERM_PROGRAM TMUX DOOMBAR_GLYPHS DOOMBAR_FACE_RENDERER; do
     [[ -n ${!name+set} ]] || continue
     val=${!name}
     envline+=$'\t'$name=${val//[$ws]/}

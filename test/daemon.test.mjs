@@ -221,9 +221,10 @@ try {
   // A forwarded variable the session leaves unset stays unset for that session's render, even
   // when the daemon's own environment (inherited from whichever session's hook started it) sets it.
   {
-    const saved = { theme: process.env.DOOMBAR_THEME, state: process.env.MUGSHOT_STATE };
+    const saved = { theme: process.env.DOOMBAR_THEME, state: process.env.MUGSHOT_STATE, wt: process.env.WT_SESSION };
     process.env.DOOMBAR_THEME = "minecraft";
     process.env.MUGSHOT_STATE = path.join(SB, "spawner-state.json");
+    process.env.WT_SESSION = "spawner-terminal";
     try {
       const s = session("unset");
       delete s.fwd.MUGSHOT_STATE;
@@ -240,7 +241,10 @@ try {
       ok(sameLines(frameOf(s)?.slots[0].lines, want), "a session without DOOMBAR_THEME renders the default theme, not the daemon's");
       ok(state.sessions.get("unset")?.env.MUGSHOT_STATE === undefined,
         "a session without MUGSHOT_STATE does not take the daemon's checkpoint path");
+      ok(state.sessions.get("unset")?.env.WT_SESSION === undefined,
+        "a session without WT_SESSION does not take the terminal of the session that started the daemon");
     } finally {
+      if (saved.wt === undefined) delete process.env.WT_SESSION; else process.env.WT_SESSION = saved.wt;
       process.env.DOOMBAR_THEME = saved.theme;
       if (saved.state === undefined) delete process.env.MUGSHOT_STATE; else process.env.MUGSHOT_STATE = saved.state;
       try { unlinkSync(payloadFile("unset")); } catch {}
