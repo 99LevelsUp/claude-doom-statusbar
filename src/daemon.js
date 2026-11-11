@@ -19,6 +19,7 @@ import { renderSession } from "./statusline.js";
 import { writeFrame } from "./frame.js";
 import {
   rootHash, daemonPaths, payloadPrefix, framePrefix, writeAtomic, pipePath, PACKAGE_ROOT, envNum, packageVersion,
+  runtimeDir, ensureRuntimeDir,
 } from "./fold.js";
 
 export { pipePath };
@@ -104,7 +105,7 @@ export function maybeStartReaper(state, { now = Date.now(), env = process.env, p
 }
 
 // Returns { idle, rendered }: idle is true once no session has been active for the idle period.
-export function runPass(state, { dir = os.tmpdir(), hash = rootHash(), now = Date.now(),
+export function runPass(state, { dir = runtimeDir(), hash = rootHash(), now = Date.now(),
   heartbeat = inDir(dir, daemonPaths(hash).heartbeat) } = {}) {
   const prefix = payloadPrefix(hash);
   const name = /^([A-Za-z0-9_-]{1,48})\.json$/;
@@ -173,7 +174,8 @@ function srcSnapshot(dir) {
 // already holds the pipe.
 export function startDaemon({ root = PACKAGE_ROOT, env = process.env } = {}) {
   const hash = rootHash(root);
-  const dir = os.tmpdir();
+  const dir = ensureRuntimeDir(env);
+  if (!dir) process.exit(1); // not private: never read or write in it
   const heartbeat = inDir(dir, daemonPaths(hash).heartbeat);
   const server = net.createServer((sock) => sock.end());
   let timer = null;

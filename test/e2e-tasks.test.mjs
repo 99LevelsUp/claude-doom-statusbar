@@ -7,6 +7,7 @@ import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { sandboxEnv } from "./_sandbox-env.mjs";
 
 // Pin the DOOM theme so a theme saved on this machine (`theme minecraft`) can't change
 // what the statusline renders under test. Child processes inherit it via process.env.
@@ -46,7 +47,7 @@ try {
       MUGSHOT_STATE: stateFile,
       DOOMBAR_PRESET: path.join(ROOT, "presets", "full.toml"),
       COLUMNS: "140",
-      TEMP: tmp, TMP: tmp, TMPDIR: tmp, // shared state files stay in tmp, not the real temp dir
+      ...sandboxEnv(tmp), // shared state files stay in tmp, not the real temp dir
       DOOMBAR_MSYS_REAP: "0",            // no detached shell reaper racing the cleanup below
     },
   }));

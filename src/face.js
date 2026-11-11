@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { RESET, sgrBg } from "./ansi.js";
 import { decodePng } from "./png.js";
 import { convertImage } from "./glyph-render.js";
-import { writeAtomic, packageVersion } from "./fold.js";
+import { writeAtomic, packageVersion, runtimeDir } from "./fold.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.dirname(HERE);
@@ -53,7 +53,7 @@ function converterStamp() {
 // Named on first use, not at load, so the temp directory in force when a face is first drawn
 // is the one used.
 let _diskFile = null;
-const diskFile = () => (_diskFile ||= path.join(os.tmpdir(), `doombar_faces_${converterStamp()}.json`));
+const diskFile = () => (_diskFile ||= path.join(runtimeDir(), `doombar_faces_${converterStamp()}.json`));
 let _disk = null;
 function diskCache() {
   if (!_disk) {

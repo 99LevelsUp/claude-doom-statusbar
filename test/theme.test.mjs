@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { parse as parseToml } from "smol-toml";
 import { buildBar, setValues, renderValue, vlen } from "../src/render.js";
 import { buildHotbar, wrapMessage } from "../src/hotbar.js";
+import { sandboxEnv } from "./_sandbox-env.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, "..");
@@ -137,7 +138,7 @@ const tmp = mkdtempSync(path.join(os.tmpdir(), "doombar-theme-"));
 try {
   // TEMP/TMP/TMPDIR -> tmp: the render's state files land here, not in the real temp dir.
   const env = { ...process.env, DOOMBAR_THEME_FILE: path.join(tmp, "theme.json"), COLUMNS: "220",
-    TEMP: tmp, TMP: tmp, TMPDIR: tmp, DOOMBAR_MSYS_REAP: "0" };
+    ...sandboxEnv(tmp), DOOMBAR_MSYS_REAP: "0" };
   delete env.DOOMBAR_THEME;
   const cli = (...a) => execFileSync(process.execPath, [path.join(ROOT, "bin", "cli.js"), "theme", ...a], { env, encoding: "utf8" });
   const render = () => strip(execFileSync(process.execPath, [path.join(ROOT, "src", "statusline.js")], {

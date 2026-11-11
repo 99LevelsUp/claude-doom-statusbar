@@ -5,6 +5,7 @@
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { sandboxEnv } from "./_sandbox-env.mjs";
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
@@ -12,7 +13,7 @@ const glyphs = (f) => new Set(f.flat().map((cell) => cell[0]));
 
 // Before the import: face.js names its disk cache after the temp dir when it loads.
 const SB = mkdtempSync(path.join(os.tmpdir(), "doombar-face-"));
-Object.assign(process.env, { TEMP: SB, TMP: SB, TMPDIR: SB });
+Object.assign(process.env, { ...sandboxEnv(SB) });
 const OLD = path.join(SB, "doombar_faces_000000000000.json");
 const RECENT = path.join(SB, "doombar_faces_111111111111.json");
 const OTHER = path.join(SB, "doombar_other.json");

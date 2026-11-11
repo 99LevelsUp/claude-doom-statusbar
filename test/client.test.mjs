@@ -14,6 +14,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { serializeFrame, greyLines } from "../src/frame.js";
 import { sidKey, sessionPaths } from "../src/fold.js";
+import { sandboxEnv } from "./_sandbox-env.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT = path.join(HERE, "..", "src", "doombar-client.sh").replace(/\\/g, "/");
@@ -33,7 +34,7 @@ const show = (s) => JSON.stringify(s);
 const sandbox = mkdtempSync(path.join(os.tmpdir(), "doombar-client-"));
 
 // The child sees only the sandbox as its temp dir, and none of the developer's own bar settings.
-const baseEnv = { ...process.env, TMPDIR: sandbox, TEMP: sandbox, TMP: sandbox };
+const baseEnv = { ...process.env, ...sandboxEnv(sandbox) };
 for (const k of FORWARDED) delete baseEnv[k];
 
 const nowMicros = () => Date.now() * 1000;
@@ -226,7 +227,7 @@ try {
     ok(r.out === "still shown\n", `the frame is still printed when the payload cannot be written (got ${show(r.out)})`);
 
     const gone = path.join(sandbox, "no-such-dir");
-    const g = run({ sid, env: { TMPDIR: gone, TEMP: gone, TMP: gone } });
+    const g = run({ sid, env: { ...sandboxEnv(gone) } });
     ok(g.err === "", `a missing temp dir writes nothing to stderr (got ${show(g.err)})`);
     ok(g.out === OFFLINE, `a missing temp dir prints the offline line (got ${show(g.out)})`);
   }

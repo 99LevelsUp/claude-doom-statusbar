@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { fresherWindow, mergeRateLimits } from "../src/statusline.js";
+import { sandboxEnv } from "./_sandbox-env.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 let fails = 0;
@@ -33,7 +34,7 @@ const tmp = mkdtempSync(path.join(os.tmpdir(), "doombar-rl-"));
 try {
   const env = { ...process.env, DOOMBAR_THEME: "minecraft", COLUMNS: "120",
     DOOMBAR_RATELIMITS: path.join(tmp, "shared.json"), MUGSHOT_STATE: path.join(tmp, "state.json"),
-    TEMP: tmp, TMP: tmp, TMPDIR: tmp, DOOMBAR_MSYS_REAP: "0" }; // state files stay in tmp
+    ...sandboxEnv(tmp), DOOMBAR_MSYS_REAP: "0" }; // state files stay in tmp
   delete env.DOOMBAR_RATELIMITS_SHARE;
   const render = (sid, rl, extraEnv = {}) => strip(execFileSync(process.execPath, [path.join(ROOT, "src", "statusline.js")], {
     env: { ...env, ...extraEnv }, encoding: "utf8",

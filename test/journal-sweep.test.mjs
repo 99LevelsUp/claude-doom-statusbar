@@ -14,6 +14,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { staleStateFiles } from "../src/hook.js";
 import { sessionPaths, daemonPaths, rootHash } from "../src/fold.js";
+import { sandboxEnv } from "./_sandbox-env.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const HOOK = path.join(HERE, "..", "src", "hook.js");
@@ -192,7 +193,7 @@ const TTL = 7 * DAY;
   execFileSync(process.execPath, [HOOK], {
     input: JSON.stringify({ hook_event_name: "SessionStart", session_id: sid, cwd: tmp }),
     encoding: "utf8",
-    env: { ...process.env, TMPDIR: tmp, TMP: tmp, TEMP: tmp,
+    env: { ...process.env, ...sandboxEnv(tmp),
       MUGSHOT_STATE: path.join(tmp, `mugshot_${sid}.json`), DOOMBAR_MSYS_REAP: "0" },
   });
 
@@ -218,7 +219,7 @@ const TTL = 7 * DAY;
   execFileSync(process.execPath, [HOOK], {
     input: JSON.stringify({ hook_event_name: "SessionStart", session_id: sid + "b", cwd: tmp }),
     encoding: "utf8",
-    env: { ...process.env, TMPDIR: tmp, TMP: tmp, TEMP: tmp, DOOMBAR_JOURNAL_TTL: "off",
+    env: { ...process.env, ...sandboxEnv(tmp), DOOMBAR_JOURNAL_TTL: "off",
       MUGSHOT_STATE: path.join(tmp, `mugshot_${sid}b.json`), DOOMBAR_MSYS_REAP: "0" },
   });
   ok(readdirSync(tmp).includes("mugshot_dead2.json"), "DOOMBAR_JOURNAL_TTL=off disables the sweep");
@@ -247,7 +248,7 @@ const TTL = 7 * DAY;
     input: JSON.stringify({ hook_event_name: "SessionStart", session_id: sid, cwd: sandbox }),
     encoding: "utf8",
     // MUGSHOT_STATE lives in `sandbox`, while TMPDIR still points at `elsewhere`.
-    env: { ...process.env, TMPDIR: elsewhere, TMP: elsewhere, TEMP: elsewhere,
+    env: { ...process.env, ...sandboxEnv(elsewhere),
       MUGSHOT_STATE: path.join(sandbox, `mugshot_${sid}.json`), DOOMBAR_MSYS_REAP: "0" },
   });
 

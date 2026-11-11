@@ -30,7 +30,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   base, statePaths, sessionPaths, daemonPaths, rootHash, sidKey, pipePath, PACKAGE_ROOT, ROOT_HASH_LEN, WRITE_TOOLS,
-  writeAtomic, envNum, packageVersion as readPackageVersion,
+  writeAtomic, envNum, packageVersion as readPackageVersion, runtimeDir, ensureRuntimeDir,
 } from "./fold.js";
 
 // Re-export the reducer so existing tests importing from hook.js keep working.
@@ -327,7 +327,7 @@ function spawnDaemon() {
   // Detached and outside the package directory, so npm can replace the package while it runs.
   // The daemon lowers its own priority. Never awaited.
   const child = spawn(process.execPath, [DAEMON_JS],
-    { detached: true, stdio: "ignore", windowsHide: true, cwd: os.tmpdir() });
+    { detached: true, stdio: "ignore", windowsHide: true, cwd: runtimeDir() });
   child.on("error", () => {});
   child.unref();
 }
@@ -564,6 +564,9 @@ function endSession(sid) {
 
 async function main() {
   try {
+    // Every file the hook touches lives in the runtime directory. One that is not private
+    // (another user created it, or it is a link) is left alone entirely.
+    if (!ensureRuntimeDir()) process.exit(0);
     let ev = {};
     try { ev = JSON.parse(readFileSync(0, "utf8")); } catch { ev = {}; }
     const name = ev.hook_event_name || "";

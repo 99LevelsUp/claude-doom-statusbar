@@ -22,13 +22,12 @@ import { pyround, sgrFg } from "./ansi.js";
 import { buildBar, setValues, resolvePreset, rgbOf, OK, TEXT, CRIT } from "./render.js";
 import { setFaceOptions } from "./face.js";
 import { effectiveStep } from "./glyph-level.js";
-import { foldBatch, statePaths, sessionPaths, writeAtomic, TASK_LINGER } from "./fold.js";
+import { foldBatch, statePaths, sessionPaths, writeAtomic, TASK_LINGER, runtimeDir, ensureRuntimeDir } from "./fold.js";
 import { currentTheme, themePreset } from "./theme.js";
 import { buildHotbar } from "./hotbar.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.dirname(HERE);
-const TMP = os.tmpdir();
 
 const DECAY = 1.5; // seconds a reaction holds before relaxing to idle
 const IDLE_CYCLE = 2; // seconds per idle glance
@@ -367,7 +366,7 @@ function cpuMetrics(env) {
   const agg = cores.reduce((a, c) => ({ total: a.total + c.total, idle: a.idle + c.idle }), { total: 0, idle: 0 });
   const now = Date.now();
   const cur = { ts: now, total: agg.total, idle: agg.idle, cores };
-  const cache = path.join(TMP, "mugshot_cpu.json");
+  const cache = path.join(runtimeDir(), "mugshot_cpu.json");
   let prev = null;
   try { prev = JSON.parse(readFileSync(cache, "utf8")); } catch { /* none */ }
   // Windows updates os.cpus() times only on the ~15.6ms scheduler tick, so a per-core
@@ -644,7 +643,7 @@ function rateHealthValue(data) {
   // scratch and almost always stall at k=1 (7d moves <1pp per session), so identical accounts
   // showed different health. One global file -> one shared k -> identical health everywhere, and
   // it captures movement that happened while any given session wasn't sampling.
-  const file = path.join(TMP, "mugshot_ratehealth_global.json");
+  const file = path.join(runtimeDir(), "mugshot_ratehealth_global.json");
   let raw, prev = null;
   try { raw = readFileSync(file, "utf8"); prev = JSON.parse(raw); } catch { /* no accumulator yet */ }
   const { headroom, state } = rateHeadroom(prev, cur);
@@ -687,7 +686,7 @@ export function mergeRateLimits(mine, shared) {
   return out;
 }
 
-const rateLimitsFile = (env) => env.DOOMBAR_RATELIMITS || path.join(TMP, "mugshot_ratelimits_global.json");
+const rateLimitsFile = (env) => env.DOOMBAR_RATELIMITS || path.join(runtimeDir(), "mugshot_ratelimits_global.json");
 
 // I/O wrapper: read the shared snapshot, merge, write it back if anything got fresher.
 // Throw-proof: the render path has no top-level catch, so failures keep the session's own.
@@ -840,6 +839,9 @@ export function renderSession({ data, env = process.env, now = Date.now() / 1000
 }
 
 function main() {
+  // The render reads and writes its state in the runtime directory. One that is not private
+  // (another user created it, or it is a link) may hold planted files, so nothing is read from it.
+  if (!ensureRuntimeDir()) { process.stdout.write("doombar: offline\n"); return; }
   let data = {};
   try { data = JSON.parse(readFileSync(0, "utf8")); } catch { data = {}; }
   const lines = renderSession({ data, env: process.env, now: Date.now() / 1000 });

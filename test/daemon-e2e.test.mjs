@@ -22,6 +22,7 @@
 // Windows only: the daemon's pipe is a Windows named pipe and the client runs in Git Bash.
 
 import { spawn, spawnSync } from "node:child_process";
+import { sandboxEnv } from "./_sandbox-env.mjs";
 import {
   mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, cpSync, symlinkSync, renameSync,
 } from "node:fs";
@@ -191,7 +192,7 @@ const scrubbed = { ...process.env };
 for (const k of Object.keys(scrubbed)) {
   if (/^(DOOMBAR_|MUGSHOT_)/i.test(k) || /^(CLAUDE_CONFIG_DIR|CLAUDE_CODE_TASK_LIST_ID|COLUMNS)$/i.test(k)) delete scrubbed[k];
 }
-const baseEnv = { ...scrubbed, TEMP: TMP, TMP, TMPDIR: TMP, DOOMBAR_MSYS_REAP: "0", DOOMBAR_JOURNAL_TTL: "off" };
+const baseEnv = { ...scrubbed, ...sandboxEnv(TMP), DOOMBAR_MSYS_REAP: "0", DOOMBAR_JOURNAL_TTL: "off" };
 const hookEnv = { ...baseEnv, DOOMBAR_DAEMON_THROTTLE_MS: String(THROTTLE), DOOMBAR_DAEMON_GRACE_MS: String(GRACE),
   DOOMBAR_DAEMON_IDLE_MS: String(IDLE_MS),
   // The hung-daemon case must restart it whatever else keeps this machine busy meanwhile.

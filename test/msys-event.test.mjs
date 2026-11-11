@@ -15,6 +15,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadState, activityValues } from "../src/statusline.js";
 import { stalePids, parseBashShells } from "../src/hook.js";
+import { sandboxEnv } from "./_sandbox-env.mjs";
 
 // Pin the DOOM theme so a theme saved on this machine (`theme minecraft`) can't change
 // what the statusline renders under test. Child processes inherit it via process.env.
@@ -148,7 +149,7 @@ try {
         model: { id: "claude-opus-5" }, context_window: { context_window_size: 1000000, used_tokens: 1000 } }),
       encoding: "utf8",
       env: { ...process.env, MUGSHOT_STATE: path.join(tmp, "rt.json"), COLUMNS: "120",
-        TEMP: tmp, TMP: tmp, TMPDIR: tmp, ...extraEnv },
+        ...sandboxEnv(tmp), ...extraEnv },
     });
     return { ms: Date.now() - t0, out: r };
   };

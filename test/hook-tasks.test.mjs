@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import path from "node:path"; import { fileURLToPath } from "node:url";
 import os from "node:os"; import { mkdtempSync, rmSync } from "node:fs";
 import { foldActivity } from "../src/hook.js";
+import { sandboxEnv } from "./_sandbox-env.mjs";
 const HOOK = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src", "hook.js");
 let fails = 0;
 const ok = (c, m) => { console.log((c?"  ok   ":"  FAIL ")+m); if(!c) fails++; };
@@ -16,7 +17,7 @@ process.on("exit", () => rmSync(TMP, { recursive: true, force: true }));
 function runHook(input, env = {}) {
   try {
     execFileSync(process.execPath, [HOOK], { input, encoding: "utf8",
-      env: { ...process.env, TEMP: TMP, TMP, TMPDIR: TMP, DOOMBAR_MSYS_REAP: "0", ...env } });
+      env: { ...process.env, ...sandboxEnv(TMP), DOOMBAR_MSYS_REAP: "0", ...env } });
     return 0;
   } catch (e) { return e.status ?? 1; }
 }

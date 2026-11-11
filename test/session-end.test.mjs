@@ -11,6 +11,7 @@ import { mkdtempSync, writeFileSync, readFileSync, readdirSync, rmSync, existsSy
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { sandboxEnv } from "./_sandbox-env.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const HOOK = path.join(HERE, "..", "src", "hook.js");
@@ -34,7 +35,7 @@ const hook = (event, env) => {
 // --- One session ends: its scratch goes, its savings stay, other sessions are untouched -------
 {
   const tmp = mkdtempSync(path.join(os.tmpdir(), "doombar-end-"));
-  const env = { TEMP: tmp, TMP: tmp, TMPDIR: tmp };
+  const env = { ...sandboxEnv(tmp) };
   delete process.env.MUGSHOT_STATE;
   plant(tmp, "ending");
   plant(tmp, "other");
@@ -63,7 +64,7 @@ const hook = (event, env) => {
 // --- The render daemon's payload and frame go too, under every install hash --------------------
 {
   const tmp = mkdtempSync(path.join(os.tmpdir(), "doombar-end-frames-"));
-  const env = { TEMP: tmp, TMP: tmp, TMPDIR: tmp };
+  const env = { ...sandboxEnv(tmp) };
   const frames = (key) => ["0123456789", "abcdef0123"].flatMap((h) => [
     `mugshot_payload_${h}_${key}.json`, `mugshot_frame_${h}_${key}.json`, `mugshot_frame_${h}_${key}.json.4242.tmp`]);
   const daemon = ["mugshot_daemon_0123456789.json", "mugshot_daemon_0123456789.claim"];
@@ -88,7 +89,7 @@ const hook = (event, env) => {
   plant(sandbox, "boxed");
   plant(elsewhere, "boxed"); // same names in the system temp dir: not this run's files
   hook({ hook_event_name: "SessionEnd", session_id: "boxed" },
-    { TEMP: elsewhere, TMP: elsewhere, TMPDIR: elsewhere, MUGSHOT_STATE: path.join(sandbox, "mugshot_boxed.json") });
+    { ...sandboxEnv(elsewhere), MUGSHOT_STATE: path.join(sandbox, "mugshot_boxed.json") });
   ok(!existsSync(path.join(sandbox, "mugshot_boxed.json.jsonl")) && !existsSync(path.join(sandbox, "mugshot_git_boxed.json")),
     "cleans the directory MUGSHOT_STATE points at");
   ok(sessionFiles("boxed").every((n) => existsSync(path.join(elsewhere, n))),
@@ -100,7 +101,7 @@ const hook = (event, env) => {
 // --- A resumed session starts from a fresh state and keeps its savings total -------------------
 {
   const tmp = mkdtempSync(path.join(os.tmpdir(), "doombar-end-resume-"));
-  const env = { ...process.env, TEMP: tmp, TMP: tmp, TMPDIR: tmp, DOOMBAR_MSYS_REAP: "0",
+  const env = { ...process.env, ...sandboxEnv(tmp), DOOMBAR_MSYS_REAP: "0",
     DOOMBAR_THEME: "doom", DOOMBAR_RATELIMITS_SHARE: "0", COLUMNS: "120" };
   delete env.MUGSHOT_STATE;
   delete env.DOOMBAR_SAVINGS_STATE;
@@ -111,7 +112,7 @@ const hook = (event, env) => {
   const render = () => execFileSync(process.execPath, [STATUSLINE], {
     input: JSON.stringify({ session_id: sid, cwd: tmp }), encoding: "utf8", env });
 
-  const tmpEnv = { TEMP: tmp, TMP: tmp, TMPDIR: tmp };
+  const tmpEnv = { ...sandboxEnv(tmp) };
   hook({ hook_event_name: "SessionStart", session_id: sid, cwd: tmp }, tmpEnv);
   render();                                    // first render: savings start at the log's end
   writeFileSync(events, JSON.stringify({ kind: { type: "ToolCall", path: path.join(tmp, "a.js").replace(/\\/g, "/"),

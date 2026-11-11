@@ -10,6 +10,7 @@ import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { sandboxEnv } from "./_sandbox-env.mjs";
 
 // Pin the DOOM theme so a theme saved on this machine (`theme minecraft`) can't change
 // what the statusline renders under test. Child processes inherit it via process.env.
@@ -40,7 +41,7 @@ const gitBash = () => [process.env.CLAUDE_CODE_GIT_BASH_PATH,
 const tmp = mkdtempSync(path.join(os.tmpdir(), "doombar-smoke-"));
 // TEMP/TMP/TMPDIR -> tmp: the render's state files and the client's payload land here, not in
 // the real temp dir (where this checkout's live daemon may be reading).
-const tmpEnv = { TEMP: tmp, TMP: tmp, TMPDIR: tmp };
+const tmpEnv = { ...sandboxEnv(tmp) };
 try {
   execFileSync(process.execPath, [CLI, "install", "--project", "--preset", "full"],
     { cwd: tmp, env: { ...process.env, ...tmpEnv } });

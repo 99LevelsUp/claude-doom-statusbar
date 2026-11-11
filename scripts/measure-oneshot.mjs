@@ -10,6 +10,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { sandboxEnv } from "../test/_sandbox-env.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const RUNS = Math.max(3, Number(process.argv[2]) || 15);
@@ -23,7 +24,7 @@ const payload = JSON.stringify({
 });
 
 const env = {
-  ...process.env, TEMP: sandbox, TMP: sandbox, TMPDIR: sandbox, COLUMNS: "200",
+  ...process.env, ...sandboxEnv(sandbox), COLUMNS: "200",
   DOOMBAR_GLYPHS: "octant", DOOMBAR_PRESET: path.join(ROOT, "presets", "full.toml"),
   DOOMBAR_THEME: "doom", DOOMBAR_RATELIMITS_SHARE: "0", DOOMBAR_MSYS_REAP: "0",
 };

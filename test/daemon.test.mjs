@@ -20,6 +20,7 @@ import os from "node:os";
 import path from "node:path";
 import { syncBuiltinESMExports } from "node:module";
 import { fileURLToPath } from "node:url";
+import { sandboxEnv } from "./_sandbox-env.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PRESETS = path.join(ROOT, "presets");
@@ -40,7 +41,7 @@ const TMPDIR = path.join(SB, "tmp");
 for (const d of ["tmp", "tasks", "proj"]) mkdirSync(path.join(SB, d), { recursive: true });
 // Before the imports: statusline.js takes its temp dir when it loads.
 const SANDBOX_ENV = {
-  TEMP: TMPDIR, TMP: TMPDIR, TMPDIR, PATH: "", DOOMBAR_MSYS_REAP: "0", DOOMBAR_THEME: "doom",
+  ...sandboxEnv(TMPDIR), PATH: "", DOOMBAR_MSYS_REAP: "0", DOOMBAR_THEME: "doom",
   DOOMBAR_THEME_FILE: path.join(SB, "no-theme.json"), DOOMBAR_RATELIMITS_SHARE: "0",
   DOOMBAR_RATELIMITS: path.join(SB, "rl.json"), DOOMBAR_TASKS_DIR: path.join(SB, "tasks"),
   DOOMBAR_EVENTS: path.join(SB, "events.jsonl"), DOOMBAR_LLMLINGUA: path.join(SB, "ling.json"),
@@ -410,7 +411,7 @@ try {
       return { dir, hash: rootHash(dir) };
     };
     const startDaemon = (pkg, tmp, idleMs = 60000) => {
-      const env = { ...SANDBOX_ENV, SystemRoot: process.env.SystemRoot, TEMP: tmp, TMP: tmp, TMPDIR: tmp,
+      const env = { ...SANDBOX_ENV, SystemRoot: process.env.SystemRoot, ...sandboxEnv(tmp),
         DOOMBAR_DAEMON_IDLE_MS: String(idleMs) };
       const c = spawn(process.execPath, [path.join(pkg.dir, "src", "daemon.js")], { env, stdio: ["ignore", "ignore", "pipe"] });
       c.err = "";

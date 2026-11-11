@@ -13,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { rateHeadroom } from "../src/statusline.js";
+import { sandboxEnv } from "./_sandbox-env.mjs";
 
 // Pin the DOOM theme so a theme saved on this machine (`theme minecraft`) can't change
 // what the statusline renders under test. Child processes inherit it via process.env.
@@ -122,7 +123,7 @@ const near = (a, b, eps = 0.5) => Math.abs(a - b) <= eps;
     ...process.env,
     DOOMBAR_PRESET: path.join(HERE, "..", "presets", "standard.toml"),
     MUGSHOT_STATE: path.join(tmp, "state.json"),
-    TEMP: tmp, TMP: tmp, TMPDIR: tmp, // isolate os.tmpdir() -> the global accumulator lands here
+    ...sandboxEnv(tmp), // isolate os.tmpdir() -> the global accumulator lands here
     COLUMNS: "100",
   };
   const payload = (sid, p5) => JSON.stringify({

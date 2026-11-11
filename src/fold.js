@@ -7,7 +7,7 @@
 // shape as before (spans, squad, pending, tasks, tasks_ts, expr, ts, errors, mode, git),
 // so every downstream consumer (activityValues, the tests) is unchanged.
 
-import { readFileSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
+import { readFileSync, writeFileSync, renameSync, unlinkSync, statSync, lstatSync, mkdirSync, chmodSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -24,11 +24,57 @@ export const WRITE_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"
 // Filesystem-safe session key, shared by hook + statusline so they agree on file names.
 export const sidKey = (id) => String(id || "default").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 48);
 
+// The directory every file of the bar lives in. On Windows that is the temp directory, which
+// belongs to one user. On Linux and macOS /tmp is shared by every user, so the bar uses a private
+// per-user directory instead. The client (src/doombar-client.sh) applies the same rule with bash
+// builtins, so every process of a session lands in the same place:
+//   1. DOOMBAR_RUNTIME_DIR when set (tests, custom setups), on every platform;
+//   2. Windows: the temp directory;
+//   3. $XDG_RUNTIME_DIR/doombar when XDG_RUNTIME_DIR is absolute and either missing or owned by
+//      this user. A missing one keeps its path: the bar then shows offline rather than moving to
+//      another directory in the middle of a session (an ssh logout removes /run/user/<uid>);
+//   4. macOS: $TMPDIR/doombar when TMPDIR is absolute and owned by this user (it is per user);
+//   5. otherwise /tmp/doombar-<effective uid>.
+const ownerUid = (p) => { try { return statSync(p).uid; } catch { return null; } };
+const absolute = (p) => typeof p === "string" && p.startsWith("/");
+export function runtimeDir(env = process.env, { platform = process.platform,
+  euid = process.geteuid ? process.geteuid() : null, ownerOf = ownerUid } = {}) {
+  if (env.DOOMBAR_RUNTIME_DIR) return env.DOOMBAR_RUNTIME_DIR;
+  if (platform === "win32") return os.tmpdir();
+  const xdg = env.XDG_RUNTIME_DIR;
+  if (absolute(xdg)) {
+    const owner = ownerOf(xdg);
+    if (owner === null || owner === euid) return path.posix.join(xdg, "doombar");
+  }
+  const tmp = env.TMPDIR;
+  if (platform === "darwin" && absolute(tmp) && ownerOf(tmp) === euid) return path.posix.join(tmp, "doombar");
+  return `/tmp/doombar-${euid}`;
+}
+
+// The runtime directory when it is safe to use, else null. On Linux and macOS it is created with
+// mode 0700 (never its parent, so a removed /run/user/<uid> stays removed) and accepted only as a
+// real directory, not a link, owned by this user; group or world bits on it are cleared. Nothing
+// may be read from or written to a refused directory: another user may have planted it. On
+// Windows the temp directory is used as it is. A success is remembered for the process.
+const ensured = new Set();
+export function ensureRuntimeDir(env = process.env, { platform = process.platform } = {}) {
+  const dir = runtimeDir(env, { platform });
+  if (platform === "win32" || ensured.has(dir)) return dir;
+  try {
+    try { mkdirSync(dir, { mode: 0o700 }); } catch (e) { if (e.code !== "EEXIST") throw e; }
+    const st = lstatSync(dir);
+    if (!st.isDirectory() || st.uid !== process.geteuid()) return null;
+    if (st.mode & 0o077) chmodSync(dir, 0o700);
+  } catch { return null; }
+  ensured.add(dir);
+  return dir;
+}
+
 // Checkpoint (statusline-owned folded state) + journal (hook-appended events) live next to
 // each other so both processes derive the same pair from the session id. MUGSHOT_STATE
 // overrides the checkpoint path (tests, custom setups); the journal hangs off it.
 export function statePaths(sessionId, env = process.env) {
-  const base = env.MUGSHOT_STATE || path.join(os.tmpdir(), `mugshot_${sidKey(sessionId)}.json`);
+  const base = env.MUGSHOT_STATE || path.join(runtimeDir(env), `mugshot_${sidKey(sessionId)}.json`);
   return { checkpoint: base, journal: base + ".jsonl" };
 }
 
@@ -53,7 +99,7 @@ export const daemonPrefix = (hash) => `mugshot_daemon_${hash}.`;
 
 // Every per-session file. Most sit next to the checkpoint, so MUGSHOT_STATE relocates them and
 // the sweep (which scans the checkpoint's directory) sees them. The render daemon's payload and
-// frame are the exception: they always live in the system temp dir, prefixed with the install
+// frame are the exception: they always live in the runtime directory, prefixed with the install
 // hash, so the daemon knows where to look without being told about MUGSHOT_STATE. The `.json`
 // suffix keeps them inside the sweep's name patterns even though the frame is text. The
 // writers, the sweep and end-of-session cleanup all name files through here, so they always agree.
@@ -68,17 +114,18 @@ export function sessionPaths(sessionId, hash = ROOT_HASH, env = process.env) {
     msys: path.join(dir, `mugshot_msys_${key}.json`),   // bash-count probe throttle marker
     adv: path.join(dir, `mugshot_adv_${key}.json`),     // advisor consult cache
     savings: path.join(dir, `savings_${key}.json`),     // lean-ctx savings accumulator
-    payload: path.join(os.tmpdir(), `${payloadPrefix(hash)}${key}.json`), // client -> daemon input
-    frame: path.join(os.tmpdir(), `${framePrefix(hash)}${key}.json`),     // daemon -> client output
+    payload: path.join(runtimeDir(env), `${payloadPrefix(hash)}${key}.json`), // client -> daemon input
+    frame: path.join(runtimeDir(env), `${framePrefix(hash)}${key}.json`),     // daemon -> client output
   };
 }
 
 // Daemon-wide files, one pair per installation, shared by every session it serves. Never a
 // session's scratch: the sweep and end-of-session cleanup leave them alone.
-export function daemonPaths(hash = ROOT_HASH) {
+export function daemonPaths(hash = ROOT_HASH, env = process.env) {
+  const dir = runtimeDir(env);
   return {
-    heartbeat: path.join(os.tmpdir(), `${daemonPrefix(hash)}json`),
-    claim: path.join(os.tmpdir(), `${daemonPrefix(hash)}claim`), // restart throttle
+    heartbeat: path.join(dir, `${daemonPrefix(hash)}json`),
+    claim: path.join(dir, `${daemonPrefix(hash)}claim`), // restart throttle
   };
 }
 

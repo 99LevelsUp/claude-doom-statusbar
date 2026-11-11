@@ -13,6 +13,7 @@
 // found by its command line and killed in `finally`.
 
 import { spawn, spawnSync } from "node:child_process";
+import { sandboxEnv } from "./_sandbox-env.mjs";
 import {
   mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, cpSync, symlinkSync, utimesSync,
 } from "node:fs";
@@ -99,7 +100,7 @@ function copyPackage({ fake = true } = {}) {
 }
 
 const baseEnv = (pkg) => ({
-  ...process.env, TEMP: pkg.tmp, TMP: pkg.tmp, TMPDIR: pkg.tmp, MUGSHOT_STATE: "",
+  ...process.env, ...sandboxEnv(pkg.tmp), MUGSHOT_STATE: "",
   DOOMBAR_MSYS_REAP: "0", DOOMBAR_JOURNAL_TTL: "off", DOOMBAR_DAEMON_IDLE_MS: "20000",
   DOOMBAR_DAEMON_THROTTLE_MS: String(THROTTLE), DOOMBAR_DAEMON_GRACE_MS: String(GRACE),
   // Never count the machine as busy unless a case says so, whatever else runs during the tests.

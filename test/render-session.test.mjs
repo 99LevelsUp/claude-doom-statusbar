@@ -15,6 +15,7 @@ import os from "node:os";
 import path from "node:path";
 import { syncBuiltinESMExports } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { sandboxEnv } from "./_sandbox-env.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const STATUSLINE = path.join(ROOT, "src", "statusline.js");
@@ -38,7 +39,7 @@ const TMPDIR = path.join(SB, "tmp");
 mkdirSync(TMPDIR, { recursive: true });
 // Before the import: statusline.js takes its temp dir when it loads. The terminal that runs the
 // tests must not pick the mugshot's glyphs, so its identifying variables go.
-Object.assign(process.env, { TEMP: TMPDIR, TMP: TMPDIR, TMPDIR, PATH: "", DOOMBAR_MSYS_REAP: "0",
+Object.assign(process.env, { ...sandboxEnv(TMPDIR), PATH: "", DOOMBAR_MSYS_REAP: "0",
   DOOMBAR_THEME: "doom", DOOMBAR_RATELIMITS_SHARE: "0", DOOMBAR_PRESET: path.join(PRESETS, "minimal.toml") });
 for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "DOOMBAR_GLYPHS"]) delete process.env[k];
 const { renderSession } = await import("../src/statusline.js");
@@ -93,7 +94,7 @@ try {
   for (const [name, over] of [["doom", {}], ["hotbar", { DOOMBAR_THEME: "minecraft", COLUMNS: "160", DOOMBAR_INDENT: "4" }]]) {
     let s = session(`same-${name}`, "same");
     const childEnv = { ...s.env, ...over, SystemRoot: process.env.SystemRoot, PATH: "",
-      TEMP: TMPDIR, TMP: TMPDIR, TMPDIR, DOOMBAR_MSYS_REAP: "0" };
+      ...sandboxEnv(TMPDIR), DOOMBAR_MSYS_REAP: "0" };
     rmSync(path.join(TMPDIR, "mugshot_cpu.json"), { force: true });
     const viaMain = [1, 2].map(() => execFileSync(process.execPath, ["--import", pathToFileURL(PIN).href, STATUSLINE],
       { input: JSON.stringify(s.data), env: childEnv }).toString("utf8"));

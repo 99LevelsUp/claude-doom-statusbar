@@ -10,6 +10,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, rmSync, existsSync 
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { sandboxEnv } from "./_sandbox-env.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const HOOK = path.join(HERE, "..", "src", "hook.js");
@@ -25,7 +26,7 @@ const sid = "filestest";
 // MUGSHOT_STATE puts the checkpoint in `sandbox`.
 const env = {
   ...process.env,
-  TEMP: elsewhere, TMP: elsewhere, TMPDIR: elsewhere,
+  ...sandboxEnv(elsewhere),
   MUGSHOT_STATE: path.join(sandbox, `mugshot_${sid}.json`),
   DOOMBAR_MSYS_REAP: "0", DOOMBAR_THEME: "doom", DOOMBAR_RATELIMITS_SHARE: "0",
 };
