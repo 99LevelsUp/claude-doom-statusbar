@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import "./_temp-sandbox.mjs"; // before the modules that name temp paths
 import { planLayout, textCapFor, setValues, SAMPLE } from "../src/render.js";
 import { parse as parseToml } from "smol-toml";
 import { readFileSync } from "node:fs";

@@ -10,6 +10,7 @@ on:
     paths:
       - src/glyphs.js
       - src/glyph-render.js
+      - src/png.js
       - src/face.js
       - scripts/measure-oneshot.mjs
       - .github/workflows/oneshot-cost.yml

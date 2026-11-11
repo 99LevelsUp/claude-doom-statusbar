@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import "./_temp-sandbox.mjs"; // before the modules that name temp paths
 import { statsValues } from "../src/statusline.js";
 import { setValues, buildBar, vlen, SAMPLE } from "../src/render.js";
 import { parse as parseToml } from "smol-toml";

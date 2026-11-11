@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // Themes: the `icons` render, the minecraft hotbar + chat, and the live theme switch.
+import "./_temp-sandbox.mjs"; // before the modules that name temp paths
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import os from "node:os";

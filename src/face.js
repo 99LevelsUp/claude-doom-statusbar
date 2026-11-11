@@ -45,16 +45,19 @@ function image(name) {
 // means converting again.
 function converterStamp() {
   const parts = [packageVersion()];
-  for (const f of ["glyphs.js", "glyph-render.js"]) {
+  for (const f of ["glyphs.js", "glyph-render.js", "png.js"]) {
     try { const st = statSync(path.join(HERE, f)); parts.push(st.size, Math.round(st.mtimeMs)); } catch { parts.push(f); }
   }
   return createHash("sha1").update(parts.join("|")).digest("hex").slice(0, 12);
 }
-const DISK_CACHE = path.join(os.tmpdir(), `doombar_faces_${converterStamp()}.json`);
+// Named on first use, not at load, so the temp directory in force when a face is first drawn
+// is the one used.
+let _diskFile = null;
+const diskFile = () => (_diskFile ||= path.join(os.tmpdir(), `doombar_faces_${converterStamp()}.json`));
 let _disk = null;
 function diskCache() {
   if (!_disk) {
-    try { _disk = JSON.parse(readFileSync(DISK_CACHE, "utf8")); } catch { _disk = {}; }
+    try { _disk = JSON.parse(readFileSync(diskFile(), "utf8")); } catch { _disk = {}; }
     if (!_disk || typeof _disk !== "object" || Array.isArray(_disk)) _disk = {};
   }
   return _disk;
@@ -67,7 +70,7 @@ function convertFace(key, name, rows, step, background) {
   if (!img) return Array.from({ length: rows }, () => []);
   const face = convertImage(img, rows, step, { background });
   disk[key] = face;
-  try { writeAtomic(DISK_CACHE, JSON.stringify(disk)); } catch { /* a cache that cannot be written is skipped */ }
+  try { writeAtomic(diskFile(), JSON.stringify(disk)); } catch { /* a cache that cannot be written is skipped */ }
   dropStaleCaches();
   return face;
 }
@@ -81,7 +84,7 @@ let _pruned = false;
 function dropStaleCaches() {
   if (_pruned) return;
   _pruned = true;
-  const dir = path.dirname(DISK_CACHE), own = path.basename(DISK_CACHE);
+  const dir = path.dirname(diskFile()), own = path.basename(diskFile());
   let names = [];
   try { names = readdirSync(dir); } catch { return; }
   const cutoff = Date.now() - STALE_CACHE_MS;

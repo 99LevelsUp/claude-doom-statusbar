@@ -133,6 +133,23 @@ try {
     ok(a1 === a2, "rendering another session in between changes nothing in the first one");
   }
 
+  // The mugshot's glyph step comes from the session's own environment, capped by the preset's
+  // [mugshot] glyphs key: one daemon draws each session with the glyphs its terminal can show.
+  {
+    const s = session("glyphs", "glyphs");
+    const half = render(s, { DOOMBAR_GLYPHS: "half" });
+    const octant = render(s, { DOOMBAR_GLYPHS: "octant" });
+    ok(half !== octant, "a session asking for half blocks draws a different face than one asking for octants");
+    ok(render(s, { DOOMBAR_GLYPHS: "half" }) === half, "the same session settings draw the same face again");
+    const capped = path.join(s.dir, "capped.toml");
+    const preset = readFileSync(path.join(PRESETS, "standard.toml"), "utf8");
+    ok(/^glyphs = "octant"$/m.test(preset), "the standard preset names its mugshot glyph step (the check below can fail)");
+    writeFileSync(capped, preset.replace(/^glyphs = "octant"$/m, 'glyphs = "half"'));
+    ok(render(s, { DOOMBAR_PRESET: capped, DOOMBAR_GLYPHS: "octant" }) === half,
+      "a preset that caps the mugshot at half blocks wins over a terminal that draws octants");
+    ok(render(s, { WT_SESSION: "x" }) === octant, "a Windows Terminal session gets octants without any setting");
+  }
+
   // MUGSHOT_STATE in the passed env decides where the checkpoint is read and written.
   {
     const s = session("state", "state");

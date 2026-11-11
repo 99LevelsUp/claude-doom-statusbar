@@ -10,6 +10,7 @@
 // The DOOM mugshot is drawn by the built-in converter at the glyph step the terminal allows; the
 // snapshots pin the richest step, so they do not depend on the terminal that runs the tests.
 
+import "./_temp-sandbox.mjs"; // before the modules that name temp paths
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
