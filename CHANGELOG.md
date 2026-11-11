@@ -7,7 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-11
+
 ### Added
+- **One render daemon per installation, on Windows with Git Bash.** The statusLine is now a
+  small bash client that uses builtins only and starts no process: it hands the session's data to
+  the daemon and prints the frame the daemon has already drawn. The daemon gathers the
+  machine-wide data once, draws every session's bar about twice a second at below-normal
+  priority, and exits after 10 minutes without a session. A frame past its deadline turns grey
+  and ends in `OFFLINE`, so old values never pass for live ones. The hooks start the daemon,
+  replace one that hangs or is outdated, and leave it alone while the machine is busy, since it
+  is then starved rather than hung. After a global upgrade run `claude-doom-statusbar install`
+  once to move the statusLine to the client. Linux and macOS keep the one-shot render for now.
 - **The installer makes sure Linux can draw the emoji.** On Linux, `install` asks fontconfig
   whether a font covers the bar's emoji. If none does, it downloads Noto Color Emoji v2.051,
   checks its SHA-256 and installs it for the user (`~/.local/share/fonts`, no `sudo`), then runs
@@ -437,7 +448,8 @@ Note: no changes to the published package contents (`src`, `bin`, `presets`,
 - Mugshot tracking session health, plus usage, model, project, and system stats.
 - Live subagent list with always-visible AGENTS and TASKS boxes.
 
-[Unreleased]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.13.1...HEAD
+[Unreleased]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.12.1...v0.13.0
 [0.12.1]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.12.0...v0.12.1

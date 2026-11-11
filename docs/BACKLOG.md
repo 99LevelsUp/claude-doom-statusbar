@@ -9,7 +9,7 @@ when the owner decides against something (move it to *Won't do*, with the reason
 Status: `next` = agreed, do soon · `open` = agreed direction, not scheduled · `idea` = not decided ·
 `blocked` = waiting on something outside the project.
 
-Last reviewed: 11.11.2026 (0.13.1).
+Last reviewed: 11.11.2026 (0.14.0).
 
 ## Render daemon, glyph renderer, minimap
 Source: [ideation/2026-11-09-render-daemon-and-minimap.md](ideation/2026-11-09-render-daemon-and-minimap.md)
@@ -119,13 +119,13 @@ Source: [ideation/2026-06-06-doom-statusbar-ideation.md](ideation/2026-06-06-doo
 | Cap-ratio floor `k ≥ 1` (H-D) | ≤ 0.11 |
 | Theme switch + Minecraft hotbar theme | 0.12.0–0.13.0 |
 | Rate limits shared across sessions (first shared piece of P-2) | 0.13.1 |
-| End-of-session cleanup, 1-hour sweep for unrendered sessions, every per-session file next to its checkpoint, no orphaned `.tmp` (L-B, L-C, L-E, L-F, L-G) | unreleased |
-| Snapshot tests of the DOOM presets and the Minecraft hotbar, Linux test workflow on every push (G-1) | unreleased |
-| Hooks leave a starved daemon alone while the machine is busy (P-5: under 150 s of full load the old hooks claimed two restarts, spending a PowerShell identity check and a new node each; now none) | unreleased |
-| Render daemon per installation with a builtins-only bash client, deadline frames greyed OFFLINE when stale, hook supervision (D-1, absorbs D-11 and P-2; Windows with Git Bash) | unreleased |
-| Built-in bitmap → glyph renderer for the mugshot: smooth sampling, chafa-style shape shortlist, glyph step per image capped by the terminal type, disk cache for the one-shot status line (D-3; [plan](plans/2026-11-11-1150-feat-builtin-glyph-renderer-plan.md)) | unreleased |
-| Glyph truth on the real terminal: `test-card` command, fallback ladder half → quadrant → sextant → wedge → octant, OKLab render-back score in `scripts/compare-faces.mjs` (D-8). Owner's check 11.11.2026: Windows Terminal draws every step, so it gets octants; the console host could not be started on the owner's PC and gets half blocks. On the Raspberry Pi 5 (LXTerminal, VTE 0.80.1) every step looked clean too. Noto Color Emoji was installed there for the emoji first, but fontconfig reported no installed font covering U+1FB00 (sextant), U+1FB3C (wedge) or U+1CD00 (octant), only the U+2580 block elements; so VTE most likely draws them itself (not confirmed against VTE's source). VTE gets wedges; octants for VTE 0.80+ would need that confirmed | unreleased |
-| chafa dropped (D-4). Owner's verdict 11.11.2026 from the side-by-side faces: the built-in conversion is better than chafa at the same step and than the set the bar used before. The one-shot cost is lower too: 62.8 vs 81.0 ms on ubuntu-latest, 98.2 vs 130.1 ms on macos-latest (median of 21). On a Raspberry Pi 5 the one-shot with the face from the disk cache costs 255–261 ms against 251 ms for the pre-rendered faces; the first conversion adds about 250 ms once per version | unreleased |
+| End-of-session cleanup, 1-hour sweep for unrendered sessions, every per-session file next to its checkpoint, no orphaned `.tmp` (L-B, L-C, L-E, L-F, L-G) | 0.14.0 |
+| Snapshot tests of the DOOM presets and the Minecraft hotbar, Linux test workflow on every push (G-1) | 0.14.0 |
+| Hooks leave a starved daemon alone while the machine is busy (P-5: under 150 s of full load the old hooks claimed two restarts, spending a PowerShell identity check and a new node each; now none) | 0.14.0 |
+| Render daemon per installation with a builtins-only bash client, deadline frames greyed OFFLINE when stale, hook supervision (D-1, absorbs D-11 and P-2; Windows with Git Bash) | 0.14.0 |
+| Built-in bitmap → glyph renderer for the mugshot: smooth sampling, chafa-style shape shortlist, glyph step per image capped by the terminal type, disk cache for the one-shot status line (D-3; [plan](plans/2026-11-11-1150-feat-builtin-glyph-renderer-plan.md)) | 0.14.0 |
+| Glyph truth on the real terminal: `test-card` command, fallback ladder half → quadrant → sextant → wedge → octant, OKLab render-back score in `scripts/compare-faces.mjs` (D-8). Owner's check 11.11.2026: Windows Terminal draws every step, so it gets octants; the console host could not be started on the owner's PC and gets half blocks. On the Raspberry Pi 5 (LXTerminal, VTE 0.80.1) every step looked clean too. Noto Color Emoji was installed there for the emoji first, but fontconfig reported no installed font covering U+1FB00 (sextant), U+1FB3C (wedge) or U+1CD00 (octant), only the U+2580 block elements; so VTE most likely draws them itself (not confirmed against VTE's source). VTE gets wedges; octants for VTE 0.80+ would need that confirmed | 0.14.0 |
+| chafa dropped (D-4). Owner's verdict 11.11.2026 from the side-by-side faces: the built-in conversion is better than chafa at the same step and than the set the bar used before. The one-shot cost is lower too: 62.8 vs 81.0 ms on ubuntu-latest, 98.2 vs 130.1 ms on macos-latest (median of 21). On a Raspberry Pi 5 the one-shot with the face from the disk cache costs 255–261 ms against 251 ms for the pre-rendered faces; the first conversion adds about 250 ms once per version | 0.14.0 |
 
 ## Won't do
 
