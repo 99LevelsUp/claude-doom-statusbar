@@ -9,28 +9,28 @@ when the owner decides against something (move it to *Won't do*, with the reason
 Status: `next` = agreed, do soon · `open` = agreed direction, not scheduled · `idea` = not decided ·
 `blocked` = waiting on something outside the project.
 
-Last reviewed: 31.10.2026 (0.13.1).
+Last reviewed: 11.11.2026 (0.13.1).
 
 ## Render daemon, glyph renderer, minimap
 Source: [ideation/2026-11-09-render-daemon-and-minimap.md](ideation/2026-11-09-render-daemon-and-minimap.md)
 
-Owner's order: daemon first, renderer second, minimap and WC3 after. `ce-ideate` done (Part 6 of the source doc); next step: `ce-brainstorm` on a chosen idea.
+Owner's order: daemon first, renderer second, minimap and WC3 after. The daemon (D-1) is done, see *Done*; next is the renderer (D-3, gated by D-8).
 
 | ID | Item | Status |
 |---|---|---|
-| D-1 | One render daemon for all sessions; statusLine becomes a bash thin client using builtins only (payload in, frame out, no fork); daemon down → static offline frame, nothing spawned. Absorbs P-2 | next |
 | D-2 | Hook events into the daemon without a spawn per tool call (HTTP hooks, if Claude Code supports them and fails safe) | idea |
 | D-3 | Built-in bitmap → glyph renderer on the mugshot glyph set (`block+half+quad+sextant+wedge+legacy`), half-block mode as a setting | next |
 | D-4 | Compare the built-in renderer with chafa on the mugshot; drop chafa if close enough | idea |
 | D-5 | WC3 minimap: layered metrics (terrain, fog, units per agent, pings), map larger than the view, event-driven camera. Which metric goes to which layer is open | idea |
 | D-6 | WC3 console elements beyond the minimap: portrait with races (original art), info panel, inventory, command card, resource bar, day/night clock | idea |
-| D-7 | Frame reel with a deadline, read by a write-once client (Part 6 idea 1). The client contract for D-1; replaces the broken `-nt` liveness test | idea |
+| D-7 | Frame reel with a deadline, read by a write-once client (Part 6 idea 1). The deadline header shipped with D-1 (`slots=1`); the multi-slot reel is still open | open |
 | D-8 | Glyph truth on the real terminal: test card + fallback ladder, render-back error score vs chafa (Part 6 idea 2). Gate for D-3 and D-4 | idea |
 | D-9 | Per-repo ledger behind the map, "changed since Claude read it" layer, provenance, allied sessions (Part 6 idea 3). Data model for D-5 | idea |
 | D-10 | Animation cadence per element: telemetry on data arrival, effects as fast as the display allows (~10 ms), DOOM mugshot fixed at ~1 s; pose-to-pose sampling where the display is 1 Hz (Part 6 idea 4). For D-6 portrait | idea |
-| D-11 | Crash-only daemon with a version-named pipe as singleton and upgrade path (Part 6 idea 5). Lifecycle for D-1 | idea |
+| D-11 | Crash-only daemon with a version-named pipe as singleton and upgrade path (Part 6 idea 5). Absorbed by D-1: one pipe per installation, version mismatch restarts the daemon | done with D-1 |
 | D-12 | Cell-space compositor with two resolvers: lookup table for map and chrome, error search for portrait (Part 6 idea 6). Shape of D-3 | idea |
 | D-13 | XP from resolved work, kept per repo (Part 6 idea 7). For D-6 / G-8 | idea |
+| D-14 | A new session shows `doombar: offline` for about 3 s before its first frame, even with the daemon running (live test 2026-11-11): the first statusLine call writes the payload and finds no frame. With no daemon running, the first frame waits for the first hook after the payload exists | idea |
 
 ## Housekeeping: temp-file leaks and wasted hook work
 Source: [ideation/2026-10-31-temp-file-leaks-and-hook-cost.md](ideation/2026-10-31-temp-file-leaks-and-hook-cost.md)
@@ -74,7 +74,7 @@ Source: [ideation/2026-10-14-bash-spawn-and-shared-statusbar.md](ideation/2026-1
 | ID | Item | Status |
 |---|---|---|
 | P-1 | Find out what is expensive in a render and what really needs the 1 s refresh (refresh stays at 1 s) | open |
-| P-2 | One shared producer for account- and machine-wide data (limits, CPU/RAM, clock); renders only read | open, folds into D-1 |
+| P-2 | One shared producer for account- and machine-wide data (limits, CPU/RAM, clock); renders only read | done with D-1 (the daemon renders every session) |
 | P-3 | Shared rate limits: treat a window past its `resets_at` as reset; scope the file per Claude account, not per OS user | idea |
 | P-4 | Detached `node hook.js --reap` processes sometimes never exit and pile up (2026-11-10: 10 alive, oldest ~1 h, ~33 MB each, no children, parents gone; a reaper started by hand exits in 0.9 s). Suspected contributor to an out-of-memory crash the same day. Find where they block; the one-shot `maybeReap` path still starts one per interval regardless (the daemon now waits for its previous reaper to exit) | open |
 
@@ -120,6 +120,7 @@ Source: [ideation/2026-06-06-doom-statusbar-ideation.md](ideation/2026-06-06-doo
 | Rate limits shared across sessions (first shared piece of P-2) | 0.13.1 |
 | End-of-session cleanup, 1-hour sweep for unrendered sessions, every per-session file next to its checkpoint, no orphaned `.tmp` (L-B, L-C, L-E, L-F, L-G) | unreleased |
 | Snapshot tests of the DOOM presets and the Minecraft hotbar, Linux test workflow on every push (G-1) | unreleased |
+| Render daemon per installation with a builtins-only bash client, deadline frames greyed OFFLINE when stale, hook supervision (D-1, absorbs D-11 and P-2; Windows with Git Bash) | unreleased |
 
 ## Won't do
 
