@@ -18,7 +18,7 @@ import { SAMPLE, setValues, resolvePreset, buildBar } from "../src/render.js";
 import { buildHotbar } from "../src/hotbar.js";
 import { setFaceOptions } from "../src/face.js";
 
-setFaceOptions({ step: "octant", renderer: "builtin", background: [0, 0, 0] });
+setFaceOptions({ step: "octant", background: [0, 0, 0] });
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PRESETS = path.join(HERE, "..", "presets");

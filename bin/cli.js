@@ -26,6 +26,7 @@ import { STEPS, testCardLines } from "../src/glyphs.js";
 import { convertImage } from "../src/glyph-render.js";
 import { terminalStep } from "../src/glyph-level.js";
 import { decodePng } from "../src/png.js";
+import { sgrFg, sgrBg } from "../src/ansi.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url)); // bin/
 const ROOT = path.dirname(HERE); // package root
@@ -302,12 +303,13 @@ function testCard() {
   console.log("marks or gaps. The last step that looks right is the richest one this terminal can draw.\n");
   for (const line of testCardLines()) console.log(line);
   const img = decodePng(readFileSync(path.join(ROOT, "assets", "images", "mugshot", "alpha", "STFST01.png")));
-  const faces = STEPS.map((step) => convertImage(img, 8, step));
+  const ROWS = 8;
+  const faces = STEPS.map((step) => convertImage(img, ROWS, step));
   const width = Math.max(...faces.flatMap((f) => f.map((r) => r.length)));
-  const cell = ([ch, fg, bg]) => `\x1b[38;2;${(fg || [0, 0, 0]).join(";")}m\x1b[48;2;${(bg || [0, 0, 0]).join(";")}m${ch}`;
+  const cell = ([ch, fg, bg]) => sgrFg(fg || [0, 0, 0]) + sgrBg(bg || [0, 0, 0]) + ch;
   console.log("\nThe mugshot at each step:");
   console.log("  " + STEPS.map((s) => s.padEnd(width + 2)).join(""));
-  for (let r = 0; r < 8; r++) {
+  for (let r = 0; r < ROWS; r++) {
     const parts = faces.map((f) => (f[r] || []).map(cell).join("") + "\x1b[0m" + " ".repeat(width + 2 - (f[r] || []).length));
     console.log("  " + parts.join(""));
   }

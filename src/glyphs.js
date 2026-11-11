@@ -16,6 +16,8 @@
 // left out, and the search covers those cells with other glyphs. U+1FB9A/B are left out of the
 // wedges because Windows Terminal's built-in glyphs stop at U+1FB94.
 
+import { sgrFg, sgrBg } from "./ansi.js";
+
 export const STEPS = Object.freeze(["half", "quadrant", "sextant", "wedge", "octant"]);
 export const GRID = 8; // sub-pixels per cell side in a mask
 
@@ -129,7 +131,7 @@ export function covers(glyph, x, y) {
 }
 
 // The glyph's shape on an n x n grid of sub-pixels, sampled at sub-pixel centres: 1 = foreground.
-export function rasterize(glyph, n) {
+function rasterize(glyph, n) {
   const m = new Uint8Array(n * n);
   for (let y = 0; y < n; y++) {
     for (let x = 0; x < n; x++) m[y * n + x] = covers(glyph, (x + 0.5) / n, (y + 0.5) / n) ? 1 : 0;
@@ -217,7 +219,7 @@ export function glyphsFor(step) {
 const CARD_FG = [255, 176, 0];
 const CARD_BG = [24, 32, 72];
 export function testCardLines({ perRow = 26 } = {}) {
-  const paint = `\x1b[38;2;${CARD_FG.join(";")}m\x1b[48;2;${CARD_BG.join(";")}m`;
+  const paint = sgrFg(CARD_FG) + sgrBg(CARD_BG);
   const lines = [];
   STEPS.forEach((step, i) => {
     const glyphs = classes()[step];

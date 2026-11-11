@@ -3,10 +3,6 @@
 // starts `node src/statusline.js` as Claude Code does, with the richest glyph step. The first run
 // converts the face; later runs read it from the disk cache. Prints both.
 //
-// For reference, before the built-in converter replaced chafa, the median of 21 runs on the
-// GitHub Actions runners was 81.0 ms with chafa against 62.8 ms built-in on ubuntu-latest, and
-// 130.1 ms against 98.2 ms on macos-latest (11.11.2026).
-//
 // Usage: node scripts/measure-oneshot.mjs [runs]
 
 import { spawnSync } from "node:child_process";

@@ -16,7 +16,7 @@
 
 import { STEPS, stepIndex } from "./glyphs.js";
 
-// Windows Terminal drew every step of the test card correctly (owner's check, 11.11.2026).
+// Windows Terminal draws every step of the test card correctly.
 export const WINDOWS_TERMINAL_STEP = "octant";
 
 const PROGRAMS = { vscode: "wedge", wezterm: "wedge", ghostty: "octant" };

@@ -65,7 +65,7 @@ export function convertImage(img, rows, step, { background = [0, 0, 0] } = {}) {
   const px = new Float64Array(N * 4); // r, g, b, a per sub-pixel
   const clear = new Uint8Array(N);
   const bits = new Uint8Array(N);
-  const near = new Array(all.length);
+  const picks = new Array(SHORTLIST); // shortlist keys: Hamming distance * 1024 + table index
   const out = [];
   let total = 0;
 
@@ -109,18 +109,23 @@ export function convertImage(img, rows, step, { background = [0, 0, 0] } = {}) {
       const dist = (i, j) => (px[i * 4] - px[j * 4]) ** 2 + (px[i * 4 + 1] - px[j * 4 + 1]) ** 2 + (px[i * 4 + 2] - px[j * 4 + 2]) ** 2;
       for (let i = 0; i < N; i++) bits[i] = dist(i, lo) > dist(i, hi) ? 1 : 0;
 
-      // The glyphs nearest to that shape (ties keep table order), scored by colour error.
+      // The glyphs nearest to that shape (ties keep table order), scored by colour error. The
+      // shortlist stays sorted: each key (distance, then table index) is unique.
+      let picked = 0;
       for (let k = 0; k < all.length; k++) {
         const m = all[k].mask;
         let h = 0;
         for (let i = 0; i < N; i++) h += m[i] ^ bits[i];
-        near[k] = h * 1024 + k;
+        const key = h * 1024 + k;
+        if (picked === SHORTLIST && key >= picks[SHORTLIST - 1]) continue;
+        let j = picked < SHORTLIST ? picked++ : SHORTLIST - 1;
+        while (j > 0 && picks[j - 1] > key) { picks[j] = picks[j - 1]; j--; }
+        picks[j] = key;
       }
-      const picks = near.slice().sort((a, b) => a - b).slice(0, SHORTLIST);
 
       let best = null, bestErr = Infinity, bestFg = null;
-      for (const p of picks) {
-        const cand = all[p % 1024];
+      for (let q = 0; q < picked; q++) {
+        const cand = all[picks[q] % 1024];
         const on = cand.on, n = on.length;
         let fr = 0, fg = 0, fb = 0;
         for (let k = 0; k < n; k++) { const j = on[k] * 4; fr += px[j]; fg += px[j + 1]; fb += px[j + 2]; }

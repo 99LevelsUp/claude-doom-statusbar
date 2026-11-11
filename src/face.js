@@ -3,7 +3,7 @@
 // with the glyph step the session's terminal allows. faceCell then composites the rows onto the
 // mugshot background. Drawing a face never starts a process.
 
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
@@ -68,7 +68,28 @@ function convertFace(key, name, rows, step, background) {
   const face = convertImage(img, rows, step, { background });
   disk[key] = face;
   try { writeAtomic(DISK_CACHE, JSON.stringify(disk)); } catch { /* a cache that cannot be written is skipped */ }
+  dropStaleCaches();
   return face;
+}
+
+// Caches an older converter or package version wrote are never read again. Once per process, the
+// first time this one writes its own, remove the ones untouched for a day. Not every other one: a
+// second installation (another version) uses its own file at the same time, and the two would
+// keep deleting each other's.
+const STALE_CACHE_MS = 24 * 3600 * 1000;
+let _pruned = false;
+function dropStaleCaches() {
+  if (_pruned) return;
+  _pruned = true;
+  const dir = path.dirname(DISK_CACHE), own = path.basename(DISK_CACHE);
+  let names = [];
+  try { names = readdirSync(dir); } catch { return; }
+  const cutoff = Date.now() - STALE_CACHE_MS;
+  for (const n of names) {
+    if (n === own || !/^doombar_faces_[0-9a-f]{12}\.json$/.test(n)) continue;
+    const file = path.join(dir, n);
+    try { if (statSync(file).mtimeMs < cutoff) unlinkSync(file); } catch { /* gone already, or not ours to remove */ }
+  }
 }
 
 export function loadFace(name, rows) {

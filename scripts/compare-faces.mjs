@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import { decodePng } from "../src/png.js";
 import { convertImage, faceSize } from "../src/glyph-render.js";
 import { STEPS } from "../src/glyphs.js";
+import { sgrFg, sgrBg } from "../src/ansi.js";
 import { scoreFace } from "./face-score.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -87,7 +88,7 @@ function chafaFace(name, rows, symbols) {
   return toFace(r.stdout, rows);
 }
 
-const cellStr = ([ch, fg, bg]) => `\x1b[38;2;${(fg || [0, 0, 0]).join(";")}m\x1b[48;2;${(bg || [0, 0, 0]).join(";")}m${ch}`;
+const cellStr = ([ch, fg, bg]) => sgrFg(fg || [0, 0, 0]) + sgrBg(bg || [0, 0, 0]) + ch;
 const lineOf = (row, width) => (row || []).map(cellStr).join("") + "\x1b[0m" + " ".repeat(Math.max(0, width - (row || []).length));
 const fmt = (s) => (s ? `${s.mean.toFixed(4)} / ${s.worst.toFixed(4)}` : "chafa missing");
 
