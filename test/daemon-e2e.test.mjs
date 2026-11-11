@@ -226,6 +226,8 @@ const tickOnce = () => exclusive(async () => {
   const t0 = Date.now();
   const r = await runChild(BASH, ["-c", CLIENT_CMD], { env: clientEnv, input: STATUSLINE_JSON, timeoutMs: 5000, capture: true });
   const tick = { t0, t1: Date.now(), kind: r.timedOut ? "timeout" : kindOf(r.out) };
+  // A grey tick: was the daemon late (old heartbeat), or did the client see an old frame?
+  if (tick.kind === "grey") tick.hbAge = tick.t1 - (readJson(HEARTBEAT)?.renewed ?? NaN);
   ticks.push(tick);
   return tick;
 });
@@ -287,7 +289,8 @@ try {
     await sleep(IDLE_RUN_MS);
     const seen = ticksFrom(from, Date.now());
     ok(seen.length >= IDLE_RUN_MS / 1000 - 6 && seen.every((t) => t.kind === "live"),
-      `an idle session stays live for ${IDLE_RUN_MS / 1000} s: ${seen.length} ticks, ${seen.filter((t) => t.kind !== "live").length} not live`);
+      `an idle session stays live for ${IDLE_RUN_MS / 1000} s: ${seen.length} ticks, ${seen.filter((t) => t.kind !== "live").length} not live ` +
+      `(${seen.filter((t) => t.kind !== "live").map((t) => `${t.kind} at +${t.t0 - from} ms, tick ${t.t1 - t.t0} ms, heartbeat ${t.hbAge} ms old`).join(", ")})`);
   }
 
   // ---- A daemon starved for 2 s never greys ----------------------------------------------------
