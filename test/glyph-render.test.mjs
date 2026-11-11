@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { decodePng } from "../src/png.js";
 import { convertImage, faceSize } from "../src/glyph-render.js";
-import { STEPS } from "../src/glyphs.js";
+import { STEPS, glyphByChar, covers } from "../src/glyphs.js";
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
@@ -34,29 +34,31 @@ const shape = (face) => {
   ok(JSON.stringify(faceSize(24, 29, 16)) === JSON.stringify({ rows: 15, cols: 24 }), "faceSize reports the drawn grid");
 }
 
-// A synthetic 4x6 image is two cells of exactly 2x3 pixels each at one row, so each cell holds one
-// sextant pattern pixel for pixel.
+// A synthetic 12x12 image is two cells of 6x12 pixels at one row; each cell draws one sextant
+// pattern in blocks of 3x4 pixels. Sampling is smooth, so edges blend a little, but the cell's
+// shape and colours stay those of the pattern.
 function sextantImage(patterns, fg, bg) {
-  const W = 2 * patterns.length, H = 6, rgba = new Uint8Array(W * H * 4);
-  patterns.forEach((bits, cell) => {
-    for (let i = 0; i < 6; i++) {
-      const col = cell * 2 + (i % 2), row0 = Math.floor(i / 2) * 2;
-      for (const y of [row0, row0 + 1]) {
-        const o = (y * W + col) * 4, c = bits & (1 << i) ? fg : bg;
-        rgba[o] = c[0]; rgba[o + 1] = c[1]; rgba[o + 2] = c[2]; rgba[o + 3] = 255;
-      }
+  const W = 12, H = 12, rgba = new Uint8Array(W * H * 4);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const cell = Math.floor(x / 6), i = Math.floor(y / 4) * 2 + Math.floor((x % 6) / 3);
+      const c = patterns[cell] & (1 << i) ? fg : bg;
+      rgba.set([...c, 255], (y * W + x) * 4);
     }
-  });
+  }
   return { width: W, height: H, rgba };
 }
+const close = (a, b, tol = 40) => a && b && a.every((v, k) => Math.abs(v - b[k]) <= tol);
 {
   const red = [200, 30, 30], blue = [20, 40, 220];
   // 22 and 25 are not each other's inverse (an inverse pattern is the same glyph with swapped colours).
   const face = convertImage(sextantImage([22, 25], red, blue), 1, "sextant");
-  const [a, b] = face[0];
-  ok(a && a[0] === "\u{1FB14}" && b && b[0] === "\u{1FB17}", `exact sextant patterns convert back to their glyphs (got ${a?.[0]} ${b?.[0]})`);
-  ok(JSON.stringify(a[1]) === JSON.stringify(red) && JSON.stringify(a[2]) === JSON.stringify(blue), "the glyph's colours are the two pixel colours");
-  ok(face.error === 0, `an exact match has zero search error (${face.error})`);
+  // What each of the six sextant areas shows: the glyph's foreground where its shape covers the
+  // area's centre, its background elsewhere. A glyph or its inverse with swapped colours look alike.
+  const shows = ([ch, fg, bg], i) => (covers(glyphByChar(ch), ((i % 2) + 0.5) / 2, (Math.floor(i / 2) + 0.5) / 3) ? fg : bg);
+  const drawsPattern = (cell, bits) => cell && [0, 1, 2, 3, 4, 5].every((i) => close(shows(cell, i), bits & (1 << i) ? red : blue));
+  ok(drawsPattern(face[0][0], 22) && drawsPattern(face[0][1], 25),
+    `each cell shows its sextant pattern in the two colours (got ${face[0].map((c) => c[0]).join(" ")})`);
 }
 
 // Uniform and transparent cells.
@@ -78,7 +80,7 @@ function flatImage(W, H, fill) {
   // Left column transparent, right column red: the transparent side has no colour.
   const half = convertImage(flatImage(2, 4, (x) => (x === 0 ? [0, 0, 0, 0] : [220, 0, 0, 255])), 1, "half")[0][0];
   const sides = [half[1], half[2]];
-  ok("▌▐".includes(half[0]) && sides.some((c) => c === null) && sides.some((c) => JSON.stringify(c) === "[220,0,0]"),
+  ok("▌▐".includes(half[0]) && sides.some((c) => c === null) && sides.some((c) => c && c[0] > 150 && c[1] < 30 && c[2] < 30),
     `a half-transparent cell keeps red on one side and nothing on the other (${half[0]} ${JSON.stringify(sides)})`);
 }
 
