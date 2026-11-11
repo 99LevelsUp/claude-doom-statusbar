@@ -19,12 +19,12 @@ Owner's order: daemon first, renderer second, minimap and WC3 after. The daemon 
 | ID | Item | Status |
 |---|---|---|
 | D-2 | Hook events into the daemon without a spawn per tool call (HTTP hooks, if Claude Code supports them and fails safe) | idea |
-| D-3 | Built-in bitmap → glyph renderer on the mugshot glyph set (`block+half+quad+sextant+wedge+legacy`), half-block mode as a setting | next |
-| D-4 | Compare the built-in renderer with chafa on the mugshot; drop chafa if close enough | idea |
+| D-3 | Built-in bitmap → glyph renderer: per-cell search like chafa, a glyph set per image, capped by a terminal level read from the terminal type. Requirements: [plans/2026-11-11-1150-feat-builtin-glyph-renderer-plan.md](plans/2026-11-11-1150-feat-builtin-glyph-renderer-plan.md) (with D-8 as its gate and D-4 as its verdict) | next, brainstormed |
+| D-4 | Compare the built-in renderer with chafa on the mugshot; drop chafa if close enough. The owner decides by eye, the D-8 score informs (D-3 plan, R11–R12) | next, with D-3 |
 | D-5 | WC3 minimap: layered metrics (terrain, fog, units per agent, pings), map larger than the view, event-driven camera. Which metric goes to which layer is open | idea |
 | D-6 | WC3 console elements beyond the minimap: portrait with races (original art), info panel, inventory, command card, resource bar, day/night clock | idea |
 | D-7 | Frame reel with a deadline, read by a write-once client (Part 6 idea 1). The deadline header shipped with D-1 (`slots=1`); the multi-slot reel is still open | open |
-| D-8 | Glyph truth on the real terminal: test card + fallback ladder, render-back error score vs chafa (Part 6 idea 2). Gate for D-3 and D-4 | idea |
+| D-8 | Glyph truth on the real terminal: test card + fallback ladder, render-back error score vs chafa (Part 6 idea 2). Gate for D-3 and D-4, part of the D-3 plan (R6, R9, R10) | next, with D-3 |
 | D-9 | Per-repo ledger behind the map, "changed since Claude read it" layer, provenance, allied sessions (Part 6 idea 3). Data model for D-5 | idea |
 | D-10 | Animation cadence per element: telemetry on data arrival, effects as fast as the display allows (~10 ms), DOOM mugshot fixed at ~1 s; pose-to-pose sampling where the display is 1 Hz (Part 6 idea 4). For D-6 portrait | idea |
 | D-11 | Crash-only daemon with a version-named pipe as singleton and upgrade path (Part 6 idea 5). Absorbed by D-1: one pipe per installation, version mismatch restarts the daemon | done with D-1 |
@@ -66,6 +66,7 @@ Source: [ideation/2026-10-31-shared-game-layout-engine.md](ideation/2026-10-31-s
 | G-6 | Chat as data: script in TOML, declarative conditions, generic facts, cast from data | open |
 | G-7 | Chat packs: universal metric lines keyed, a game pack overrides by key and adds atmosphere lines; chat refers to sockets (`{hearts}`), not metrics | open |
 | G-8 | Warcraft III layout on top of the kit (minimap: see D-5, after D-1 and D-3) | open |
+| G-10 | Assets on demand: a DOOM user does not need WC3 models and a WC3 user does not need mugshots, and the WC3 bar will let the user pick which heads to show. Assets may live in the repo, but the bar downloads the ones the settings need and removes the ones they no longer need (owner, 2026-11-11). Own brainstorm; dropping the `.ans` faces (D-3 plan, R13) already shrinks the DOOM set | idea |
 | G-9 | Decide who owns conversation order: game skeleton pulling universal lines, or universal lines dealt into gaps | idea |
 
 ## Performance: bash spawns, shared statusbar
