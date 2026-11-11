@@ -1,15 +1,19 @@
 #!/usr/bin/env node
 // Render daemon: one long-lived process per installation renders every active session.
 //
-// Single instance: the daemon binds the named pipe \\.\pipe\doombar-<install hash>. "Address in
-// use" means a daemon for this installation already runs, and the new one exits at once without
-// writing anything. The pipe answers nothing; hooks only probe whether it is bound.
+// Single instance: the daemon listens on its installation's address (daemonSocket in fold.js):
+// the named pipe \\.\pipe\doombar-<install hash> on Windows, the socket file
+// mugshot_daemon_<hash>.sock in the runtime directory elsewhere. "Address in use" means a daemon
+// already runs, and the new one exits at once without writing anything. A socket file can also
+// be left behind by a daemon that was killed: when nothing answers on it, it is removed and taken
+// over. The address answers nothing; hooks only probe whether it is bound.
 //
 // Heartbeat, mugshot_daemon_<hash>.json: { pid, start, version, window, renewed, renameFailures }
 // start and renewed are epoch milliseconds, window is the largest window in use (seconds),
-// renameFailures counts frame and heartbeat writes that failed.
+// renameFailures counts frame and heartbeat writes that failed. On Linux it also carries
+// startTicks, the process start time from /proc, which hooks compare before killing the pid.
 
-import { readFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, lstatSync, unlinkSync } from "node:fs";
 import { spawn as spawnChild } from "node:child_process";
 import net from "node:net";
 import os from "node:os";
@@ -19,7 +23,7 @@ import { renderSession } from "./statusline.js";
 import { writeFrame } from "./frame.js";
 import {
   rootHash, daemonPaths, payloadPrefix, framePrefix, writeAtomic, pipePath, PACKAGE_ROOT, envNum, packageVersion,
-  runtimeDir, ensureRuntimeDir,
+  runtimeDir, ensureRuntimeDir, daemonSocket, procStartTicks,
 } from "./fold.js";
 
 export { pipePath };
@@ -69,8 +73,8 @@ export function parsePayload(text) {
 // The daemon's in-memory state. Nothing in it is needed across restarts: payloads are re-read
 // and session state comes from each session's checkpoint and journal.
 export function createState({ version, now = Date.now(), idleMs = DEFAULT_IDLE_MS, pid = process.pid,
-  start = Math.round(performance.timeOrigin) } = {}) {
-  return { version: String(version), idleMs, pid, start, since: now, sessions: new Map(), renameFailures: 0 };
+  start = Math.round(performance.timeOrigin), startTicks = process.platform === "linux" ? procStartTicks() : null } = {}) {
+  return { version: String(version), idleMs, pid, start, startTicks, since: now, sessions: new Map(), renameFailures: 0 };
 }
 
 // Hung Git Bash statusLine wrappers must be reaped even while no hook events arrive: at most one
@@ -157,6 +161,7 @@ export function runPass(state, { dir = runtimeDir(), hash = rootHash(), now = Da
 
   const beat = { pid: state.pid, start: state.start, version: state.version, window: window || DEFAULT_WINDOW_S,
     renewed: now, renameFailures: state.renameFailures };
+  if (state.startTicks) beat.startTicks = state.startTicks;
   try { writeAtomic(heartbeat, JSON.stringify(beat)); } catch { state.renameFailures += 1; }
 
   return { idle: now - state.since >= state.idleMs, rendered };
@@ -170,58 +175,92 @@ function srcSnapshot(dir) {
   } catch { return "unreadable"; }
 }
 
+// Whether a daemon answers on addr. Refused or gone means no; any other failure, or no answer in
+// time, counts as yes, so a live daemon's socket is never taken from it.
+const answers = (addr) => new Promise((resolve) => {
+  const s = net.connect(addr);
+  s.once("connect", () => { s.destroy(); resolve(true); });
+  s.once("error", (e) => resolve(!["ECONNREFUSED", "ENOENT"].includes(e.code)));
+  s.setTimeout(1000, () => { s.destroy(); resolve(true); });
+});
+
 // Resolves once the daemon serves. Exits at once when another daemon of this installation
-// already holds the pipe.
-export function startDaemon({ root = PACKAGE_ROOT, env = process.env } = {}) {
+// already holds the address.
+export async function startDaemon({ root = PACKAGE_ROOT, env = process.env } = {}) {
   const hash = rootHash(root);
   const dir = ensureRuntimeDir(env);
   if (!dir) process.exit(1); // not private: never read or write in it
   const heartbeat = inDir(dir, daemonPaths(hash).heartbeat);
+  const posix = process.platform !== "win32";
+  const addr = daemonSocket(hash, env);
   const server = net.createServer((sock) => sock.end());
   let timer = null;
   let stopping = false;
+
+  const listen = () => new Promise((resolve) => {
+    server.once("error", resolve);
+    server.listen(addr, () => { server.removeListener("error", resolve); resolve(null); });
+  });
+  let err = await listen();
+  // A socket file nobody answers on was left by a daemon that was killed: take it over.
+  if (err && err.code === "EADDRINUSE" && posix && !(await answers(addr))) {
+    try { unlinkSync(addr); } catch {}
+    err = await listen();
+  }
+  if (err) process.exit(err.code === "EADDRINUSE" ? 0 : 1);
+  server.on("error", () => {});
+
+  // POSIX: the socket file is ours while it is the one we bound. If it is gone or another
+  // daemon took over its path, this daemon steps aside, and it never removes a path it does not
+  // own: closing the server would unlink the path whoever holds it.
+  let bound = null;
+  try { const st = lstatSync(addr); bound = { dev: st.dev, ino: st.ino }; } catch {}
+  const ownsSocket = () => {
+    if (!posix) return true;
+    try { const st = lstatSync(addr); return !!bound && st.dev === bound.dev && st.ino === bound.ino; } catch { return false; }
+  };
+  const dropHeartbeat = () => {
+    try { if (JSON.parse(readFileSync(heartbeat, "utf8")).pid === process.pid) unlinkSync(heartbeat); } catch {}
+  };
 
   const stop = () => {
     if (stopping) return;
     stopping = true;
     clearTimeout(timer);
-    try { unlinkSync(heartbeat); } catch {}
-    server.close(() => process.exit(0));
+    dropHeartbeat();
+    if (!ownsSocket()) process.exit(0);
+    server.close(() => {
+      if (posix && ownsSocket()) { try { unlinkSync(addr); } catch {} }
+      process.exit(0);
+    });
     setTimeout(() => process.exit(0), 1000).unref();
   };
+  process.on("SIGTERM", stop);
 
-  return new Promise((resolve) => {
-    server.once("error", (err) => {
-      process.exit(err && err.code === "EADDRINUSE" ? 0 : 1);
-    });
-    server.listen(pipePath(hash), () => {
-      try { os.setPriority(os.constants.priority.PRIORITY_BELOW_NORMAL); } catch {}
-      try { process.chdir(dir); } catch {}
+  try { os.setPriority(os.constants.priority.PRIORITY_BELOW_NORMAL); } catch {}
+  try { process.chdir(dir); } catch {}
 
-      const src = path.join(root, "src");
-      const original = srcSnapshot(src);
-      let srcChecked = Date.now();
+  const src = path.join(root, "src");
+  const original = srcSnapshot(src);
+  let srcChecked = Date.now();
 
-      const state = createState({ version: packageVersion(root), idleMs: envNum(env.DOOMBAR_DAEMON_IDLE_MS, DEFAULT_IDLE_MS) });
-      const tick = () => {
-        const now = Date.now();
-        if (now - srcChecked >= SRC_CHECK_MS) {
-          srcChecked = now;
-          if (srcSnapshot(src) !== original) { stop(); return; }
-        }
-        maybeStartReaper(state, { now, env });
-        let idle = false;
-        try {
-          idle = runPass(state, { dir, hash, now, heartbeat }).idle;
-        } catch {}
-        if (stopping) return;
-        if (idle) { stop(); return; }
-        timer = setTimeout(tick, TICK_MS - JITTER_MS + Math.random() * 2 * JITTER_MS);
-      };
-      tick();
-      resolve();
-    });
-  });
+  const state = createState({ version: packageVersion(root), idleMs: envNum(env.DOOMBAR_DAEMON_IDLE_MS, DEFAULT_IDLE_MS) });
+  const tick = () => {
+    const now = Date.now();
+    if (now - srcChecked >= SRC_CHECK_MS) {
+      srcChecked = now;
+      if (srcSnapshot(src) !== original || !ownsSocket()) { stop(); return; }
+    }
+    maybeStartReaper(state, { now, env });
+    let idle = false;
+    try {
+      idle = runPass(state, { dir, hash, now, heartbeat }).idle;
+    } catch {}
+    if (stopping) return;
+    if (idle) { stop(); return; }
+    timer = setTimeout(tick, TICK_MS - JITTER_MS + Math.random() * 2 * JITTER_MS);
+  };
+  tick();
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

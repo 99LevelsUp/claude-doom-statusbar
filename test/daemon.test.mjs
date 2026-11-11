@@ -51,7 +51,7 @@ Object.assign(process.env, SANDBOX_ENV);
 // The terminal that runs the tests must not pick the mugshot's glyphs for one side of a comparison.
 for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "DOOMBAR_GLYPHS"]) delete process.env[k];
 const { renderSession } = await import("../src/statusline.js");
-const { sessionPaths, daemonPaths, rootHash } = await import("../src/fold.js");
+const { sessionPaths, daemonPaths, rootHash, daemonSocket, procStartTicks } = await import("../src/fold.js");
 const { parseFrame } = await import("../src/frame.js");
 const { createState, runPass, pipePath, maybeStartReaper } = await import("../src/daemon.js");
 
@@ -395,9 +395,10 @@ try {
   }
 
   // ---- Real processes -------------------------------------------------------------------------
-  if (process.platform !== "win32") {
-    console.log("  skip real-process cases: the daemon's single-instance pipe is a Windows named pipe");
-  } else {
+  // The single-instance address is a named pipe on Windows and a socket file in the runtime
+  // directory elsewhere (one per installation and runtime directory there).
+  const WIN = process.platform === "win32";
+  {
     // A copy of the package: its own install hash, pipe and src/ to watch. assets and
     // node_modules are linked, not copied.
     const copyPackage = (name) => {
@@ -430,6 +431,13 @@ try {
       srv.once("error", () => resolve(false));
       srv.listen(pipePath(hash), () => srv.close(() => resolve(true)));
     });
+    const sockOf = (pkg, dir) => daemonSocket(pkg.hash, { DOOMBAR_RUNTIME_DIR: dir });
+    const addressFree = async (pkg, dir) => (WIN ? pipeFree(pkg.hash) : !existsSync(sockOf(pkg, dir)));
+    const answers = (addr) => new Promise((resolve) => {
+      const s = net.connect(addr);
+      s.once("connect", () => { s.destroy(); resolve(true); });
+      s.once("error", () => resolve(false));
+    });
 
     const A = copyPackage("pkg-a"), B = copyPackage("pkg-b");
     // Last-access times far enough back that NTFS records the next read (it skips updates within
@@ -447,13 +455,23 @@ try {
       && hb.renameFailures === 0, "the heartbeat carries pid, start, version, window, renewed and renameFailures");
 
     // A second daemon for the same installation exits at once and writes nothing.
-    const lone = path.join(SB, "rt-second");
-    mkdirSync(lone);
-    const a2 = startDaemon(A, lone);
+    const a2 = startDaemon(A, shared);
     const code = await exitWithin(a2, 10000);
     ok(code === 0, `a second daemon for the same install root exits with code 0 (got ${code}) ${a2.err}`);
-    ok(readdirSync(lone).length === 0, "the second daemon writes nothing");
     ok(heartbeat(A.hash, shared)?.pid === a1.pid, "the first daemon keeps serving");
+    const lone = path.join(SB, "rt-second");
+    mkdirSync(lone);
+    const a3 = startDaemon(A, lone);
+    if (WIN) {
+      // The pipe is one per installation, whatever the temp directory.
+      ok(await exitWithin(a3, 10000) === 0, "on Windows a second daemon of the install exits from another temp dir too");
+      ok(readdirSync(lone).length === 0, "the second daemon writes nothing");
+    } else {
+      ok(await waitFor(() => heartbeat(A.hash, lone)?.pid === a3.pid),
+        `on Linux and macOS a daemon of the same install runs in another runtime dir ${a3.err}`);
+      a3.kill();
+      await a3.exited;
+    }
 
     // Another installation runs beside it, each with its own heartbeat and only its own payloads.
     const b1 = startDaemon(B, shared);
@@ -491,8 +509,8 @@ try {
     ok(await waitFor(() => heartbeat(B.hash, idle)?.pid === c1.pid), "the idle-test daemon starts");
     const idleCode = await exitWithin(c1, 15000);
     ok(idleCode === 0, `with no payload for the idle period the daemon exits with code 0 (got ${idleCode}) ${c1.err}`);
-    ok(listing() === before, "its heartbeat is gone and nothing else in the temp dir changed");
-    ok(await pipeFree(B.hash), "its pipe is released");
+    ok(listing() === before, "its heartbeat and socket are gone and nothing else in the runtime dir changed");
+    ok(await addressFree(B, idle), "its address is released");
 
     // The daemon holds no handle inside its package: the package directory can be renamed while
     // it runs (npm moves the old copy aside on an upgrade), and the daemon then leaves.
@@ -505,6 +523,51 @@ try {
     try { renameSync(C.dir, C.dir + "-moved"); } catch (e) { renamed = e.code; }
     ok(renamed === true, `the package directory of a running daemon can be renamed (got ${renamed})`);
     ok(await exitWithin(m1, 10000) === 0, "the daemon exits once its src/ is gone");
+
+    if (!WIN) {
+      // A daemon killed outright leaves its socket file; the next one takes it over.
+      const D = copyPackage("pkg-d");
+      const st = path.join(SB, "rt-stale");
+      mkdirSync(st);
+      const sock = sockOf(D, st);
+      const d1 = startDaemon(D, st);
+      ok(await waitFor(() => heartbeat(D.hash, st)?.pid === d1.pid), `the stale-socket daemon starts ${d1.err}`);
+      if (process.platform === "linux") {
+        ok(heartbeat(D.hash, st)?.startTicks === procStartTicks(d1.pid),
+          `the heartbeat carries the daemon's start time from /proc (${heartbeat(D.hash, st)?.startTicks})`);
+      }
+      d1.kill("SIGKILL");
+      await d1.exited;
+      ok(existsSync(sock), "a daemon killed with SIGKILL leaves its socket file");
+      const d2 = startDaemon(D, st);
+      ok(await waitFor(() => heartbeat(D.hash, st)?.pid === d2.pid), `a new daemon takes the stale socket over ${d2.err}`);
+      session("sd", { hash: D.hash, dir: st });
+      ok(await waitFor(() => existsSync(frameFile("sd", D.hash, st))), "and renders");
+
+      // A daemon whose socket file was deleted steps aside.
+      unlinkSync(sock);
+      ok(await exitWithin(d2, 6000) !== "timeout", "a daemon whose socket file was deleted exits");
+
+      // SIGTERM (what uninstall sends) leaves neither socket nor heartbeat behind.
+      const d3 = startDaemon(D, st);
+      ok(await waitFor(() => heartbeat(D.hash, st)?.pid === d3.pid), "the SIGTERM-test daemon starts");
+      d3.kill("SIGTERM");
+      ok(await exitWithin(d3, 5000) === 0, "SIGTERM makes the daemon exit with code 0");
+      ok(!existsSync(sock) && !existsSync(heartbeatFile(D.hash, st)), "and it leaves neither socket nor heartbeat");
+
+      // Two daemons that find the same stale socket at once settle on one, which keeps its socket.
+      const d4 = startDaemon(D, st);
+      ok(await waitFor(() => heartbeat(D.hash, st)?.pid === d4.pid), "the race-test daemon starts");
+      d4.kill("SIGKILL");
+      await d4.exited;
+      const racers = [startDaemon(D, st), startDaemon(D, st)];
+      await sleep(5000);
+      const alive = racers.filter((c) => c.exitCode === null && c.signalCode === null);
+      ok(alive.length === 1, `two daemons on one stale socket leave exactly one running (got ${alive.length})`);
+      ok(alive.length === 1 && await answers(sock), "and that one still answers on the socket");
+      ok(alive.length === 1 && await waitFor(() => heartbeat(D.hash, st)?.pid === alive[0].pid, 2000),
+        "and it is the one writing the heartbeat");
+    }
   }
 } finally {
   await stopAll();

@@ -93,6 +93,24 @@ const ROOT_HASH = rootHash();
 
 export const pipePath = (hash) => `\\\\.\\pipe\\doombar-${hash}`;
 
+// The address the render daemon listens on, so only one runs. On Windows a named pipe, one per
+// installation. Elsewhere a Unix socket file in the private runtime directory, one per
+// installation and runtime directory: an abstract socket would carry no permissions, and any
+// user could take the name first.
+export const daemonSocket = (hash, env = process.env, platform = process.platform) =>
+  platform === "win32" ? pipePath(hash) : path.join(runtimeDir(env, { platform }), `${daemonPrefix(hash)}sock`);
+
+// Linux: a process's start time, in clock ticks since boot (field 22 of /proc/<pid>/stat), or
+// null. Read after the last ")", because the command name before it may hold spaces and ")".
+// Together with the command line it tells a daemon apart from another process that got its pid.
+export function procStartTicks(pid = "self", read = (p) => readFileSync(p, "utf8")) {
+  try {
+    const stat = read(`/proc/${pid}/stat`);
+    const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+    return /^\d+$/.test(fields[19]) ? fields[19] : null;
+  } catch { return null; }
+}
+
 export const payloadPrefix = (hash) => `mugshot_payload_${hash}_`;
 export const framePrefix = (hash) => `mugshot_frame_${hash}_`;
 export const daemonPrefix = (hash) => `mugshot_daemon_${hash}.`;
