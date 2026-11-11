@@ -380,11 +380,12 @@ if (WIN || process.platform === "linux") {
     writeFileSync(path.join(tmp, `mugshot_daemon_${HASH}.json`),
       JSON.stringify({ pid: fake.pid, start, startTicks: WIN ? undefined : procStartTicks(fake.pid), version: "0", window: 3, renewed: start }));
     const out = run(tmp, "uninstall", "--project");
-    let gone = false;
-    for (let i = 0; i < 40 && !gone; i++) {
-      gone = !alive(fake.pid);
-      if (!gone) execFileSync(process.execPath, ["-e", "setTimeout(() => {}, 50)"]);
-    }
+    // Wait for the exit event, not the pid: on Linux a killed child stays a zombie (and its pid
+    // answers) until this process reaps it, which needs the event loop.
+    const gone = fake.exitCode !== null || fake.signalCode !== null || await Promise.race([
+      new Promise((r) => fake.once("exit", () => r(true))),
+      new Promise((r) => setTimeout(() => r(false), 3000)),
+    ]);
     ok(gone, "uninstall stopped this installation's confirmed daemon");
     ok(new RegExp(`stopped the render daemon \\(pid ${fake.pid}\\)`).test(out), "uninstall reports the stopped daemon");
     ok(ourFiles(tmp).length === 0, "its heartbeat is removed");
