@@ -7,12 +7,15 @@
 // glyph step and the same size; when chafa is missing or fails, the built-in face is drawn.
 
 import { spawn, spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { RESET, sgrBg } from "./ansi.js";
 import { decodePng } from "./png.js";
 import { convertImage, faceSize } from "./glyph-render.js";
+import { writeAtomic, packageVersion } from "./fold.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.dirname(HERE);
@@ -62,10 +65,38 @@ function image(name) {
   return _images.get(name);
 }
 
+// Converted faces are also kept on disk so the one-shot status line (a new process every tick on
+// Linux and macOS) converts each face once instead of on every tick. The file name carries the
+// package version and the converter sources' size and time, so a changed converter never reads
+// faces an older one drew. It is only a cache: a missing, unreadable or lost-in-a-race file just
+// means converting again.
+function converterStamp() {
+  const parts = [packageVersion()];
+  for (const f of ["glyphs.js", "glyph-render.js"]) {
+    try { const st = statSync(path.join(HERE, f)); parts.push(st.size, Math.round(st.mtimeMs)); } catch { parts.push(f); }
+  }
+  return createHash("sha1").update(parts.join("|")).digest("hex").slice(0, 12);
+}
+const DISK_CACHE = path.join(os.tmpdir(), `doombar_faces_${converterStamp()}.json`);
+let _disk = null;
+function diskCache() {
+  if (!_disk) {
+    try { _disk = JSON.parse(readFileSync(DISK_CACHE, "utf8")); } catch { _disk = {}; }
+    if (!_disk || typeof _disk !== "object" || Array.isArray(_disk)) _disk = {};
+  }
+  return _disk;
+}
+
 function builtinFace(name, rows, step, background) {
+  const key = `${name}@${rows}@${step}@${background.join(",")}`;
+  const disk = diskCache();
+  if (Array.isArray(disk[key])) return disk[key];
   const img = image(name);
   if (!img) return Array.from({ length: rows }, () => []);
-  return convertImage(img, rows, step, { background });
+  const face = convertImage(img, rows, step, { background });
+  disk[key] = face;
+  try { writeAtomic(DISK_CACHE, JSON.stringify(disk)); } catch { /* a cache that cannot be written is skipped */ }
+  return face;
 }
 
 function chafaArgs(name, rows, step) {

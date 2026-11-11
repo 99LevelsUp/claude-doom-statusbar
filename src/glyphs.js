@@ -165,24 +165,31 @@ function buildClasses() {
   return { half, quadrant, sextant, wedge, octant };
 }
 
-const CLASSES = Object.freeze(buildClasses());
+// The tables are built on first use, so a process that only reads cached faces never pays for them.
+let _classes = null;
+const classes = () => (_classes ||= Object.freeze(buildClasses()));
 
 // Shapes of the octant patterns the search leaves out; chafa may still print them, and scoring its
 // output needs their shape.
-const LEFT_OUT = [[0x01, 0x1cea8], [0x02, 0x1ceab], [0x40, 0x1cea3], [0x80, 0x1cea0], [0x14, 0x1fbe6], [0x28, 0x1fbe7]]
-  .map(([bits, cp]) => make(cp, gridPolys(bits, 4), "octant"));
+const LEFT_OUT_OCTANTS = [[0x01, 0x1cea8], [0x02, 0x1ceab], [0x40, 0x1cea3], [0x80, 0x1cea0], [0x14, 0x1fbe6], [0x28, 0x1fbe7]];
 
 // Any glyph this table knows by its character, the left-out octant characters included; null for
 // a character it does not know.
-const _byChar = new Map([SPACE, FULL, ...Object.values(CLASSES).flat(), ...LEFT_OUT].map((g) => [g.ch, g]));
-export const glyphByChar = (ch) => _byChar.get(ch) || null;
+let _byChar = null;
+export function glyphByChar(ch) {
+  if (!_byChar) {
+    const leftOut = LEFT_OUT_OCTANTS.map(([bits, cp]) => make(cp, gridPolys(bits, 4), "octant"));
+    _byChar = new Map([SPACE, FULL, ...Object.values(classes()).flat(), ...leftOut].map((g) => [g.ch, g]));
+  }
+  return _byChar.get(ch) || null;
+}
 
 export const stepIndex = (step) => STEPS.indexOf(step);
 
 // The glyphs a step adds over the one below it, in table order (for the test card).
 export function classGlyphs(step) {
-  if (!CLASSES[step]) throw new Error(`unknown glyph step: ${step}`);
-  return CLASSES[step];
+  if (!classes()[step]) throw new Error(`unknown glyph step: ${step}`);
+  return classes()[step];
 }
 
 const maskKey = (m) => m.join("");
@@ -195,7 +202,7 @@ export function glyphsFor(step) {
   const top = stepIndex(step);
   if (top < 0) throw new Error(`unknown glyph step: ${step}`);
   const byMask = new Map();
-  for (const g of [SPACE, FULL, ...STEPS.slice(0, top + 1).flatMap((s) => CLASSES[s])]) {
+  for (const g of [SPACE, FULL, ...STEPS.slice(0, top + 1).flatMap((s) => classes()[s])]) {
     const k = maskKey(g.mask);
     if (!byMask.has(k)) byMask.set(k, g);
   }
@@ -203,9 +210,6 @@ export function glyphsFor(step) {
   _forStep.set(step, list);
   return list;
 }
-
-export const spaceGlyph = SPACE;
-export const fullGlyph = FULL;
 
 // The test card: for each step, a label and the glyphs it adds, drawn in one colour on another so
 // a glyph the terminal or font cannot draw stands out as a box, a question mark or a gap. The
@@ -216,7 +220,7 @@ export function testCardLines({ perRow = 26 } = {}) {
   const paint = `\x1b[38;2;${CARD_FG.join(";")}m\x1b[48;2;${CARD_BG.join(";")}m`;
   const lines = [];
   STEPS.forEach((step, i) => {
-    const glyphs = CLASSES[step];
+    const glyphs = classes()[step];
     lines.push(`${i + 1}. ${step} (${glyphs.length} glyphs)`);
     for (let k = 0; k < glyphs.length; k += perRow) {
       const row = glyphs.slice(k, k + perRow).map((g) => g.ch).join(" ");

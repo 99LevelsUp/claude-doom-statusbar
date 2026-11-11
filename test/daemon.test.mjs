@@ -48,6 +48,8 @@ const SANDBOX_ENV = {
   DOOMBAR_PRESET: path.join(PRESETS, "minimal.toml"),
 };
 Object.assign(process.env, SANDBOX_ENV);
+// The terminal that runs the tests must not pick the mugshot's glyphs for one side of a comparison.
+for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "DOOMBAR_GLYPHS", "DOOMBAR_FACE_RENDERER"]) delete process.env[k];
 const { renderSession } = await import("../src/statusline.js");
 const { sessionPaths, daemonPaths, rootHash } = await import("../src/fold.js");
 const { parseFrame } = await import("../src/frame.js");
@@ -235,6 +237,7 @@ try {
       const own = { ...process.env, ...s.fwd };
       delete own.DOOMBAR_THEME;
       delete own.MUGSHOT_STATE;
+      delete own.WT_SESSION;
       const want = renderSession({ data: s.data, env: own, now: now / 1000 });
       const inherited = renderSession({ data: s.data, env: { ...process.env, ...s.fwd }, now: now / 1000 });
       ok(!sameLines(want, inherited), "the daemon's own DOOMBAR_THEME would change the render (so the next case can tell)");
