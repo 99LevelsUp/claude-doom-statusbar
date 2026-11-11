@@ -13,7 +13,7 @@
 // renameFailures counts frame and heartbeat writes that failed. On Linux it also carries
 // startTicks, the process start time from /proc, which hooks compare before killing the pid.
 
-import { readFileSync, readdirSync, statSync, lstatSync, unlinkSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { spawn as spawnChild } from "node:child_process";
 import net from "node:net";
 import os from "node:os";
@@ -184,6 +184,18 @@ const answers = (addr) => new Promise((resolve) => {
   s.setTimeout(1000, () => { s.destroy(); resolve(true); });
 });
 
+// Which daemon answers on addr: its pid, null when none does, or "unknown" when the answer does
+// not come in time (a busy machine). Every daemon answers a connection with its own pid.
+const answerer = (addr) => new Promise((resolve) => {
+  let text = "";
+  const s = net.connect(addr);
+  s.setEncoding("utf8");
+  s.on("data", (d) => { text += d; });
+  s.once("end", () => resolve(/^\d+$/.test(text) ? Number(text) : null));
+  s.once("error", () => resolve(null));
+  s.setTimeout(1000, () => { s.destroy(); resolve("unknown"); });
+});
+
 // Resolves once the daemon serves. Exits at once when another daemon of this installation
 // already holds the address.
 export async function startDaemon({ root = PACKAGE_ROOT, env = process.env } = {}) {
@@ -193,7 +205,7 @@ export async function startDaemon({ root = PACKAGE_ROOT, env = process.env } = {
   const heartbeat = inDir(dir, daemonPaths(hash).heartbeat);
   const posix = process.platform !== "win32";
   const addr = daemonSocket(hash, env);
-  const server = net.createServer((sock) => sock.end());
+  const server = net.createServer((sock) => sock.end(String(process.pid)));
   let timer = null;
   let stopping = false;
 
@@ -214,30 +226,29 @@ export async function startDaemon({ root = PACKAGE_ROOT, env = process.env } = {
   if (err) process.exit(err.code === "EADDRINUSE" ? 0 : 1);
   server.on("error", () => {});
 
-  // POSIX: the socket file is ours while it is the one we bound. If it is gone or another
-  // daemon took over its path, this daemon steps aside, and it never removes a path it does not
-  // own: closing the server would unlink the path whoever holds it.
-  let bound = null;
-  try { const st = lstatSync(addr); bound = { dev: st.dev, ino: st.ino }; } catch {}
-  const ownsSocket = () => {
+  // POSIX: the socket file is ours while this daemon is the one answering on its path. If the
+  // file is gone or another daemon took the path over, this daemon steps aside, and it never
+  // closes on a path it does not own: closing the server unlinks the path whoever holds it.
+  // Asking the socket, rather than comparing the file's inode, has no window in which another
+  // daemon can swap the file between binding it and looking at it. An answer that does not come
+  // in time leaves the daemon running.
+  const ownsSocket = async () => {
     if (!posix) return true;
-    try { const st = lstatSync(addr); return !!bound && st.dev === bound.dev && st.ino === bound.ino; } catch { return false; }
+    const who = await answerer(addr);
+    return who === process.pid || who === "unknown";
   };
   const dropHeartbeat = () => {
     try { if (JSON.parse(readFileSync(heartbeat, "utf8")).pid === process.pid) unlinkSync(heartbeat); } catch {}
   };
 
-  const stop = () => {
+  const stop = async () => {
     if (stopping) return;
     stopping = true;
     clearTimeout(timer);
     dropHeartbeat();
-    if (!ownsSocket()) process.exit(0);
-    server.close(() => {
-      if (posix && ownsSocket()) { try { unlinkSync(addr); } catch {} }
-      process.exit(0);
-    });
-    setTimeout(() => process.exit(0), 1000).unref();
+    setTimeout(() => process.exit(0), 2000).unref();
+    if (!(await ownsSocket())) process.exit(0);
+    server.close(() => process.exit(0));
   };
   process.on("SIGTERM", stop);
 
@@ -249,11 +260,12 @@ export async function startDaemon({ root = PACKAGE_ROOT, env = process.env } = {
   let srcChecked = Date.now();
 
   const state = createState({ version: packageVersion(root), idleMs: envNum(env.DOOMBAR_DAEMON_IDLE_MS, DEFAULT_IDLE_MS) });
-  const tick = () => {
-    const now = Date.now();
+  const tick = async () => {
+    let now = Date.now();
     if (now - srcChecked >= SRC_CHECK_MS) {
       srcChecked = now;
-      if (srcSnapshot(src) !== original || !ownsSocket()) { stop(); return; }
+      if (srcSnapshot(src) !== original || !(await ownsSocket())) { stop(); return; }
+      now = Date.now();
     }
     maybeStartReaper(state, { now, env });
     let idle = false;
