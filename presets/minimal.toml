@@ -7,6 +7,8 @@ headers        = true
 
 [mugshot]
 background = "#000000"
+# Richest glyph step for the face; the terminal can only lower it (half | quadrant | sextant | wedge | octant).
+glyphs = "octant"
 
 [[segment]]
 type  = "box"

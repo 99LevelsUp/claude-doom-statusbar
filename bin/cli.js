@@ -24,6 +24,7 @@ import { rootHash, daemonPaths, daemonPrefix, payloadPrefix, framePrefix } from 
 import { confirmedDaemonPid } from "../src/hook.js";
 import { STEPS, testCardLines } from "../src/glyphs.js";
 import { convertImage } from "../src/glyph-render.js";
+import { terminalStep } from "../src/glyph-level.js";
 import { decodePng } from "../src/png.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url)); // bin/
@@ -310,6 +311,8 @@ function testCard() {
     const parts = faces.map((f) => (f[r] || []).map(cell).join("") + "\x1b[0m" + " ".repeat(width + 2 - (f[r] || []).length));
     console.log("  " + parts.join(""));
   }
+  console.log(`\nThis terminal gets the "${terminalStep(process.env)}" step.`);
+  console.log(`To choose another, set DOOMBAR_GLYPHS to one of: ${STEPS.join(", ")} (in the env block of settings.json).`);
 }
 
 function main() {

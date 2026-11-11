@@ -9,7 +9,8 @@ let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "bin", "cli.js");
 
-const r = spawnSync(process.execPath, [CLI, "test-card"], { encoding: "utf8", windowsHide: true });
+const r = spawnSync(process.execPath, [CLI, "test-card"],
+  { encoding: "utf8", windowsHide: true, env: { ...process.env, DOOMBAR_GLYPHS: "sextant" } });
 const out = r.stdout || "";
 ok(r.status === 0, `test-card exits 0 ${r.stderr || ""}`);
 
@@ -26,7 +27,8 @@ for (let i = 0; i < STEPS.length; i++) {
 }
 const excluded = [0x1cea0, 0x1cea3, 0x1cea8, 0x1ceab, 0x1fbe6, 0x1fbe7].map((c) => String.fromCodePoint(c));
 ok(!excluded.some((c) => out.includes(c)), "no left-out octant character appears on the card");
-ok(out.includes("The mugshot at each step"), "the card ends with the mugshot drawn at every step");
+ok(out.includes("The mugshot at each step"), "the card shows the mugshot drawn at every step");
+ok(out.includes('This terminal gets the "sextant" step.'), "with DOOMBAR_GLYPHS=sextant the card names sextant as this terminal's step");
 
 console.log(fails ? `\n${fails} FAILED` : "\nALL PASS");
 process.exit(fails ? 1 : 0);
