@@ -58,7 +58,7 @@ const beat = (renewed) => {
   writeFileSync(tmp, JSON.stringify({ pid: process.pid, start, startTicks: procStartTicks() || undefined, version, window: 1, renewed, renameFailures: 0 }));
   renameSync(tmp, hb);
 };
-const srv = net.createServer((s) => s.end());
+const srv = net.createServer((s) => { s.on("error", () => {}); s.end(); });
 const addr = daemonSocket(hash);
 const bound = () => {
   appendFileSync(log, "bound " + process.pid + "\\n");

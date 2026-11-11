@@ -205,7 +205,9 @@ export async function startDaemon({ root = PACKAGE_ROOT, env = process.env } = {
   const heartbeat = inDir(dir, daemonPaths(hash).heartbeat);
   const posix = process.platform !== "win32";
   const addr = daemonSocket(hash, env);
-  const server = net.createServer((sock) => sock.end(String(process.pid)));
+  // A caller that hangs up at once (a hook's probe, a daemon that steps aside) makes the answer's
+  // write fail on this side; that must never take the daemon down.
+  const server = net.createServer((sock) => { sock.on("error", () => {}); sock.end(String(process.pid)); });
   let timer = null;
   let stopping = false;
 
