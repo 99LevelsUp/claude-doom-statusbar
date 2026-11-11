@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **The installer makes sure Linux can draw the emoji.** On Linux, `install` asks fontconfig
+  whether a font covers the bar's emoji. If none does, it downloads Noto Color Emoji v2.051,
+  checks its SHA-256 and installs it for the user (`~/.local/share/fonts`, no `sudo`), then runs
+  `fc-cache`. It installs nothing over SSH and skips Windows and macOS, which ship emoji fonts.
+  `--no-fonts` or `DOOMBAR_NO_FONTS=1` turns it off.
+
 ### Changed
 - **Finished tasks stay in the count for the whole session.** Ten seconds after the last task
   settles only the task list empties; the count no longer drops back to zero. When Claude Code

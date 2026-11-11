@@ -28,6 +28,7 @@ Anything the session can't supply is hidden automatically, so the same config de
 - **Node.js 18+**. One runtime dependency (`smol-toml`, a TOML parser); everything else is Node built-ins.
 - **[chafa](https://hpjansson.org/chafa/)** — *optional*. With it, the mugshot rasterises at any height. Without it, the HUD falls back to pre-rendered ANSI faces (heights 4–16, clamped to the nearest), so the mugshot still draws.
 - A terminal with **truecolor** and **legacy-computing glyph** support (the mugshot and fine bars use Unicode block/sextant/octant glyphs). Windows Terminal, WezTerm, kitty, foot all work.
+- A **colour emoji font**. Windows and macOS ship one. On Linux the installer checks for one and installs Noto Color Emoji for you if it is missing (see [Emoji font on Linux](#emoji-font-on-linux)).
 
 ## Install
 
@@ -41,12 +42,24 @@ That writes the `statusLine`, the lifecycle hooks, and the preset into `~/.claud
 npx claude-doom-statusbar install --preset full   # full | standard | minimal (default: full)
 npx claude-doom-statusbar install --project       # write ./.claude/settings.json instead of ~/.claude
 npx claude-doom-statusbar install --refresh 5     # also re-render on a 5s timer (0 = events only)
+npx claude-doom-statusbar install --no-fonts      # skip the emoji font check (Linux)
 npx claude-doom-statusbar uninstall                # remove everything the installer added
 ```
 
 Prefer a global binary? `npm i -g claude-doom-statusbar` then run `claude-doom-statusbar install`.
 
 The `statusLine` alone gives you the boxes and the HP/idle face. The hooks add the live reactions, the geiger, and the subagent list. The installer is idempotent and merge-safe: re-running won't double-add, and an existing `statusLine` of your own is backed up to `settings.json.bak`.
+
+### Emoji font on Linux
+
+The bar uses emoji (🧠 💾 🪓 🪶 …). A Linux desktop without a colour emoji font, such as Raspberry Pi OS or a minimal Debian or Ubuntu, shows boxes with hex codes in their place. So on Linux, `install` checks the fonts too:
+
+- It asks fontconfig (`fc-list`) whether any installed font covers the emoji the bar draws, up to Emoji 13. If one does, it prints its name and does nothing else.
+- If none does, it downloads **Noto Color Emoji** v2.051 (googlefonts/noto-emoji, SIL OFL 1.1, about 10 MB) and checks its SHA-256. It then installs it for your user only, with no `sudo`, into `$XDG_DATA_HOME/fonts` (by default `~/.local/share/fonts`) and runs `fc-cache`. **Restart your terminal** afterwards, because terminals load fonts only when they start.
+- Over **SSH** it installs nothing. The terminal draws the glyphs on the machine you sit at, so the font belongs there.
+- If the download fails, it tells you to run `sudo apt install fonts-noto-color-emoji` (or your distribution's equivalent).
+
+Windows (Segoe UI Emoji) and macOS (Apple Color Emoji) are skipped. Turn the check off with `--no-fonts` or `DOOMBAR_NO_FONTS=1`. `uninstall` leaves the font in place, since other programs may use it. Delete `~/.local/share/fonts/NotoColorEmoji.ttf` yourself if you want it gone.
 
 ### Updating
 
@@ -189,6 +202,7 @@ The daemon gives every frame a validity window (`DOOMBAR_FRAME_WINDOW`, default 
 ## Credits
 
 - The status-face sprites are from **DOOM** (1993), id Software. The Minecraft theme is a fan-made look; this project isn't affiliated with Mojang.
+- Emoji on Linux by **[Noto Color Emoji](https://github.com/googlefonts/noto-emoji)** (Google, SIL OFL 1.1), downloaded at install time when missing.
 - Mugshot rasterisation by **[chafa](https://hpjansson.org/chafa/)** (Hans Petter Jansson).
 - Prior art that shaped what this HUD shows: **[claude-hud](https://github.com/jarrodwatts/claude-hud)** and **[ccstatusline](https://github.com/sirmalloc/ccstatusline)**.
 

@@ -6,6 +6,7 @@
 //   claude-doom-statusbar install --preset full # pick a preset (full | standard | minimal)
 //   claude-doom-statusbar install --project     # install into ./.claude/settings.json instead
 //   claude-doom-statusbar install --refresh 0   # events only; default is a 1s timer + events
+//   claude-doom-statusbar install --no-fonts    # don't check for / install an emoji font (Linux)
 //   claude-doom-statusbar uninstall             # remove everything this installer added
 //   claude-doom-statusbar theme minecraft       # switch game theme: doom | minecraft
 //   claude-doom-statusbar theme next            # cycle to the next theme
@@ -21,6 +22,7 @@ import { fileURLToPath } from "node:url";
 import { THEMES, THEME_NAMES, currentTheme, saveTheme, nextTheme, resolveTheme } from "../src/theme.js";
 import { rootHash, daemonPaths, daemonPrefix, payloadPrefix, framePrefix } from "../src/fold.js";
 import { confirmedDaemonPid } from "../src/hook.js";
+import { ensureEmojiFont } from "../src/emoji-font.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url)); // bin/
 const ROOT = path.dirname(HERE); // package root
@@ -245,13 +247,14 @@ function stopDaemon() {
 }
 
 function parseArgs(argv) {
-  const out = { cmd: "install", preset: "full", project: false, refresh: DEFAULT_REFRESH, theme: null };
+  const out = { cmd: "install", preset: "full", project: false, refresh: DEFAULT_REFRESH, theme: null, fonts: true };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "install" || a === "uninstall") out.cmd = a;
     else if (a === "theme" || a === "themes") { out.cmd = "theme"; out.theme = argv[++i] ?? null; }
     else if (a === "--uninstall") out.cmd = "uninstall";
     else if (a === "--project") out.project = true;
+    else if (a === "--no-fonts") out.fonts = false;
     else if (a === "--preset") out.preset = argv[++i];
     else if (a.startsWith("--preset=")) out.preset = a.slice("--preset=".length);
     else if (a === "--refresh") out.refresh = refreshValue(argv[++i]);
@@ -289,7 +292,7 @@ function theme(name) {
   }
 }
 
-function main() {
+async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.cmd === "theme") return theme(args.theme);
   const p = settingsFile(args.project);
@@ -320,12 +323,17 @@ function main() {
   console.log(`  preset     : ${args.preset}`);
   console.log(`  hooks      : ${HOOK_EVENTS.join(", ")}`);
   for (const n of notes) console.log(`  note       : ${n}`);
+  // Linux only: a desktop without a colour emoji font shows boxes in place of the bar's emoji.
+  const font = await ensureEmojiFont({ skip: !args.fonts });
+  for (const n of font.notes) console.log(n.startsWith("emoji font :") ? `  ${n}` : `  note       : ${n}`);
   console.log();
   console.log("Next:");
   console.log("  1. (optional) install chafa for a sharper mugshot; without it a pre-rendered face is used.");
-  console.log("  2. restart Claude Code.");
+  console.log(font.status === "installed"
+    ? "  2. restart your terminal (for the new emoji font), then Claude Code."
+    : "  2. restart Claude Code.");
   console.log("  Clickable links need FORCE_HYPERLINK=1 (set for you here; on Windows Terminal you may");
   console.log("  also need to launch with it:  $env:FORCE_HYPERLINK='1'; claude ).");
 }
 
-main();
+await main();
