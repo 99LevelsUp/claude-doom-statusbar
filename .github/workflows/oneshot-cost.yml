@@ -1,8 +1,9 @@
 name: One-shot face cost
 
-# Measures what the one-shot status line costs on Linux and macOS (no render daemon there) at the
-# richest glyph step, with the face converted and with it read from the disk cache. Runs when the
-# converter or the measurement changes, and by hand.
+# Measures what a status line tick costs on Linux and macOS: the one-shot renderer at the richest
+# glyph step (face converted, then read from the disk cache), and the bash client against a
+# running render daemon where a bash 5 is found. Runs when the converter, the client path or the
+# measurement changes, and by hand.
 
 on:
   workflow_dispatch:
@@ -13,6 +14,9 @@ on:
       - src/png.js
       - src/face.js
       - scripts/measure-oneshot.mjs
+      - scripts/measure-client.mjs
+      - src/doombar-client.sh
+      - src/daemon.js
       - .github/workflows/oneshot-cost.yml
 
 permissions:
@@ -40,3 +44,6 @@ jobs:
 
       - name: Measure
         run: node scripts/measure-oneshot.mjs 21
+
+      - name: Measure the bash client
+        run: node scripts/measure-client.mjs 21
