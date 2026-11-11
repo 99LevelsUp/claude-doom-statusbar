@@ -13,8 +13,12 @@ execution: code
 ## Goal Capsule
 
 - **Objective:** by default the bar draws its images (today the DOOM mugshot, later the WC3 head and minimap) without starting any external process, at a quality the owner judges by eye to match chafa's. The optional chafa setting of R12 is the only exception.
-- **Means:** a built-in pixel-to-glyph conversion inside the bar, with a glyph set per image, capped by what the terminal can draw.
-- **Product authority:** the owner (Petr Skypala). This plan covers only the conversion and its quality gate for the DOOM mugshot. The minimap resolver, the WC3 portrait hook-up and on-demand asset download are not active scope.
+- **Means:** a built-in pixel-to-glyph conversion inside the bar, with a glyph set per image, capped by what the terminal can draw (KTD2, KTD4).
+- **Product authority:** the owner (Petr Skypala). This plan covers only the conversion and its quality gate for the DOOM mugshot. The minimap resolver, the WC3 portrait hook-up and on-demand asset download are not active scope. Product Contract wins on behaviour; KTDs win on mechanism.
+- **Execution profile:** one pull request from a feature branch, committed often, merged into `master` once the Definition of Done holds (the owner merges directly; no PR review is required by the project).
+- **Owner gates inside the work:** the test card verdict after U4 sets the Windows Terminal level (KTD4); the side-by-side verdict after U7 decides D-4 and therefore what U9 does.
+- **Stop conditions:** stop and ask when the measured one-shot cost exceeds the chafa process it replaces even with the KTD10 disk cache, or when the owner's verdict is negative and the chafa-wasm question (Deferred / Open Questions) has to be decided first.
+- **Who finishes:** `ce-work` implements U1–U9; the owner runs the two gates and merges.
 - **Open blockers:** none.
 
 ---
@@ -99,6 +103,7 @@ This plan covers the built-in conversion and its quality gate, used by the DOOM 
 - Faster-than-one-second animation (D-10) and the frame reel (D-7).
 - On-demand download and removal of assets by settings (new backlog item).
 - Asking the terminal for its capabilities: the status line has no channel to it.
+- The fine bars elsewhere in the HUD also use octants and stay unchanged; in the Windows console host they still draw wrongly (backlog S-5).
 
 ### Dependencies / Assumptions
 
@@ -120,6 +125,311 @@ This plan covers the built-in conversion and its quality gate, used by the DOOM 
 - `src/face.js`: chafa call with the set `block+half+quad+sextant+wedge+legacy`, `.ans` fallback clamped to heights 4–16, no-spawn mode with an asynchronous chafa warm-up in the daemon.
 - `lab/daemon-spike/RESULTS.md`: process start cost and starvation measurements, 2026-11-11.
 - `docs/BACKLOG.md`: D-3, D-4, D-8, D-12.
+
+### Product Contract preservation
+
+Changed: Scope Boundaries gained the fine-bars non-goal, confirmed with the owner before the plan was written. Requirements, Key Decisions and their IDs are unchanged.
+
+---
+
+## Planning Contract
+
+### Key Technical Decisions
+
+- KTD1. **The face keeps chafa's size rule, at every level and for both renderers.** Rows used = the smaller of the requested rows and half the sprite height rounded up; columns = the smaller of the sprite width and `ceil(rows_used × 2 × width / height)`; missing rows are padded as `toFace` does today. The rule reproduces every shipped `.ans` size (24×29 px: 4 rows → 7 columns, 8 → 14, 16 → 15 lines × 24; 26×30 px at 16 rows → 15 × 26). Face width feeds column widths and preset choice (`src/render.js`), so a width that changed with the level or the renderer would make the terminal type pick a different preset. Governs R1, R5.
+- KTD2. **Exhaustive per-cell search on an 8×8 sub-grid, chafa's fit and error.** Each cell box-samples its part of the sprite to 8×8 pixels; for each allowed glyph mask the foreground is the mean of covered pixels and the background the mean of the rest; the error is the summed squared sRGB difference; the lowest error wins, evaluated over every allowed mask (chafa's default only scores the five nearest). Alpha below 128 counts as transparent; a cell's transparent part gets a `null` colour so the existing `faceCell` paints it with the preset's `[mugshot].background`. Inverse mask pairs are searched once with colours swapped. (session-settled: user-directed — chosen over "two colours first, then a pattern table" and over "half blocks first, richer sets later": the only option with a real chance of replacing chafa on the mugshot.) Governs R2.
+- KTD3. **The ladder is half ⊂ quadrant ⊂ sextant ⊂ wedge ⊂ octant, each level including the ones below.** Space and full block are always allowed. Half: U+2580, U+2584, U+258C, U+2590. Quadrant: U+2596–U+259F. Sextant: U+1FB00–U+1FB3B. Wedge: U+1FB3C–U+1FB6F (U+1FB9A/B left out: Windows Terminal's built-in glyphs stop at U+1FB94). Octant: U+1CD00–U+1CDE5 plus the reused patterns that map to block, quadrant and eighth-block characters already allowed; the six patterns that would need U+1CEA0/A3/A8/AB or U+1FBE6/7 are left out of the search. Masks come from the Unicode cell layouts (bit = row × 2 + column) and, for wedges, the polygon vertices rasterised onto 8×8. Governs R6.
+- KTD4. **The terminal level comes from forwarded environment variables, in this order:** the override `DOOMBAR_GLYPHS` (a ladder step name); `TMUX` or a `TERM` of `screen*`/`tmux*` → half (the outer terminal is unknown); `WT_SESSION` → the Windows Terminal level set at the U4 gate; `TERM_PROGRAM` `vscode` → wedge, `WezTerm` → wedge, `ghostty` → octant; `TERM` `xterm-kitty` or `xterm-ghostty`, or any `VTE_VERSION` → octant; anything else, the Windows console host included → half. Windows Terminal exposes no version, so its level is one value chosen by the owner's test card, not detected per version. (session-settled: user-directed — chosen over one set for everyone and over an install-time choice: the status line cannot query the terminal.) Governs R7, R8.
+- KTD5. **The per-image set lives in the preset, the cap is the terminal level.** `[mugshot] glyphs = "<step>"` next to the existing `background`; when absent it means the richest step. The effective set of an image is the lower of its own step and the terminal level. Governs R3, R4.
+- KTD6. **The session's effective step reaches face loading through the existing per-render slot.** `renderSession` already sets module-level values right before the builders run, one session at a time (`setValues` in `src/statusline.js`); the glyph step joins that slot instead of being threaded through `buildBar`, `resolvePreset`, `planLayout` and `layoutContext`. The face cache key becomes sprite, rows, step and renderer. Governs R8.
+- KTD7. **The client forwards `WT_SESSION`, `TERM_PROGRAM`, `TERM`, `VTE_VERSION`, `TMUX`, `DOOMBAR_GLYPHS` and `DOOMBAR_FACE_RENDERER`.** They join the client loop in `src/doombar-client.sh` and `FORWARDED_ENV` in `src/daemon.js`, so a session unset stays unset and never inherits the daemon's own environment. Governs R8.
+- KTD8. **Chafa is opt-in through `DOOMBAR_FACE_RENDERER=chafa`, and it obeys the same step and size.** It gets `--symbols` for the session's effective step and the exact KTD1 size; when chafa is missing or fails, the built-in conversion draws the face. Governs R5, R12.
+- KTD9. **The score and the side-by-side view are one developer script, not shipped.** `scripts/compare-faces.mjs` (outside the package `files` list) runs chafa live per step with matching `--symbols`, renders both outputs back from the glyph polygons at 4× supersampling, scores mean and worst-cell OKLab distance in linear light, and prints both faces next to each other with the numbers. Scoring in OKLab on a finer render-back keeps the score from rewarding the built-in search for minimising its own error. Governs R10, R11.
+- KTD10. **On Linux and macOS, measure first; add a disk cache only if the measurement fails the target.** One one-shot render may convert the face once per preset it tries, so the comparison is the cold render with built-in faces against the same render with chafa. If the built-in render is slower, converted faces go to a small cache file next to the existing state files, keyed by sprite, rows, step and package version. Governs R5 and the cost criterion in Success Criteria.
+- KTD11. **The PNG decoder moves from the lab into `src/png.js`.** `lab/` is gitignored; the decoder (built-in `zlib`, 8-bit, no interlace) covers all 42 sprites, which are 8-bit RGBA without interlace. Governs R1.
+
+### High-Level Technical Design
+
+From sprite to the bar:
+
+```mermaid
+flowchart TB
+  A[alpha PNG sprite] --> B[decode to RGBA]
+  B --> C[cell grid from size rule, KTD1]
+  C --> D{renderer}
+  D -->|built-in, default| E[per-cell search over the effective set, KTD2]
+  D -->|chafa opt-in, KTD8| F[chafa with matching symbols and size]
+  F -->|missing or failed| E
+  E --> G[rows of glyph, fg, bg]
+  F --> G
+  G --> H[faceCell paints transparent parts with the mugshot background]
+  H --> I[bar]
+```
+
+How a session's effective step is decided:
+
+```mermaid
+flowchart TB
+  S[session env, forwarded per session] --> O{DOOMBAR_GLYPHS set?}
+  O -->|yes| L[that step]
+  O -->|no| T{TMUX or TERM screen/tmux?}
+  T -->|yes| H[half]
+  T -->|no| W{WT_SESSION?}
+  W -->|yes| WT[Windows Terminal level from the test card]
+  W -->|no| P{TERM_PROGRAM / TERM / VTE_VERSION known?}
+  P -->|yes| K[that terminal's step]
+  P -->|no| H
+  L --> M[effective step = lower of terminal step and the image's own step]
+  H --> M
+  WT --> M
+  K --> M
+```
+
+### Assumptions and Constraints
+
+- The daemon runs at below-normal priority and renders one session at a time; the per-render slot of KTD6 relies on that.
+- Tests run on a machine whose own terminal must not leak into results: every test that renders a face pins the step through the environment.
+- Resource caution on the owner's PC: run the test suite at below-normal priority and the end-to-end test alone.
+
+---
+
+## Implementation Units
+
+### U1. Glyph table and ladder
+
+**Goal:** one module that knows every allowed glyph, its 8×8 mask and its ladder step.
+
+**Requirements:** R2, R6 (KTD3).
+
+**Dependencies:** none.
+
+**Files:** `src/glyphs.js` (new), `test/glyphs.test.mjs` (new), `package.json` (test list).
+
+**Approach:**
+1. Generate masks for half, quadrant, sextant and octant characters from their cell layouts (bit = row × 2 + column; sextant rows on the 8-pixel grid as 3, 2, 3; octant rows as 2, 2, 2, 2).
+2. Rasterise the wedge polygons (vertices on x ∈ {0, ½, 1}, y ∈ {0, ⅓, ⅔, 1}) onto 8×8 by pixel centre.
+3. Expose the ladder steps in order and, for a step, the list of glyphs with masks; drop the six octant patterns KTD3 excludes.
+
+**Patterns to follow:** plain ESM module with frozen tables, like the lookup tables in `src/render.js`.
+
+**Test scenarios:**
+- Sextant code point formula: masks 1, 20, 22, 41, 43, 62 map to U+1FB00, U+1FB13, U+1FB14, U+1FB27, U+1FB28, U+1FB3B; masks 21 and 42 map to U+258C and U+2590.
+- Octant table holds 230 code points in U+1CD00–U+1CDE5 with no duplicates, and none of the six excluded characters appears at any step.
+- Each step's glyph set is a superset of the step below it.
+- Every mask has between 1 and 63 set pixels except space and full block, and no two glyphs at one step share a mask.
+- Wedge U+1FB3C covers only the lower-left triangle (rows 5–7 near column 0).
+
+**Verification:** the test file passes on its own and the table loads in under a few milliseconds.
+
+### U2. PNG decoder in the package
+
+**Goal:** decode the face sprites without any external tool.
+
+**Requirements:** R1 (KTD11).
+
+**Dependencies:** none.
+
+**Files:** `src/png.js` (new, from `lab/wc3-portraits/render/png-decode.js`), `test/png.test.mjs` (new), `package.json` (test list).
+
+**Approach:** copy the lab decoder as is; it returns width, height and RGBA bytes and throws on unsupported formats.
+
+**Test scenarios:**
+- `assets/images/mugshot/alpha/STFST01.png` decodes to 24×29 with RGBA length 24 × 29 × 4.
+- A pixel known to be transparent in that sprite has alpha 0, and a face pixel has alpha 255.
+- A 16-bit or interlaced PNG built in the test throws a clear error.
+
+**Verification:** all 42 alpha sprites decode in the test without error.
+
+### U3. Built-in converter
+
+**Goal:** turn RGBA plus a row count and a step into face rows of glyph, foreground and background.
+
+**Requirements:** R1, R2, R5 (KTD1, KTD2).
+
+**Dependencies:** U1, U2.
+
+**Files:** `src/glyph-render.js` (new), `test/glyph-render.test.mjs` (new), `package.json` (test list).
+
+**Approach:**
+1. Compute the cell grid with the KTD1 rule.
+2. Box-sample each cell to 8×8 RGBA; mark transparent pixels.
+3. For each cell, score every allowed mask with the closed-form error (sum of squares minus the two mean terms), keep the best, and emit `null` for the part of a cell that is fully transparent.
+4. Return rows in the shape `toFace` returns today, so `faceCell` needs no change.
+
+**Execution note:** start with the size-rule test against the shipped `.ans` dimensions while they still exist.
+
+**Test scenarios:**
+- Size rule: STFST01 at 4, 8 and 16 rows gives 4×7, 8×14 and 15 lines × 24 columns padded to 16 rows; STFTL00 at 16 rows gives 15 × 26; STFDEAD0 at 8 rows gives 8 × 13.
+- The grid size is identical at every step for the same sprite and rows.
+- A synthetic image drawing exactly one sextant pattern per cell converts back to that sextant at the sextant step.
+- A uniformly coloured cell yields a space or full block with that colour.
+- A fully transparent cell yields `null` colours; a cell half transparent keeps the opaque colour and `null` for the rest.
+- Mean error over all 42 sprites never rises from one step to the next (ladder monotonicity).
+- The same input converts to identical output twice.
+
+**Verification:** tests pass; converting one 16-row face at the octant step takes a measured time recorded in the unit's commit message.
+
+### U4. Test card command
+
+**Goal:** a command that shows every glyph class, labelled with its ladder step and the step the current terminal would get.
+
+**Requirements:** R6, R9 (KTD3, KTD4).
+
+**Dependencies:** U1. The line naming the detected step is added once U5 lands.
+
+**Files:** `bin/cli.js` (new `test-card` branch in `parseArgs` and an early return in `main`), `src/glyphs.js` (card rows), `test/test-card.test.mjs` (new), `package.json` (test list), `README.md` (command).
+
+**Approach:**
+1. For each step print its new class as rows of characters with a sample of solid colour behind, and one line naming the step.
+2. Print which step this terminal would get and how to override it with `DOOMBAR_GLYPHS`.
+
+**Execution note:** owner gate. After this unit the owner runs the card in Windows Terminal and in the console host; the highest step drawn correctly in Windows Terminal becomes the KTD4 Windows Terminal level before U5 is finished.
+
+**Test scenarios:**
+- The card output contains one labelled block per ladder step, in ladder order.
+- The card contains every glyph of each class and no excluded octant character.
+- With `DOOMBAR_GLYPHS=sextant` in the environment the card names sextant as the active step.
+
+**Verification:** the owner's verdict is recorded in the KTD4 table and in `docs/BACKLOG.md` (D-8).
+
+### U5. Terminal level and per-image set
+
+**Goal:** resolve a session's effective step from its environment and the image's own step.
+
+**Requirements:** R3, R4, R7, R8 (KTD4, KTD5).
+
+**Dependencies:** U1, U4 gate (Windows Terminal level).
+
+**Files:** `src/glyph-level.js` (new), `presets/full.toml`, `presets/standard.toml`, `presets/minimal.toml` (`[mugshot] glyphs`), `test/glyph-level.test.mjs` (new), `package.json` (test list).
+
+**Approach:** a pure function from an environment object and an image step to the effective step, following the KTD4 order; presets state their mugshot step explicitly.
+
+**Test scenarios:**
+- Covers AE1. `WT_SESSION` absent and nothing else set (console host), image step octant → half.
+- Covers AE3. `WT_SESSION` set and `DOOMBAR_GLYPHS=sextant` → sextant, even when the Windows Terminal level is octant.
+- `TMUX` set together with `WT_SESSION` → half.
+- `TERM_PROGRAM=vscode` → wedge; `TERM=xterm-kitty` → octant; `VTE_VERSION=7600` → octant.
+- An unknown `DOOMBAR_GLYPHS` value is ignored and detection continues.
+- Image step quadrant on a terminal at octant → quadrant.
+
+**Verification:** tests pass; every DOOM preset parses with the new key.
+
+### U6. Built-in face in the bar, per session
+
+**Goal:** the mugshot uses the built-in converter at the session's effective step on every platform, with chafa only on request.
+
+**Requirements:** R5, R8, R12 (KTD6, KTD7, KTD8, KTD10).
+
+**Dependencies:** U3, U5.
+
+**Files:**
+- `src/face.js` (built-in default, chafa opt-in with matching symbols and size, cache key)
+- `src/render.js`, `src/statusline.js` (step in the per-render slot)
+- `src/doombar-client.sh`, `src/daemon.js` (forwarded variables)
+- `test/client.test.mjs`, `test/daemon.test.mjs`, `test/render-session.test.mjs`, `test/render-snapshot.test.mjs` and `test/snapshots/doom-*.txt`, `test/face-warm.test.mjs`, `test/resolve-preset.test.mjs`, `test/preset-bands.test.mjs`
+
+**Approach:**
+1. `loadFace` takes the step from the per-render slot, converts with U3 and caches by sprite, rows, step and renderer.
+2. With `DOOMBAR_FACE_RENDERER=chafa`, run chafa (asynchronously in the daemon, as the warm-up does today) with the step's symbols and the KTD1 size; fall back to the built-in face.
+3. Add the KTD7 variables to the client loop and `FORWARDED_ENV`, updating the client header comment.
+4. Tests that copy `process.env` scrub the terminal variables; every face-rendering test pins `DOOMBAR_GLYPHS`; regenerate the nine DOOM snapshots at a pinned step.
+5. Measure the cold one-shot render with built-in faces against the same render with chafa on this PC; add the KTD10 disk cache only if the built-in render is slower.
+
+**Test scenarios:**
+- Covers AE2. Two sessions in one daemon, one with `WT_SESSION` and one without, render the same sprite at the same height: the first face contains sextant or richer glyphs, the second only half blocks.
+- Covers AE4. With chafa on `PATH` and `DOOMBAR_FACE_RENDERER` unset, rendering a face starts no chafa process (spawn counter stays 0).
+- With `DOOMBAR_FACE_RENDERER=chafa` and chafa missing, the face is the built-in one at the same size.
+- The client's env line contains `WT_SESSION` and `TERM_PROGRAM` when set and omits them when unset.
+- A session that does not forward `WT_SESSION` never gets the daemon's own value.
+- The DOOM snapshots render identically on any terminal once the step is pinned; their mugshot column widths equal the old ones.
+- `resolve-preset` and `preset-bands` expectations still hold (turn sprites one column wider than idle).
+
+**Verification:** `npm test` passes at below-normal priority; `npm run test:e2e` passes on its own; the one-shot cost measurement meets the Success Criteria line, with or without the cache.
+
+### U7. Side-by-side comparison and score
+
+**Goal:** give the owner the D-4 pictures and numbers.
+
+**Requirements:** R10, R11 (KTD9).
+
+**Dependencies:** U3, U6.
+
+**Files:** `scripts/compare-faces.mjs` (new), `test/compare-faces.test.mjs` (new, for the scoring maths), `package.json` (`compare-faces` script entry, test list).
+
+**Approach:**
+1. For each sprite and a set of heights, convert with the built-in renderer and run chafa with the same symbols and size.
+2. Render both back from the glyph polygons at 4× supersampling, composite on the mugshot background, and compute mean and worst-cell OKLab distance against the source.
+3. Print both faces side by side with the two scores and a summary per step.
+
+**Execution note:** owner gate. The owner runs the script on Windows Terminal and gives the verdict; record it in `docs/BACKLOG.md` (D-4) before U9.
+
+**Test scenarios:**
+- OKLab of pure white is L≈1, a≈0, b≈0; of pure black L=0.
+- Two identical images score 0; a one-cell difference raises the worst-cell score more than the mean.
+- The render-back of a full block in red is uniformly red.
+
+**Verification:** the script runs end to end on the owner's PC with chafa installed and prints all 42 sprites.
+
+### U8. Remove the pre-rendered faces and update the docs
+
+**Goal:** the package no longer carries or reads the `.ans` faces, and the docs describe the new behaviour.
+
+**Requirements:** R13.
+
+**Dependencies:** U6.
+
+**Files:** `assets/images/mugshot/ans/` (delete), `src/face.js` (drop the `.ans` path), `README.md` (requirements, env knobs `DOOMBAR_GLYPHS` and `DOOMBAR_FACE_RENDERER`, test card), `CHANGELOG.md` (Unreleased), `bin/cli.js` (the post-install chafa hint), `test/face-warm.test.mjs`.
+
+**Approach:** delete the directory and the code path that reads it. A daemon still running old code exits on its own when the package's `src/` changes and the next hook starts the new one.
+
+**Test scenarios:**
+- Rendering any of the 42 sprites at heights 4–16 works with the `.ans` directory absent.
+- `face-warm` tests cover only the opt-in chafa path.
+
+**Verification:** `npm pack --dry-run` lists no `.ans` file; `npm test` passes.
+
+### U9. Act on the verdict
+
+**Goal:** carry out the owner's D-4 decision.
+
+**Requirements:** R12.
+
+**Dependencies:** U7 gate.
+
+**Files:** positive verdict: `src/face.js`, `README.md`, `CHANGELOG.md`, `test/face-warm.test.mjs` (remove chafa); negative verdict: `docs/BACKLOG.md` only.
+
+**Approach:** positive → remove the chafa path, its setting and its tests; negative → keep the opt-in and leave the chafa-wasm question in Deferred / Open Questions for the owner.
+
+**Test scenarios:**
+- Positive verdict: no code path references `chafa`, and `DOOMBAR_FACE_RENDERER=chafa` is ignored with the built-in face drawn.
+- Test expectation for a negative verdict: none — nothing changes in code.
+
+**Verification:** `docs/BACKLOG.md` records the verdict and D-4 is moved to Done or kept open with the reason.
+
+---
+
+## Verification Contract
+
+| Gate | How | When |
+|---|---|---|
+| Unit and integration tests | `npm test`, started at below-normal priority on the owner's PC | after every unit |
+| End-to-end daemon test | `npm run test:e2e`, alone, nothing else running | after U6 and U8 |
+| Test card | owner runs `claude-doom-statusbar test-card` in Windows Terminal and the console host | U4 gate |
+| Face quality | owner runs `npm run compare-faces` and judges by eye | U7 gate |
+| One-shot cost | cold one-shot render with built-in faces vs the same with chafa, measured on this PC | U6 |
+| Package contents | `npm pack --dry-run` lists no `.ans` and no `scripts/` | U8 |
+
+---
+
+## Definition of Done
+
+- Every unit's verification holds and `npm test` and `npm run test:e2e` pass.
+- With `DOOMBAR_FACE_RENDERER` unset, no process starts to draw a face in a live Windows Terminal session (checked with the process list during a minute of use).
+- The test card and D-4 verdicts are recorded in `docs/BACKLOG.md`, and D-3, D-8 and (by verdict) D-4 are updated.
+- README and CHANGELOG describe the built-in face, the two knobs and the test card.
+- No experimental or abandoned code from approaches that did not pan out is left in the diff, and no scratch measurement script lands in `src/` or `test/`.
+
+---
 
 ## Deferred / Open Questions
 

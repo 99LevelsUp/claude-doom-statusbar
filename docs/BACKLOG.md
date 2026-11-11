@@ -19,7 +19,7 @@ Owner's order: daemon first, renderer second, minimap and WC3 after. The daemon 
 | ID | Item | Status |
 |---|---|---|
 | D-2 | Hook events into the daemon without a spawn per tool call (HTTP hooks, if Claude Code supports them and fails safe) | idea |
-| D-3 | Built-in bitmap → glyph renderer: per-cell search like chafa, a glyph set per image, capped by a terminal level read from the terminal type. Requirements: [plans/2026-11-11-1150-feat-builtin-glyph-renderer-plan.md](plans/2026-11-11-1150-feat-builtin-glyph-renderer-plan.md) (with D-8 as its gate and D-4 as its verdict) | next, brainstormed |
+| D-3 | Built-in bitmap → glyph renderer: per-cell search like chafa, a glyph set per image, capped by a terminal level read from the terminal type. Requirements: [plans/2026-11-11-1150-feat-builtin-glyph-renderer-plan.md](plans/2026-11-11-1150-feat-builtin-glyph-renderer-plan.md) (with D-8 as its gate and D-4 as its verdict) | next, planned |
 | D-4 | Compare the built-in renderer with chafa on the mugshot; drop chafa if close enough. The owner decides by eye, the D-8 score informs (D-3 plan, R11–R12) | next, with D-3 |
 | D-5 | WC3 minimap: layered metrics (terrain, fog, units per agent, pings), map larger than the view, event-driven camera. Which metric goes to which layer is open | idea |
 | D-6 | WC3 console elements beyond the minimap: portrait with races (original art), info panel, inventory, command card, resource bar, day/night clock | idea |
@@ -107,6 +107,7 @@ Source: [ideation/2026-06-06-doom-statusbar-ideation.md](ideation/2026-06-06-doo
 | S-1 | Chat jumps when a condition flips (loop length depends on the filtered list) | open (folds into G-6) |
 | S-2 | Hearts and hunger overlap below ~30 columns | open (folds into G-5) |
 | S-3 | Duplicate, outdated comment above `EFFORT_COLOR` in `hotbar.js` | open |
+| S-5 | The fine bars draw with octants (`SPARK_OCTANT` in `src/render.js`) whatever the terminal; in the Windows console host they show as boxes. Let the glyph level of the D-3 plan cap them too | idea |
 | S-4 | AGENTS box mislabels and miscounts subagents. Observed 2026-11-10: two running `general-purpose` agents ("Simplify review: test value", "Simplify review: comments") both showed as `iew: comments 3m`, while Claude Code's own list showed three running agents. Leads: `SubagentStart` takes the description from the first pending `Agent` launch of the same `agent_type` (FIFO in `src/fold.js`), so parallel launches of one type can get swapped or duplicated labels; an agent that stopped while its own background work still runs gets `SubagentStop`, so the bar drops it while Claude Code still lists it. Verify against the journal before fixing | open |
 
 ## Done
