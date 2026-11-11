@@ -1,0 +1,49 @@
+name: One-shot face cost
+
+# Measures what drawing the mugshot costs the one-shot status line on Linux and macOS (no render
+# daemon there), built-in converter against chafa, at the richest glyph step. Runs when the
+# converter or the measurement changes, and by hand.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - src/glyphs.js
+      - src/glyph-render.js
+      - src/face.js
+      - scripts/measure-oneshot.mjs
+      - .github/workflows/oneshot-cost.yml
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install chafa (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y chafa
+
+      - name: Install chafa (macOS)
+        if: runner.os == 'macOS'
+        run: brew install chafa
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Measure
+        run: node scripts/measure-oneshot.mjs 21
