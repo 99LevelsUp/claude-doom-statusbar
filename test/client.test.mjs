@@ -8,12 +8,12 @@
 // Frames are built with the node-side reference serializer, so client and daemon agree on the format.
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, statSync, symlinkSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { serializeFrame, greyLines } from "../src/frame.js";
-import { sidKey, sessionPaths } from "../src/fold.js";
+import { sidKey, sessionPaths, runtimeDir } from "../src/fold.js";
 import { sandboxEnv } from "./_sandbox-env.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -25,7 +25,7 @@ const HASH = "abc1234567";
 const OFFLINE = "doombar: offline\n";
 const FORWARDED = ["COLUMNS", "DOOMBAR_PRESET", "DOOMBAR_THEME", "DOOMBAR_TEXT_OVERFLOW",
   "DOOMBAR_INDENT", "DOOMBAR_FRAME_WINDOW", "MUGSHOT_STATE", "CLAUDE_CODE_TASK_LIST_ID", "CLAUDE_CONFIG_DIR",
-  "WT_SESSION", "TERM_PROGRAM", "TMUX", "DOOMBAR_GLYPHS"];
+  "WT_SESSION", "TERM_PROGRAM", "TMUX", "DOOMBAR_GLYPHS", "TERM", "VTE_VERSION"];
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
@@ -37,6 +37,9 @@ const sandbox = mkdtempSync(path.join(os.tmpdir(), "doombar-client-"));
 const baseEnv = { ...process.env, ...sandboxEnv(sandbox) };
 for (const k of FORWARDED) delete baseEnv[k];
 
+// Git Bash sets TERM itself when the environment has none; drop that item where a test did not set TERM.
+const shellTermless = (line) => line.split("\t").filter((item) => !item.startsWith("TERM=")).join("\t");
+
 const nowMicros = () => Date.now() * 1000;
 const fileName = (sid, kind) => path.basename(sessionPaths(sid, HASH)[kind]);
 const inSandbox = (sid, kind) => path.join(sandbox, fileName(sid, kind));
@@ -44,11 +47,14 @@ const putFrame = (sid, text) => writeFileSync(inSandbox(sid, "frame"), text);
 const text = (lines) => lines.join("\n") + "\n";
 
 // prefix: shell text placed in front of the source (extra assignments, test hooks).
-function run({ sid, input, env = {}, prefix = "", hash = HASH } = {}) {
+// script: run the client as a script with the hash as its argument, as the Linux and macOS
+// statusLine command does, instead of sourcing it.
+function run({ sid, input, env = {}, prefix = "", hash = HASH, script = false } = {}) {
   const stdin = input ?? JSON.stringify({ session_id: sid, model: { id: "claude-opus-5" } });
   const cmd = `${prefix}${hash ? `DOOMBAR_ROOT_HASH=${hash} ` : ""}. "${CLIENT}"`;
+  const args = script ? ["--norc", "--noprofile", CLIENT, hash] : ["-c", cmd];
   const t0 = process.hrtime.bigint();
-  const r = spawnSync(BASH, ["-c", cmd], { input: stdin, env: { ...baseEnv, ...env }, encoding: "utf8" });
+  const r = spawnSync(BASH, args, { input: stdin, env: { ...baseEnv, ...env }, encoding: "utf8" });
   const ms = Number(process.hrtime.bigint() - t0) / 1e6;
   return { out: r.stdout, err: r.stderr, status: r.status, ms, error: r.error };
 }
@@ -174,7 +180,7 @@ try {
       CLAUDE_CODE_TASK_LIST_ID: "list-7", CLAUDE_CONFIG_DIR: "C:\\cfg\\claude" } });
     const payload = existsSync(inSandbox(sid, "payload")) ? readFileSync(inSandbox(sid, "payload"), "utf8") : "";
     const nl = payload.indexOf("\n");
-    const envLine = payload.slice(0, nl);
+    const envLine = shellTermless(payload.slice(0, nl));
     ok(envLine === "doombar-env\tCOLUMNS=137\tDOOMBAR_PRESET=compact\tDOOMBAR_THEME=doomx\tDOOMBAR_INDENT=\tCLAUDE_CODE_TASK_LIST_ID=list-7\tCLAUDE_CONFIG_DIR=C:\\cfg\\claude",
       `environment line forwards set variables, drops tabs and newlines in values (got ${show(envLine)})`);
     ok(payload.slice(nl + 1) === json, "the stdin JSON follows the environment line byte for byte");
@@ -182,8 +188,12 @@ try {
     // The terminal's identity travels too, so the daemon picks each session's glyphs.
     const tsid = "payload-term";
     run({ sid: tsid, input: JSON.stringify({ session_id: tsid }), env: { WT_SESSION: "a1\tb2", TERM_PROGRAM: "vscode" } });
-    const tline = existsSync(inSandbox(tsid, "payload")) ? readFileSync(inSandbox(tsid, "payload"), "utf8").split("\n")[0] : "";
+    const tline = shellTermless(existsSync(inSandbox(tsid, "payload")) ? readFileSync(inSandbox(tsid, "payload"), "utf8").split("\n")[0] : "");
     ok(tline === "doombar-env\tWT_SESSION=a1b2\tTERM_PROGRAM=vscode", `WT_SESSION and TERM_PROGRAM are forwarded when set (got ${show(tline)})`);
+    const vsid = "payload-vte";
+    run({ sid: vsid, input: JSON.stringify({ session_id: vsid }), env: { TERM: "xterm-256color", VTE_VERSION: "8001" } });
+    const vline = existsSync(inSandbox(vsid, "payload")) ? readFileSync(inSandbox(vsid, "payload"), "utf8").split("\n")[0] : "";
+    ok(vline === "doombar-env\tTERM=xterm-256color\tVTE_VERSION=8001", `TERM and VTE_VERSION are forwarded when set (got ${show(vline)})`);
     ok(r.out === OFFLINE, "with no frame yet the payload is still written and the offline line printed");
   }
 
@@ -211,7 +221,7 @@ try {
     const now = nowMicros();
     putFrame(sid, serializeFrame({ daemon: "0.14.0", deadline: now + 60e6, slots: [{ start: now, lines: [label] }] }));
     // Set inside the shell: an environment value would be converted to a POSIX path by MSYS at startup.
-    const r = run({ sid, prefix: `TMPDIR='${dir}' TEMP='${dir}' TMP='${dir}' ` });
+    const r = run({ sid, prefix: `unset DOOMBAR_RUNTIME_DIR; TMPDIR='${dir}' TEMP='${dir}' TMP='${dir}' ` });
     ok(r.out === label + "\n", `temp dir spelled ${label} (${dir}) finds the frame (got ${show(r.out)})`);
     ok(existsSync(inSandbox(sid, "payload")), `temp dir spelled ${label} receives the payload`);
   }
@@ -230,6 +240,56 @@ try {
     const g = run({ sid, env: { ...sandboxEnv(gone) } });
     ok(g.err === "", `a missing temp dir writes nothing to stderr (got ${show(g.err)})`);
     ok(g.out === OFFLINE, `a missing temp dir prints the offline line (got ${show(g.out)})`);
+  }
+
+  // --- Run as a script with the hash as its argument (the Linux and macOS command) ---------
+  {
+    const sid = "as-script";
+    const now = nowMicros();
+    putFrame(sid, serializeFrame({ daemon: "0.14.0", deadline: now + 60e6, slots: [{ start: now, lines: ["script"] }] }));
+    const r = run({ sid, script: true });
+    ok(r.out === "script\n", `run as a script with the hash as its argument, the client prints the frame (got ${show(r.out)})`);
+    ok(existsSync(inSandbox(sid, "payload")), "run as a script, the client writes the payload");
+    ok(run({ sid, script: true, hash: "" }).out === OFFLINE, "run as a script without a hash, the client prints the offline line");
+  }
+
+  // --- The runtime directory: the rule of runtimeDir, and only a private one (Linux, macOS) --
+  if (!WIN) {
+    const unset = { DOOMBAR_RUNTIME_DIR: "" }; // empty counts as unset, for the client and for Node
+    const xdg = path.join(sandbox, "xdg");
+    mkdirSync(path.join(xdg, "doombar"), { recursive: true, mode: 0o700 });
+    for (const [label, e] of [["an XDG runtime dir of this user", { XDG_RUNTIME_DIR: xdg }],
+      ["an XDG runtime dir with a trailing slash", { XDG_RUNTIME_DIR: xdg + "/" }]]) {
+      const env = { ...unset, ...e };
+      const dir = runtimeDir(env);
+      const sid = "rt-" + label.length;
+      run({ sid, env });
+      ok(existsSync(path.join(dir, fileName(sid, "payload"))), `${label}: the payload lands where runtimeDir says (${dir})`);
+    }
+
+    // A logged-out ssh session under tmux: the XDG runtime dir is gone. Same path, offline, nothing made.
+    const gone = path.join(sandbox, "logged-out");
+    ok(runtimeDir({ ...unset, XDG_RUNTIME_DIR: gone }) === path.join(gone, "doombar"),
+      "runtimeDir keeps a missing XDG runtime dir's path");
+    const m = run({ sid: "rt-missing", env: { ...unset, XDG_RUNTIME_DIR: gone } });
+    ok(m.out === OFFLINE, `a missing XDG runtime dir prints the offline line (got ${show(m.out)})`);
+    ok(!existsSync(gone), "and the client creates nothing");
+
+    // A link in place of the directory may point anywhere: nothing is read or written through it.
+    const real = path.join(sandbox, "real");
+    mkdirSync(real, { mode: 0o700 });
+    const link = path.join(sandbox, "link");
+    symlinkSync(real, link);
+    const now = nowMicros();
+    writeFileSync(path.join(real, fileName("rt-link", "frame")),
+      serializeFrame({ daemon: "0.14.0", deadline: now + 60e6, slots: [{ start: now, lines: ["planted"] }] }));
+    const l = run({ sid: "rt-link", env: { DOOMBAR_RUNTIME_DIR: link } });
+    ok(l.out === OFFLINE, `a symlinked runtime dir prints the offline line, not its frame (got ${show(l.out)})`);
+    ok(!existsSync(path.join(real, fileName("rt-link", "payload"))), "and no payload is written through the link");
+
+    run({ sid: "rt-mode" });
+    const mode = existsSync(inSandbox("rt-mode", "payload")) ? statSync(inSandbox("rt-mode", "payload")).mode & 0o777 : -1;
+    ok(mode === 0o600, `the payload is readable by its owner only (mode ${mode.toString(8)})`);
   }
 
   // --- No process per tick ---------------------------------------------------------------
