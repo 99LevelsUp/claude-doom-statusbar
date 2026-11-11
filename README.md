@@ -167,7 +167,7 @@ See [`docs/ideation/`](docs/ideation/) for the full design write-up.
 
 The daemon gives every frame a validity window (`DOOMBAR_FRAME_WINDOW`, default 3 s) and renews it about twice a second. The client never shows stale values as if they were live:
 
-- **Greyed bar ending in `OFFLINE`**: the last frame is past its deadline. The layout is the last one rendered with every colour turned grey, so the values are old. A daemon that died or hangs looks like this within seconds. If only one session greys, its render failed and the other sessions are still served.
+- **Greyed bar ending in `OFFLINE`**: the last frame is past its deadline. The layout is the last one rendered with every colour turned grey, so the values are old. A daemon that died or hangs looks like this within seconds. If only one session greys, its render failed and the other sessions are still served. A build that keeps every core busy also greys it: the daemon runs at below-normal priority on purpose, so it yields the CPU to Claude Code and to the build (measured: 20 s without a frame while 12 cores were saturated), and the bar turns live again when the load drops.
 - **A plain `doombar: offline` line**: there is no usable frame at all. A new session shows it for its first second or few, until the daemon has rendered the session's first frame. When no daemon is running, the session's `SessionStart` hook starts one as soon as the client has written the session's first payload. It also shows when the package was removed from under the command.
 
 ### Troubleshooting the daemon

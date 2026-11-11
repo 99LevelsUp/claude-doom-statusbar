@@ -76,6 +76,7 @@ Source: [ideation/2026-10-14-bash-spawn-and-shared-statusbar.md](ideation/2026-1
 | P-1 | Find out what is expensive in a render and what really needs the 1 s refresh (refresh stays at 1 s) | open |
 | P-2 | One shared producer for account- and machine-wide data (limits, CPU/RAM, clock); renders only read | done with D-1 (the daemon renders every session) |
 | P-3 | Shared rate limits: treat a window past its `resets_at` as reset; scope the file per Claude account, not per OS user | idea |
+| P-5 | A daemon starved by a long build (below-normal priority, 20 s+ without a pass, measured 2026-11-11) looks hung to the hooks: after window + throttle + grace (~38 s) without a renewal they kill it and start another one, which is just as starved, and the identity check costs a PowerShell process each time. Measure on a real long build whether this happens; if it does, tell a starved daemon from a hung one (e.g. its CPU time still grows) before restarting. `npm run test:e2e` also fails on a saturated machine for the same reason | idea |
 | P-4 | Detached `node hook.js --reap` processes sometimes never exit and pile up (2026-11-10: 10 alive, oldest ~1 h, ~33 MB each, no children, parents gone; a reaper started by hand exits in 0.9 s). Suspected contributor to an out-of-memory crash the same day. Find where they block; the one-shot `maybeReap` path still starts one per interval regardless (the daemon now waits for its previous reaper to exit) | open |
 
 ## Mugshot health estimator

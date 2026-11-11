@@ -126,7 +126,7 @@ flowchart TB
 ### Success Criteria
 
 - Killing the daemon greys the bar within 4 s with the default window (3 s plus one tick).
-- During a heavy build on the owner's PC, with the daemon at below-normal priority, the default window produces no false grey.
+- During a heavy build on the owner's PC, with the daemon at below-normal priority, the default window produces no false grey. *(Not met, 11.11.2026: with every core saturated a below-normal daemon got 3 passes in 40 s, gaps up to 21.8 s; at normal priority 38 passes, largest gap 2.3 s. The spike's 516 ms came from a bare timer, not from a pass that needs CPU. The owner kept below-normal priority: a bar that greys during a build is preferred to one that takes CPU from it.)*
 - Per tick, no process starts other than the bash that Claude Code launches (on Windows that is the Git `bin\bash.exe` stub plus the `usr\bin\bash.exe` it re-executes). Measured, not assumed.
 - Claude Code runs as fast and as well with the bar as without it (the owner's only hard resource limit), measured with the same workload both ways.
 
