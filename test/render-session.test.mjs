@@ -36,10 +36,11 @@ syncBuiltinESMExports();
 const SB = mkdtempSync(path.join(os.tmpdir(), "doombar-session-"));
 const TMPDIR = path.join(SB, "tmp");
 mkdirSync(TMPDIR, { recursive: true });
-// Before the import: statusline.js takes its temp dir when it loads. The .ans faces, not chafa,
-// so the child process and this one draw the same mugshot.
+// Before the import: statusline.js takes its temp dir when it loads. The terminal that runs the
+// tests must not pick the mugshot's glyphs, so its identifying variables go.
 Object.assign(process.env, { TEMP: TMPDIR, TMP: TMPDIR, TMPDIR, PATH: "", DOOMBAR_MSYS_REAP: "0",
   DOOMBAR_THEME: "doom", DOOMBAR_RATELIMITS_SHARE: "0", DOOMBAR_PRESET: path.join(PRESETS, "minimal.toml") });
+for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "DOOMBAR_GLYPHS", "DOOMBAR_FACE_RENDERER"]) delete process.env[k];
 const { renderSession } = await import("../src/statusline.js");
 
 const NOW_MS = 1793500000123;

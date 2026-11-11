@@ -1,46 +1,85 @@
-// Mugshot face loader — port of the face logic in tools/mockup_boxes.py.
-// chafa rasterises a pre-baked *transparent* sprite into block-art at the
-// requested height; when chafa is absent we fall back to the pre-rendered .ans
-// (heights 4..16). The ANSI is parsed into rows of [char, fg, bg] (fg/bg an
-// [r,g,b] or null = transparent), then composited onto the mugshot background.
+// Mugshot face loader. Each sprite is a pre-baked transparent PNG; the built-in converter turns it
+// into rows of [char, fg, bg] (fg/bg an [r,g,b] or null = transparent) at the requested height,
+// with the glyph step the session's terminal allows. faceCell then composites the rows onto the
+// mugshot background.
+//
+// chafa draws the face instead only when DOOMBAR_FACE_RENDERER=chafa asks for it, with the same
+// glyph step and the same size; when chafa is missing or fails, the built-in face is drawn.
 
 import { spawn, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { RESET, sgrBg } from "./ansi.js";
+import { decodePng } from "./png.js";
+import { convertImage, faceSize } from "./glyph-render.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.dirname(HERE);
 const ALPHA_DIR = path.join(REPO, "assets", "images", "mugshot", "alpha"); // pre-baked transparent
-const ANS_DIR = path.join(REPO, "assets", "images", "mugshot", "ans");
-const ANS_SIZES = [4, 16];
-const SYMS = "block+half+quad+sextant+wedge+legacy";
 const TERM_BG = "term-bg";
 
 const WARM_TIMEOUT_MS = 10000; // a hung chafa must not outlive its warm-up
 
+// chafa symbol classes matching each glyph step.
+const CHAFA_SYMBOLS = {
+  half: "space+solid+half",
+  quadrant: "space+solid+half+quad",
+  sextant: "space+solid+half+quad+sextant",
+  wedge: "space+solid+half+quad+sextant+wedge",
+  octant: "space+solid+half+quad+sextant+wedge+octant",
+};
+
 const _cache = new Map();
-const _warming = new Map(); // key -> in-flight warm-up promise
+const _warming = new Map(); // key -> in-flight chafa warm-up promise
+const _images = new Map(); // sprite name -> decoded RGBA, or null when it cannot be read
 let _noSpawn = false;
-let _warmupsStarted = 0;
+let _chafaRuns = 0;
+let _opts = { step: "octant", renderer: "builtin", background: [0, 0, 0] };
 
-const chafaArgs = (name, rows) => ["-f", "symbols", "--polite", "on", "--colors", "full",
-  "--symbols", SYMS, "--size", `9999x${rows}`, path.join(ALPHA_DIR, name + ".png")];
-
-function chafaFace(name, rows) {
-  const r = spawnSync("chafa", chafaArgs(name, rows), { maxBuffer: 1 << 24 });
-  if (r.error) return null; // chafa not on PATH
-  return r.status === 0 && r.stdout && r.stdout.length ? r.stdout.toString("utf8") : null;
+// The face settings of the render about to run: the glyph step the session may use, the
+// renderer, and the mugshot background transparent areas are fitted against. Set right before
+// the builders run; one session renders at a time.
+export function setFaceOptions({ step = "octant", renderer = "builtin", background = [0, 0, 0] } = {}) {
+  _opts = { step, renderer: renderer === "chafa" ? "chafa" : "builtin", background };
 }
 
-function ansiFace(name, rows) {
-  const r = Math.max(ANS_SIZES[0], Math.min(ANS_SIZES[1], rows));
-  try {
-    return readFileSync(path.join(ANS_DIR, String(r), name + ".ans"), "utf8");
-  } catch {
-    return "";
+// No-spawn mode is for long-lived processes: a cache miss never waits on chafa. With the chafa
+// renderer it returns the built-in face at once and warms the chafa face in the background.
+export function setFaceNoSpawn(on = true) {
+  _noSpawn = Boolean(on);
+}
+
+// How many chafa processes this module has started (synchronous and warm-up alike).
+export const chafaRuns = () => _chafaRuns;
+
+function image(name) {
+  if (!_images.has(name)) {
+    let img = null;
+    try { img = decodePng(readFileSync(path.join(ALPHA_DIR, name + ".png"))); } catch { /* no face */ }
+    _images.set(name, img);
   }
+  return _images.get(name);
+}
+
+function builtinFace(name, rows, step, background) {
+  const img = image(name);
+  if (!img) return Array.from({ length: rows }, () => []);
+  return convertImage(img, rows, step, { background });
+}
+
+function chafaArgs(name, rows, step) {
+  const img = image(name);
+  const size = img ? faceSize(img.width, img.height, rows) : { cols: 9999, rows };
+  return ["-f", "symbols", "--polite", "on", "--colors", "full", "--symbols", CHAFA_SYMBOLS[step],
+    "--size", `${size.cols}x${size.rows}`, path.join(ALPHA_DIR, name + ".png")];
+}
+
+function chafaFace(name, rows, step) {
+  _chafaRuns += 1;
+  const r = spawnSync("chafa", chafaArgs(name, rows, step), { maxBuffer: 1 << 24, windowsHide: true });
+  if (r.error) return null; // chafa not on PATH
+  return r.status === 0 && r.stdout && r.stdout.length ? r.stdout.toString("utf8") : null;
 }
 
 const FINAL = "ABCDEFGHJKSTfhilmnpqrsu"; // CSI final bytes we scan to
@@ -93,27 +132,21 @@ function parseAnsi(text) {
 
 function toFace(text, rows) {
   const out = parseAnsi(text).slice(0, rows);
-  while (out.length < rows) out.push([]); // exactly `rows` lines (fallback clamps)
+  while (out.length < rows) out.push([]); // exactly `rows` lines
   return out;
 }
 
-// No-spawn mode is for long-lived processes: a cache miss never waits on chafa. It returns
-// the pre-rendered .ans face at once and warms the chafa face in the background; the
-// one-shot statusline keeps the synchronous default.
-export function setFaceNoSpawn(on = true) {
-  _noSpawn = Boolean(on);
-}
+const keyOf = (name, rows, o) => `${name}@${rows}@${o.step}@${o.renderer}`;
 
-export const faceWarmupsStarted = () => _warmupsStarted;
-
-// Rasterise one face with an asynchronous chafa and put it in the cache. Resolves true when
-// the chafa face landed, false when chafa is missing, fails or times out (the .ans face then
-// stays). Concurrent calls for one key share a single child process.
+// Draw one face with an asynchronous chafa and put it in the cache under the current options.
+// Resolves true when the chafa face landed, false when chafa is missing, fails or times out (the
+// built-in face then stays). Concurrent calls for one key share a single child process.
 export function warmFace(name, rows) {
-  const key = `${name}@${rows}`;
+  const o = _opts;
+  const key = keyOf(name, rows, o);
   const pending = _warming.get(key);
   if (pending) return pending;
-  _warmupsStarted += 1;
+  _chafaRuns += 1;
   const p = new Promise((resolve) => {
     let settled = false;
     const done = (text) => {
@@ -121,12 +154,12 @@ export function warmFace(name, rows) {
       settled = true;
       _warming.delete(key);
       if (text) _cache.set(key, toFace(text, rows));
-      else if (!_cache.has(key)) _cache.set(key, toFace(ansiFace(name, rows), rows));
+      else if (!_cache.has(key)) _cache.set(key, builtinFace(name, rows, o.step, o.background));
       resolve(Boolean(text));
     };
     let child;
     try {
-      child = spawn("chafa", chafaArgs(name, rows), {
+      child = spawn("chafa", chafaArgs(name, rows, o.step), {
         stdio: ["ignore", "pipe", "ignore"], windowsHide: true, timeout: WARM_TIMEOUT_MS,
       });
     } catch {
@@ -146,17 +179,21 @@ export function warmFace(name, rows) {
 }
 
 export function loadFace(name, rows) {
-  const key = `${name}@${rows}`;
+  const o = _opts;
+  const key = keyOf(name, rows, o);
   if (_cache.has(key)) return _cache.get(key);
-  if (_noSpawn) {
-    const out = toFace(ansiFace(name, rows), rows);
-    _cache.set(key, out); // the warm-up replaces it with the chafa face when it lands
+  let out;
+  if (o.renderer !== "chafa") {
+    out = builtinFace(name, rows, o.step, o.background);
+  } else if (_noSpawn) {
+    out = builtinFace(name, rows, o.step, o.background); // the warm-up replaces it when chafa lands
+    _cache.set(key, out);
     warmFace(name, rows);
     return out;
+  } else {
+    const text = chafaFace(name, rows, o.step);
+    out = text ? toFace(text, rows) : builtinFace(name, rows, o.step, o.background);
   }
-  let text = chafaFace(name, rows);
-  if (!text) text = ansiFace(name, rows); // no chafa -> pre-rendered ANSI
-  const out = toFace(text, rows);
   _cache.set(key, out);
   return out;
 }

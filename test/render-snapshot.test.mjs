@@ -7,10 +7,8 @@
 //
 // Regenerate on purpose with UPDATE_SNAPSHOTS=1. A missing snapshot fails otherwise.
 
-// The DOOM mugshot is rasterised by chafa when it is on PATH and read from the pre-rendered
-// .ans faces when it is not. chafa is on some machines and not on CI, and the face width
-// feeds the layout, so the snapshots pin the .ans faces: empty PATH before the first render.
-process.env.PATH = "";
+// The DOOM mugshot is drawn by the built-in converter at the glyph step the terminal allows; the
+// snapshots pin the richest step, so they do not depend on the terminal that runs the tests.
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
@@ -18,6 +16,9 @@ import { fileURLToPath } from "node:url";
 import { parse as parseToml } from "smol-toml";
 import { SAMPLE, setValues, resolvePreset, buildBar } from "../src/render.js";
 import { buildHotbar } from "../src/hotbar.js";
+import { setFaceOptions } from "../src/face.js";
+
+setFaceOptions({ step: "octant", renderer: "builtin", background: [0, 0, 0] });
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PRESETS = path.join(HERE, "..", "presets");

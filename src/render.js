@@ -128,7 +128,7 @@ function colorFor(spec, pct) {
   return null;
 }
 
-function rgbOf(spec) {
+export function rgbOf(spec) {
   if (typeof spec === "string" && spec.startsWith("#")) {
     return [1, 3, 5].map((i) => parseInt(spec.slice(i, i + 2), 16));
   }

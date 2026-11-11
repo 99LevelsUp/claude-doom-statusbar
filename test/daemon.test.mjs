@@ -38,8 +38,8 @@ syncBuiltinESMExports();
 const SB = mkdtempSync(path.join(os.tmpdir(), "doombar-daemon-"));
 const TMPDIR = path.join(SB, "tmp");
 for (const d of ["tmp", "tasks", "proj"]) mkdirSync(path.join(SB, d), { recursive: true });
-// Before the imports: statusline.js takes its temp dir when it loads. No chafa on PATH, so every
-// render draws the pre-rendered .ans faces.
+// Before the imports: statusline.js takes its temp dir when it loads. No chafa on PATH, so an
+// opt-in chafa face falls back to the built-in one.
 const SANDBOX_ENV = {
   TEMP: TMPDIR, TMP: TMPDIR, TMPDIR, PATH: "", DOOMBAR_MSYS_REAP: "0", DOOMBAR_THEME: "doom",
   DOOMBAR_THEME_FILE: path.join(SB, "no-theme.json"), DOOMBAR_RATELIMITS_SHARE: "0",

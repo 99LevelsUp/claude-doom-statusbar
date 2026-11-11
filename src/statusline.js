@@ -19,7 +19,9 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parse as parseToml } from "smol-toml";
 import { pyround, sgrFg } from "./ansi.js";
-import { buildBar, setValues, resolvePreset, OK, TEXT, CRIT } from "./render.js";
+import { buildBar, setValues, resolvePreset, rgbOf, OK, TEXT, CRIT } from "./render.js";
+import { setFaceOptions } from "./face.js";
+import { effectiveStep } from "./glyph-level.js";
 import { foldBatch, statePaths, sessionPaths, writeAtomic, TASK_LINGER } from "./fold.js";
 import { currentTheme, themePreset } from "./theme.js";
 import { buildHotbar } from "./hotbar.js";
@@ -780,8 +782,15 @@ export function renderSession({ data, env = process.env, now = Date.now() / 1000
   const headroom = rateHealthValue(data);
   if (headroom !== null) values["health.headroom"] = headroom;
   // Right before the builders, which read these values: no other session's render may come
-  // between this call and the bar it feeds.
+  // between this call and the bar it feeds. The face options are the same kind of slot: the glyph
+  // step this session's terminal allows for the mugshot, and the renderer that draws it.
   setValues(values);
+  const mugshot = cfg.mugshot || {};
+  setFaceOptions({
+    step: effectiveStep(env, mugshot.glyphs),
+    renderer: env.DOOMBAR_FACE_RENDERER,
+    background: rgbOf(mugshot.background ?? "#000000"),
+  });
 
   let exhausted;
   if ("ratelimit.5h" in values || "ratelimit.7d" in values) {
