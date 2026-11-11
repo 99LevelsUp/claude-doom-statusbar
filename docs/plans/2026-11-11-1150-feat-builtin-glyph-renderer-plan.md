@@ -12,7 +12,7 @@ execution: code
 
 ## Goal Capsule
 
-- **Objective:** the bar draws its images (today the DOOM mugshot, later the WC3 head and minimap) without starting any external process, at a quality the owner judges by eye to match chafa's.
+- **Objective:** by default the bar draws its images (today the DOOM mugshot, later the WC3 head and minimap) without starting any external process, at a quality the owner judges by eye to match chafa's. The optional chafa setting of R12 is the only exception.
 - **Means:** a built-in pixel-to-glyph conversion inside the bar, with a glyph set per image, capped by what the terminal can draw.
 - **Product authority:** the owner (Petr Skypala). This plan covers only the conversion and its quality gate for the DOOM mugshot. The minimap resolver, the WC3 portrait hook-up and on-demand asset download are not active scope.
 - **Open blockers:** none.
@@ -23,7 +23,7 @@ execution: code
 
 ### Summary
 
-A built-in converter turns an image into terminal glyphs by searching, for every cell, the glyph and colour pair with the smallest error, the way chafa does. Each image gets its own glyph set, and the terminal type caps it. A test card and an error score measured against chafa decide whether chafa can leave the DOOM bar.
+A built-in converter turns an image into terminal glyphs by searching, for every cell, the glyph and colour pair with the smallest error, the way chafa does. Each image gets its own glyph set, and the terminal type caps it. A test card and an error score measured against chafa inform the owner, who decides by eye whether chafa can leave the DOOM bar.
 
 ### Problem Frame
 
@@ -64,8 +64,8 @@ A second problem shows on weak terminals. Today every user gets chafa's full gly
 
 **Quality gate and chafa**
 
-- R10. An error score renders a glyph output back to pixels from the glyph masks and compares it with the source image. It scores the built-in conversion and chafa on the 42 DOOM face sprites at heights 4 to 16.
-- R11. The owner sees the built-in and chafa faces side by side on their own terminal and gives the D-4 verdict; the scores from R10 sit beside the pictures.
+- R10. An error score renders a glyph output back to pixels from the glyph masks and compares it with the source image. It scores the built-in conversion and chafa on the 42 DOOM face sprites at heights 4 to 16, both limited to the same glyph set, and it measures the error differently from the per-cell error the search of R2 minimises, for example on a slightly blurred render-back.
+- R11. The owner sees the built-in and chafa faces side by side on their own terminal and gives the D-4 verdict; the scores from R10 sit beside the pictures as advisory evidence, because the built-in search optimises an error close to the one being measured.
 - R12. Until the verdict, chafa draws the mugshot only when a setting asks for it. A positive verdict removes chafa from the bar; a negative one keeps it as that optional setting.
 - R13. The pre-rendered `.ans` faces are removed once the built-in conversion is the default.
 
@@ -79,8 +79,8 @@ A second problem shows on weak terminals. Today every user gets chafa's full gly
 ### Success Criteria
 
 - The D-4 verdict is reached from the side-by-side faces and the R10 scores, and recorded in `docs/BACKLOG.md`.
-- With the bar running, no process starts to draw a face, at any height (checked on the owner's PC).
-- Claude Code runs as fast as without the bar: the conversion runs inside the below-normal-priority daemon and adds no measurable cost next to it (owner's hard limit, `docs/ideation/2026-11-09-render-daemon-and-minimap.md`).
+- With the bar running and the optional chafa setting of R12 off, no process starts to draw a face, at any height (checked on the owner's PC).
+- Claude Code runs as fast as without the bar (owner's hard limit, `docs/ideation/2026-11-09-render-daemon-and-minimap.md`). Where the render daemon runs (Windows with Git Bash), the conversion runs inside it at below-normal priority and adds no measurable cost. Where it does not (Linux, macOS), the one-shot renderer's face conversion costs no more per tick than the chafa process it replaces, measured at the richest terminal level.
 
 <!-- ce-section: work-relationships -->
 ### How This Work Fits Together
@@ -120,3 +120,13 @@ This plan covers the built-in conversion and its quality gate, used by the DOOM 
 - `src/face.js`: chafa call with the set `block+half+quad+sextant+wedge+legacy`, `.ans` fallback clamped to heights 4–16, no-spawn mode with an asynchronous chafa warm-up in the daemon.
 - `lab/daemon-spike/RESULTS.md`: process start cost and starvation measurements, 2026-11-11.
 - `docs/BACKLOG.md`: D-3, D-4, D-8, D-12.
+
+## Deferred / Open Questions
+
+These are review items left for the author. They do not block implementation.
+
+### From 2026-11-11 review
+
+- **No in-process route if the built-in conversion loses the chafa comparison** — Goal Capsule (Objective) and R12 (chafa until and after the D-4 verdict) (P2, adversarial, confidence 75)
+
+  If the owner's verdict goes against the built-in conversion, the only way left to reach chafa's quality is starting chafa as a process, which the animated WC3 heads cannot afford. chafa also exists as a WebAssembly build that runs inside the process (`chafa-wasm` on npm, 0.3.3, LGPL-3.0). Decide after a negative verdict whether it becomes the fallback, weighing the LGPL licence beside this MIT package, its maturity and its start-up cost in the one-shot renderer.
