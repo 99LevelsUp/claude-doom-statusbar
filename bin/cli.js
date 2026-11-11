@@ -5,6 +5,7 @@
 //   claude-doom-statusbar install              # install into ~/.claude/settings.json
 //   claude-doom-statusbar install --preset full # pick a preset (full | standard | minimal)
 //   claude-doom-statusbar install --project     # install into ./.claude/settings.json instead
+//   claude-doom-statusbar install --local       # install into ./.claude/settings.local.json instead
 //   claude-doom-statusbar install --refresh 0   # events only; default is a 1s timer + events
 //   claude-doom-statusbar install --no-fonts    # don't check for / install an emoji font (Linux)
 //   claude-doom-statusbar uninstall             # remove everything this installer added
@@ -16,12 +17,15 @@
 // It merges into your existing settings (other hooks / statusline are preserved or
 // backed up), is safe to re-run, and prints what to do next.
 
-import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
+import {
+  readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync, readdirSync, unlinkSync, lstatSync, rmdirSync,
+} from "node:fs";
+import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { THEMES, THEME_NAMES, currentTheme, saveTheme, nextTheme, resolveTheme } from "../src/theme.js";
-import { rootHash, daemonPaths, daemonPrefix, payloadPrefix, framePrefix } from "../src/fold.js";
+import { rootHash, daemonPaths, daemonPrefix, payloadPrefix, framePrefix, runtimeDir } from "../src/fold.js";
 import { confirmedDaemonPid } from "../src/hook.js";
 import { STEPS, testCardLines } from "../src/glyphs.js";
 import { convertImage } from "../src/glyph-render.js";
@@ -44,17 +48,42 @@ const CLIENT = slash(path.join(ROOT, "src", "doombar-client.sh"));
 const HOOK = slash(path.join(ROOT, "src", "hook.js"));
 const NODE_CMD = `node "${STATUSLINE}"`;
 
-// On Windows with Git Bash, Claude Code runs the statusLine through Git Bash, and the command
-// sources the bash client into that very bash: no second bash, no node, no process at all. The
-// client prints the frame the render daemon prepared (see src/doombar-client.sh, src/daemon.js).
-// It lives in the package, so an upgrade in the same place reaches it without touching
-// settings.json; the guard keeps a removed package from printing bash errors into the bar.
-// `if` rather than `[ ] && . || echo`: the client may end with a non-zero status after printing
-// a frame, and `||` would then add the offline line under it.
-// Everywhere else (macOS ships bash 3.2; without Git Bash Claude Code uses PowerShell) the
-// one-shot renderer stays.
-const CLIENT_CMD = `DOOMBAR_ROOT_HASH=${HASH}; f="${CLIENT}"; ` +
+// The statusLine command that runs the bash client, which prints the frame the render daemon
+// prepared (see src/doombar-client.sh, src/daemon.js). The client lives in the package, so an
+// upgrade in the same place reaches it without touching settings.json; the guard keeps a removed
+// package from printing shell errors into the bar. `if` rather than `[ ] && . || echo`: the
+// client may end with a non-zero status after printing a frame, and `||` would then add the
+// offline line under it.
+//
+// Windows with Git Bash: Claude Code runs the statusLine through Git Bash, and the command sources
+// the client into that very bash: no second bash, no node, no process at all.
+//
+// Linux and macOS: Claude Code runs it through /bin/sh, which is dash on Debian and does not
+// replace itself with the last command, so the command execs the bash 5 found at install (by the
+// path it was found at, so a Homebrew upgrade keeps it valid), with the hash as an argument.
+// BASH_ENV is cleared because bash would source it even with --norc. When that bash is gone the
+// bar prints the offline line. Without a bash 5 (macOS ships 3.2; Windows without Git Bash runs
+// PowerShell) the one-shot renderer stays.
+const WIN_CLIENT_CMD = `DOOMBAR_ROOT_HASH=${HASH}; f="${CLIENT}"; ` +
   `if [ -r "$f" ]; then . "$f"; else echo 'doombar: offline'; fi`;
+const posixClientCmd = (bash) => `b="${bash}"; f="${CLIENT}"; ` +
+  `if [ -r "$f" ] && [ -x "$b" ]; then unset BASH_ENV; exec "$b" --norc --noprofile "$f" ${HASH}; ` +
+  `else echo 'doombar: offline'; fi`;
+
+// Linux and macOS: a bash of major version 5 or newer for the client, by the path it was found
+// at, or null. DOOMBAR_BASH, when set, is the only candidate. One short spawn per candidate, at
+// install only.
+function posixBash(env = process.env) {
+  const cands = env.DOOMBAR_BASH ? [env.DOOMBAR_BASH]
+    : ["/bin/bash", "/usr/bin/bash", "/usr/local/bin/bash", "/opt/homebrew/bin/bash",
+      ...String(env.PATH || "").split(":").filter((d) => d.startsWith("/")).map((d) => path.posix.join(d, "bash"))];
+  for (const bash of new Set(cands)) {
+    if (!bash.startsWith("/") || !existsSync(bash)) continue;
+    const r = spawnSync(bash, ["--norc", "--noprofile", "-c", 'echo "${BASH_VERSINFO[0]}"'], { encoding: "utf8", timeout: 5000 });
+    if (r.status === 0 && Number(String(r.stdout).trim()) >= 5) return bash;
+  }
+  return null;
+}
 
 // The bash Claude Code would run the statusLine with. It finds Git Bash on its own, not through
 // PATH (whose bash.exe may well be WSL's): an explicit CLAUDE_CODE_GIT_BASH_PATH, the standard
@@ -76,7 +105,12 @@ function gitBash(env = process.env) {
   return cands.find((p) => p && existsSync(p)) ?? null;
 }
 
-const useClient = () => gitBash() !== null;
+// The client's statusLine command for this machine, or null for the one-shot renderer.
+function clientCommand() {
+  if (process.platform === "win32") return gitBash() !== null ? WIN_CLIENT_CMD : null;
+  const bash = posixBash();
+  return bash ? posixClientCmd(bash) : null;
+}
 
 // refreshInterval re-runs the render command every N seconds ON TOP of the event-driven updates.
 // 1 s is the documented minimum and the default here on every platform: a live clock and a
@@ -119,7 +153,10 @@ function die(msg) {
   process.exit(1);
 }
 
-function settingsFile(project) {
+// --local targets the project's settings.local.json, which overrides settings.json (a
+// checkout wired to itself for development, for instance).
+function settingsFile(project, local) {
+  if (local) return path.join(process.cwd(), ".claude", "settings.local.json");
   const base = project ? path.join(process.cwd(), ".claude") : path.join(os.homedir(), ".claude");
   return path.join(base, "settings.json");
 }
@@ -226,34 +263,56 @@ function uninstall(cfg) {
 // stopped only when the process list confirms it is node running this package's src/daemon.js,
 // started when the heartbeat says; a stale heartbeat may name a pid reused by anything.
 // The kill comes first, or the daemon would rewrite its files on its next pass.
+//
+// Where to look: the runtime directory. On Linux and macOS the shell running uninstall may see
+// another XDG_RUNTIME_DIR than Claude Code did (tmux, ssh), so every candidate directory is
+// tried, each only when it is a real directory of this user. With DOOMBAR_RUNTIME_DIR set, only
+// that one, so a test never reaches the live bar.
+function runtimeCandidates(env = process.env) {
+  if (env.DOOMBAR_RUNTIME_DIR || process.platform === "win32") return [runtimeDir(env)];
+  const dirs = new Set([runtimeDir(env)]);
+  if (String(env.XDG_RUNTIME_DIR || "").startsWith("/")) dirs.add(path.posix.join(env.XDG_RUNTIME_DIR, "doombar"));
+  if (process.platform === "darwin" && String(env.TMPDIR || "").startsWith("/")) dirs.add(path.posix.join(env.TMPDIR, "doombar"));
+  dirs.add(`/tmp/doombar-${process.geteuid()}`);
+  return [...dirs];
+}
+
 function stopDaemon() {
   const notes = [];
-  const { heartbeat } = daemonPaths(HASH);
-  let hb = null;
-  try { hb = JSON.parse(readFileSync(heartbeat, "utf-8")); } catch {}
-  if (process.platform === "win32" && hb && Number.isInteger(hb.pid) && hb.pid > 0) {
-    const pid = confirmedDaemonPid(hb);
-    if (pid !== null) {
-      try { process.kill(pid); notes.push(`stopped the render daemon (pid ${pid})`); } catch {}
-    } else {
-      notes.push(`left pid ${hb.pid} running: not confirmed as this installation's render daemon`);
-    }
-  }
-  const dir = os.tmpdir();
+  const posix = process.platform !== "win32";
   const prefixes = [daemonPrefix(HASH), payloadPrefix(HASH), framePrefix(HASH)];
-  let removed = 0;
-  let names = [];
-  try { names = readdirSync(dir); } catch {}
-  for (const n of names) {
-    if (!prefixes.some((p) => n.startsWith(p))) continue;
-    try { unlinkSync(path.join(dir, n)); removed++; } catch {}
+  for (const dir of runtimeCandidates()) {
+    if (posix) {
+      try {
+        const st = lstatSync(dir);
+        if (!st.isDirectory() || st.uid !== process.geteuid()) continue;
+      } catch { continue; }
+    }
+    let hb = null;
+    try { hb = JSON.parse(readFileSync(path.join(dir, path.basename(daemonPaths(HASH).heartbeat)), "utf-8")); } catch {}
+    if (hb && Number.isInteger(hb.pid) && hb.pid > 0) {
+      const pid = confirmedDaemonPid(hb);
+      if (pid !== null) {
+        try { process.kill(pid); notes.push(`stopped the render daemon (pid ${pid})`); } catch {}
+      } else {
+        notes.push(`left pid ${hb.pid} running: not confirmed as this installation's render daemon`);
+      }
+    }
+    let removed = 0;
+    let names = [];
+    try { names = readdirSync(dir); } catch {}
+    for (const n of names) {
+      if (!prefixes.some((p) => n.startsWith(p))) continue;
+      try { unlinkSync(path.join(dir, n)); removed++; } catch {}
+    }
+    if (removed) notes.push(`removed ${removed} render daemon file(s) from ${dir}`);
+    if (posix && !process.env.DOOMBAR_RUNTIME_DIR) { try { rmdirSync(dir); } catch { /* not empty: other files */ } }
   }
-  if (removed) notes.push(`removed ${removed} render daemon file(s) from ${dir}`);
   return notes;
 }
 
 function parseArgs(argv) {
-  const out = { cmd: "install", preset: "full", project: false, refresh: DEFAULT_REFRESH, theme: null, fonts: true };
+  const out = { cmd: "install", preset: "full", project: false, local: false, refresh: DEFAULT_REFRESH, theme: null, fonts: true };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "install" || a === "uninstall") out.cmd = a;
@@ -261,6 +320,7 @@ function parseArgs(argv) {
     else if (a === "test-card") out.cmd = "test-card";
     else if (a === "--uninstall") out.cmd = "uninstall";
     else if (a === "--project") out.project = true;
+    else if (a === "--local") out.local = true;
     else if (a === "--no-fonts") out.fonts = false;
     else if (a === "--preset") out.preset = argv[++i];
     else if (a.startsWith("--preset=")) out.preset = a.slice("--preset=".length);
@@ -324,13 +384,13 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.cmd === "theme") return theme(args.theme);
   if (args.cmd === "test-card") return testCard();
-  const p = settingsFile(args.project);
+  const p = settingsFile(args.project, args.local);
   const cfg = load(p);
 
   if (args.cmd === "uninstall") {
     uninstall(cfg);
     save(p, cfg);
-    if (!args.project) saveTheme("doom"); // drop the saved theme choice too
+    if (!args.project && !args.local) saveTheme("doom"); // drop the saved theme choice too
     const notes = stopDaemon();
     console.log(`✓ removed claude-doom-statusbar from ${p}`);
     for (const n of notes) console.log(`  note       : ${n}`);
@@ -338,16 +398,17 @@ async function main() {
     return;
   }
 
-  const client = useClient();
-  const script = client ? CLIENT : STATUSLINE;
+  const clientCmd = clientCommand();
+  const script = clientCmd ? CLIENT : STATUSLINE;
   if (!existsSync(script)) die(`! can't find ${script} — reinstall the package.`);
-  const command = client ? CLIENT_CMD : NODE_CMD;
+  const command = clientCmd || NODE_CMD;
   const notes = install(cfg, args.preset, args.refresh, command);
   save(p, cfg);
 
   console.log(`✓ installed claude-doom-statusbar into ${p}`);
   console.log(`  statusline : ${command}`);
-  if (client) console.log("  renderer   : per-installation render daemon, started by the hooks");
+  if (clientCmd) console.log("  renderer   : per-installation render daemon, started by the hooks");
+  if (process.platform !== "win32") console.log(`  files      : ${runtimeDir()} (private to this user)`);
   console.log(`  refresh    : ${args.refresh > 0 ? `every ${args.refresh}s + events` : "events only"}`);
   console.log(`  preset     : ${args.preset}`);
   console.log(`  hooks      : ${HOOK_EVENTS.join(", ")}`);

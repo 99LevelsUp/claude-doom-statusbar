@@ -3,12 +3,12 @@
 // Python installer byte-for-byte (we write `node "…/src/*.js"`, not `"<python>" "…/*.py"`),
 // so we assert behavior on a temp settings.json instead of diffing.
 
-import { execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, readdirSync } from "node:fs";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, readdirSync, chmodSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { rootHash } from "../src/fold.js";
+import { rootHash, procStartTicks } from "../src/fold.js";
 import { sandboxEnv } from "./_sandbox-env.mjs";
 
 // Pin the DOOM theme so a theme saved on this machine (`theme minecraft`) can't change
@@ -75,6 +75,26 @@ const gitBashHere = WIN && [process.env.CLAUDE_CODE_GIT_BASH_PATH,
   process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, "Programs", "Git", "bin", "bash.exe"),
 ].some((p) => p && existsSync(p));
 
+// Linux and macOS: the bash 5 the installer would pick, if this machine has one (PATH's bash is
+// the one checked here; the installer looks at the usual places first, which on Linux is the same).
+const bashVersion = (bash) => {
+  const r = spawnSync(bash, ["--norc", "--noprofile", "-c", 'echo "${BASH_VERSINFO[0]}"'], { encoding: "utf8" });
+  return r.status === 0 ? Number(r.stdout.trim()) : 0;
+};
+const BASH5 = WIN ? null : ["/bin/bash", "/usr/bin/bash", "/usr/local/bin/bash", "/opt/homebrew/bin/bash"]
+  .find((b) => existsSync(b) && bashVersion(b) >= 5) || null;
+// A bash that reports major version 3, like macOS's own: the installer must keep the one-shot.
+function oldBashEnv(tmp) {
+  const fake = path.join(tmp, "old-bash");
+  writeFileSync(fake, "#!/bin/sh\necho 3\n");
+  chmodSync(fake, 0o755);
+  return { DOOMBAR_BASH: fake };
+}
+// The client's environment and its absence, per platform.
+const clientEnv = (tmp) => (WIN ? gitBashEnv(tmp) : { DOOMBAR_BASH: BASH5 });
+const noClientEnv = (tmp) => (WIN ? noGitBashEnv(tmp) : oldBashEnv(tmp));
+const clientHere = WIN ? gitBashHere : Boolean(BASH5);
+
 const CLIENT = `${ROOT.replace(/\\/g, "/")}/src/doombar-client.sh`;
 const NODE_CMD = `node "${ROOT.replace(/\\/g, "/")}/src/statusline.js"`;
 const ourFiles = (dir, hash = HASH) => readdirSync(dir).filter((n) =>
@@ -86,7 +106,7 @@ const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { retu
   const tmp = tmpdir();
   run(tmp, "install", "--project", "--preset", "full");
   const cfg = read(tmp);
-  const want = gitBashHere ? "src/doombar-client.sh" : "src/statusline.js";
+  const want = clientHere ? "src/doombar-client.sh" : "src/statusline.js";
   ok(cfg.statusLine?.command?.includes(want), `statusLine points at ${want}`);
   // 1 s on EVERY platform, Windows included. The Git Bash / MSYS cost of a 1 Hz tick on Windows
   // is paid by the reaper, not by slowing the HUD down — a live clock is the point of this thing.
@@ -247,26 +267,58 @@ if (WIN) {
   rmSync(tmp, { recursive: true, force: true });
 }
 
-// 7. Git Bash absent (or not Windows): the old one-shot renderer command.
+// 6b. Linux and macOS with a bash 5: the statusLine hands the tick from /bin/sh to that bash, by
+// the path it was found at, with the install hash as its argument.
+if (!WIN && BASH5) {
+  const tmp = tmpdir();
+  const env = clientEnv(tmp);
+  runEnv(tmp, env, "install", "--project");
+  const cmd = read(tmp).statusLine?.command || "";
+  ok(cmd.startsWith(`b="${BASH5}"; f="${CLIENT}";`), `client command names the bash and the client (got: ${cmd})`);
+  ok(cmd.includes(`exec "$b" --norc --noprofile "$f" ${HASH};`), "client command execs that bash with the install hash");
+  ok(cmd.includes('[ -r "$f" ] && [ -x "$b" ]') && cmd.includes("unset BASH_ENV"),
+    "client command guards a missing client or bash and clears BASH_ENV");
+  ok(/else echo 'doombar: offline'; fi$/.test(cmd), "client command prints the offline line otherwise");
+  ok(!/\bnode\b/.test(cmd), "client command starts no node process");
+  const before = readFileSync(settingsPath(tmp), "utf-8");
+  const out = runEnv(tmp, env, "install", "--project");
+  ok(readFileSync(settingsPath(tmp), "utf-8") === before, "re-install leaves settings.json byte-identical");
+  ok(!/replaced your existing statusLine/.test(out), "re-install does not call our own client foreign");
+  // Claude Code runs it through /bin/sh. A bash that went away prints the offline line, exit 0.
+  const gone = cmd.replace(`b="${BASH5}"`, `b="${path.join(tmp, "no-bash")}"`);
+  const r = spawnSync("/bin/sh", ["-c", gone], { input: "{}", encoding: "utf8", env: withEnv(sandboxEnv(tmp)) });
+  ok(r.status === 0 && r.stdout === "doombar: offline\n", `a bash that is gone prints the offline line (got ${JSON.stringify(r.stdout)})`);
+  rmSync(tmp, { recursive: true, force: true });
+}
+
+// 7. No bash for the client (no Git Bash on Windows, a bash older than 5 elsewhere): the one-shot.
 {
   const tmp = tmpdir();
-  runEnv(tmp, noGitBashEnv(tmp), "install", "--project");
-  ok(read(tmp).statusLine?.command === NODE_CMD, "no Git Bash -> node statusline.js command");
-  if (!WIN) {
-    runEnv(tmp, gitBashEnv(tmp), "install", "--project");
-    ok(read(tmp).statusLine?.command === NODE_CMD, "not Windows -> node command even with a bash path set");
-  }
+  runEnv(tmp, noClientEnv(tmp), "install", "--project");
+  ok(read(tmp).statusLine?.command === NODE_CMD, "no bash for the client -> node statusline.js command");
+  rmSync(tmp, { recursive: true, force: true });
+}
+
+// 7b. --local writes the project's settings.local.json and leaves settings.json alone.
+{
+  const tmp = tmpdir();
+  run(tmp, "install", "--local");
+  const local = path.join(tmp, ".claude", "settings.local.json");
+  ok(existsSync(local) && JSON.parse(readFileSync(local, "utf-8")).statusLine?.command, "--local installs into settings.local.json");
+  ok(!existsSync(settingsPath(tmp)), "--local leaves settings.json alone");
+  run(tmp, "uninstall", "--local");
+  ok(Object.keys(JSON.parse(readFileSync(local, "utf-8"))).length === 0, "uninstall --local empties settings.local.json");
   rmSync(tmp, { recursive: true, force: true });
 }
 
 // 8. A settings file wired to statusline.js is rewired in place to the client.
-if (WIN) {
+if (WIN || BASH5) {
   const tmp = tmpdir();
   mkdirSync(path.join(tmp, ".claude"), { recursive: true });
   writeFileSync(settingsPath(tmp), JSON.stringify({
     statusLine: { type: "command", command: 'node "C:/old/cache/claude-doom-statusbar/src/statusline.js"', refreshInterval: 1 },
   }, null, 2));
-  const out = runEnv(tmp, gitBashEnv(tmp), "install", "--project");
+  const out = runEnv(tmp, clientEnv(tmp), "install", "--project");
   const sl = read(tmp).statusLine;
   ok(sl?.command?.includes(`"${CLIENT}"`), "old statusline.js command upgraded to the client");
   ok(sl?.refreshInterval === 1, "upgrade keeps the 1 s refresh");
@@ -306,7 +358,7 @@ if (WIN) {
     }
     const out = run(tmp, "uninstall", "--project");
     ok(alive(sleeper.pid), "an unrelated process named by the heartbeat is left running");
-    if (WIN) ok(new RegExp(`left pid ${sleeper.pid} running`).test(out), "uninstall reports the pid it did not stop");
+    ok(new RegExp(`left pid ${sleeper.pid} running`).test(out), "uninstall reports the pid it did not stop");
     ok(ourFiles(tmp).length === 0, `this installation's files removed (left: ${ourFiles(tmp).join(", ")})`);
     ok(ourFiles(tmp, other).length === 2, "another installation's files are untouched");
   } finally {
@@ -316,16 +368,17 @@ if (WIN) {
 }
 
 // 11. uninstall stops a process that passes the identity check: node running this package's
-// src/daemon.js, started when the heartbeat says. A stand-in names the script without running it,
-// so no real daemon (and no pipe of this installation) is involved.
-if (WIN) {
+// src/daemon.js, started when the heartbeat says (on Linux: the start time in /proc). A stand-in
+// names the script without running it, so no real daemon (and no address of this installation)
+// is involved.
+if (WIN || process.platform === "linux") {
   const tmp = tmpdir();
   const start = Date.now();
   const fake = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)", path.join(ROOT, "src", "daemon.js")],
     { stdio: "ignore" });
   try {
     writeFileSync(path.join(tmp, `mugshot_daemon_${HASH}.json`),
-      JSON.stringify({ pid: fake.pid, start, version: "0", window: 3, renewed: start }));
+      JSON.stringify({ pid: fake.pid, start, startTicks: WIN ? undefined : procStartTicks(fake.pid), version: "0", window: 3, renewed: start }));
     const out = run(tmp, "uninstall", "--project");
     let gone = false;
     for (let i = 0; i < 40 && !gone; i++) {
@@ -339,6 +392,19 @@ if (WIN) {
     try { fake.kill(); } catch { /* already gone */ }
     rmSync(tmp, { recursive: true, force: true });
   }
+}
+
+// 12. With DOOMBAR_RUNTIME_DIR set, uninstall cleans only that directory: a heartbeat and files of
+// this installation in another candidate directory (here, an XDG runtime dir) stay.
+if (!WIN) {
+  const tmp = tmpdir();
+  const xdg = path.join(tmp, "xdg");
+  mkdirSync(path.join(xdg, "doombar"), { recursive: true, mode: 0o700 });
+  const planted = [`mugshot_daemon_${HASH}.json`, `mugshot_payload_${HASH}_s1.json`];
+  for (const n of planted) writeFileSync(path.join(xdg, "doombar", n), "x");
+  runEnv(tmp, { XDG_RUNTIME_DIR: xdg }, "uninstall", "--project");
+  ok(planted.every((n) => existsSync(path.join(xdg, "doombar", n))), "uninstall with the override leaves other runtime dirs alone");
+  rmSync(tmp, { recursive: true, force: true });
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

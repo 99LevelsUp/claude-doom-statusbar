@@ -60,13 +60,13 @@ try {
 
   const client = cmd.includes("doombar-client.sh");
   if (client) {
-    // Windows with Git Bash: Claude Code runs the command as `bash -c '<command>'`. No daemon
-    // serves this sandbox temp dir, so the client prints the offline line.
-    const bash = gitBash();
-    ok(Boolean(bash), "found the Git Bash the installer chose the client for");
+    // Claude Code runs the command through a shell: Git Bash on Windows (`bash -c '<command>'`),
+    // /bin/sh elsewhere. No daemon serves this sandbox, so the client prints the offline line.
+    const bash = process.platform === "win32" ? gitBash() : "/bin/sh";
+    ok(Boolean(bash), "found the shell Claude Code runs the client command with");
     const out = execFileSync(bash, ["-c", cmd], { input: sample, encoding: "utf-8", env });
     ok(out === "doombar: offline\n", `client command prints the offline line with no daemon (got: ${JSON.stringify(out)})`);
-    const hash = /^DOOMBAR_ROOT_HASH=([0-9a-f]+);/.exec(cmd)?.[1];
+    const hash = (/^DOOMBAR_ROOT_HASH=([0-9a-f]+);/.exec(cmd) || / "\$f" ([0-9a-f]+);/.exec(cmd))?.[1];
     ok(Boolean(hash) && existsSync(path.join(tmp, `mugshot_payload_${hash}_smoke-1.json`)),
       "the install hash reached the sourced client (payload written under it)");
     const missing = cmd.replace("src/doombar-client.sh", "src/no-such-client.sh");
