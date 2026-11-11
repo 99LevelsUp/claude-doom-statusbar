@@ -184,13 +184,30 @@ try {
   if (process.platform !== "win32") {
     console.log("  skip real-process cases: the daemon and its pipe exist on Windows only");
   } else {
-    // A session this installation's client does not serve (no payload) starts nothing.
+    // A session this installation's client does not serve (no payload) starts nothing: SessionStart
+    // gives up once its wait for the payload is over, other events do not wait at all.
     {
       const pkg = copyPackage();
-      const r = await runHook(pkg, "SessionStart");
+      const t0 = Date.now();
+      const r = await runHook(pkg, "SessionStart", { DOOMBAR_PAYLOAD_WAIT_MS: "600" });
+      const waited = Date.now() - t0;
+      const p = await runHook(pkg, "PostToolUse");
       await sleep(800);
-      ok(r.code === 0 && lines(pkg, "spawn").length === 0,
-        `without this session's payload for this installation the hook starts no daemon ${r.err}`);
+      ok(r.code === 0 && p.code === 0 && lines(pkg, "spawn").length === 0,
+        `without this session's payload for this installation the hook starts no daemon ${r.err}${p.err}`);
+      ok(waited >= 600, `SessionStart waits for the payload before giving up (${waited} ms)`);
+    }
+
+    // The morning start: SessionStart runs before the client's first tick has written the payload.
+    // The hook waits for it and starts the daemon then, without a tool call or Stop.
+    {
+      const pkg = copyPackage();
+      const hook = runHook(pkg, "SessionStart", { DOOMBAR_PAYLOAD_WAIT_MS: "5000" });
+      await sleep(700);
+      writePayload(pkg);
+      const r = await hook;
+      ok(await waitFor(() => lines(pkg, "bound").length > 0), "a payload written after SessionStart still starts the daemon");
+      ok(r.code === 0 && lines(pkg, "spawn").length === 1, `SessionStart spawns exactly one daemon ${r.err}`);
     }
 
     // Pipe unbound, no heartbeat: SessionStart starts the real daemon and kills nothing.

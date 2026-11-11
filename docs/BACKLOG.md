@@ -30,7 +30,7 @@ Owner's order: daemon first, renderer second, minimap and WC3 after. The daemon 
 | D-11 | Crash-only daemon with a version-named pipe as singleton and upgrade path (Part 6 idea 5). Absorbed by D-1: one pipe per installation, version mismatch restarts the daemon | done with D-1 |
 | D-12 | Cell-space compositor with two resolvers: lookup table for map and chrome, error search for portrait (Part 6 idea 6). Shape of D-3 | idea |
 | D-13 | XP from resolved work, kept per repo (Part 6 idea 7). For D-6 / G-8 | idea |
-| D-14 | A new session shows `doombar: offline` for about 3 s before its first frame, even with the daemon running (live test 2026-11-11): the first statusLine call writes the payload and finds no frame. With no daemon running, the first frame waits for the first hook after the payload exists | idea |
+| D-14 | A new session shows `doombar: offline` for about 3 s before its first frame, even with the daemon running (live test 2026-11-11): the first statusLine call writes the payload and finds no frame. (With no daemon running, `SessionStart` now waits up to 10 s for the payload and starts the daemon then; before, the first frame waited for the first tool call or Stop) | idea |
 
 ## Housekeeping: temp-file leaks and wasted hook work
 Source: [ideation/2026-10-31-temp-file-leaks-and-hook-cost.md](ideation/2026-10-31-temp-file-leaks-and-hook-cost.md)

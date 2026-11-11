@@ -174,6 +174,8 @@ export function reapStaleShells() {
 const DAEMON_JS = path.join(PACKAGE_ROOT, "src", "daemon.js");
 const DAEMON_THROTTLE_MS = envNum(process.env.DOOMBAR_DAEMON_THROTTLE_MS, 15000);
 const DAEMON_GRACE_MS = envNum(process.env.DOOMBAR_DAEMON_GRACE_MS, 20000);
+const PAYLOAD_WAIT_MS = envNum(process.env.DOOMBAR_PAYLOAD_WAIT_MS, 10000);
+const PAYLOAD_POLL_MS = 200;
 const PROBE_MS = 150;
 const LOCK_STALE_MS = 2000; // a lock holder does a few file operations; older means it died
 const START_SLACK_MS = 2000; // heartbeat start vs the process list's creation time
@@ -343,11 +345,24 @@ async function restartDaemon(judged, since, paths, pipe) {
   spawnDaemon();
 }
 
+// Resolves true once `file` exists, polling until `waitMs` has passed.
+export async function waitForFile(file, waitMs, pollMs = PAYLOAD_POLL_MS) {
+  for (const end = Date.now() + waitMs; !existsSync(file);) {
+    if (Date.now() >= end) return false;
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
+  return true;
+}
+
 async function superviseDaemon(name, sid) {
   if (process.platform !== "win32" || !DAEMON_EVENTS.has(name)) return;
   const hash = rootHash(PACKAGE_ROOT);
   // Only where this installation's client is in use: it has written this session's payload.
-  if (!existsSync(sessionPaths(sid, hash).payload)) return;
+  // SessionStart usually comes before the client's first tick, so it waits for the payload
+  // (the hook is installed async; nothing waits on it). Without that wait, a session that finds
+  // no daemon running shows the offline line until its first tool call or Stop.
+  const waitMs = name === "SessionStart" ? PAYLOAD_WAIT_MS : 0;
+  if (!(await waitForFile(sessionPaths(sid, hash).payload, waitMs))) return;
   const paths = daemonPaths(hash), pipe = pipePath(hash);
   if (!(await probePipe(pipe))) {
     if (claimRestart(paths.claim, Date.now())) spawnDaemon();
