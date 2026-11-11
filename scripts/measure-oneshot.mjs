@@ -1,8 +1,13 @@
 #!/usr/bin/env node
-// What the face costs the one-shot status line (Linux and macOS, where no render daemon runs):
-// each run starts `node src/statusline.js` as Claude Code does, cold, with the richest glyph
-// step, once with the built-in converter and once with chafa. Prints the median wall time of
-// each and their difference. Usage: node scripts/measure-oneshot.mjs [runs]
+// What the one-shot status line costs (Linux and macOS, where no render daemon runs): each run
+// starts `node src/statusline.js` as Claude Code does, with the richest glyph step. The first run
+// converts the face; later runs read it from the disk cache. Prints both.
+//
+// For reference, before the built-in converter replaced chafa, the median of 21 runs on the
+// GitHub Actions runners was 81.0 ms with chafa against 62.8 ms built-in on ubuntu-latest, and
+// 130.1 ms against 98.2 ms on macos-latest (11.11.2026).
+//
+// Usage: node scripts/measure-oneshot.mjs [runs]
 
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -21,39 +26,29 @@ const payload = JSON.stringify({
   cost: { total_cost_usd: 0.42, total_duration_ms: 120000, total_api_duration_ms: 30000 },
 });
 
+const env = {
+  ...process.env, TEMP: sandbox, TMP: sandbox, TMPDIR: sandbox, COLUMNS: "200",
+  DOOMBAR_GLYPHS: "octant", DOOMBAR_PRESET: path.join(ROOT, "presets", "full.toml"),
+  DOOMBAR_THEME: "doom", DOOMBAR_RATELIMITS_SHARE: "0", DOOMBAR_MSYS_REAP: "0",
+};
+
+function run() {
+  const t = performance.now();
+  const r = spawnSync(process.execPath, [path.join(ROOT, "src", "statusline.js")], { input: payload, env, encoding: "utf8" });
+  const ms = performance.now() - t;
+  if (r.status !== 0) throw new Error(`statusline exited ${r.status}: ${r.stderr}`);
+  return ms;
+}
+
 const median = (xs) => { const s = [...xs].sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
 
-function measure(renderer) {
-  const env = {
-    ...process.env, TEMP: sandbox, TMP: sandbox, TMPDIR: sandbox, COLUMNS: "200",
-    DOOMBAR_GLYPHS: "octant", DOOMBAR_PRESET: path.join(ROOT, "presets", "full.toml"),
-    DOOMBAR_THEME: "doom", DOOMBAR_RATELIMITS_SHARE: "0", DOOMBAR_MSYS_REAP: "0",
-  };
-  if (renderer) env.DOOMBAR_FACE_RENDERER = renderer; else delete env.DOOMBAR_FACE_RENDERER;
-  const times = [];
-  for (let i = 0; i < RUNS; i++) {
-    const t = performance.now();
-    const r = spawnSync(process.execPath, [path.join(ROOT, "src", "statusline.js")], { input: payload, env, encoding: "utf8" });
-    times.push(performance.now() - t);
-    if (r.status !== 0) throw new Error(`statusline exited ${r.status}: ${r.stderr}`);
-  }
-  return median(times);
-}
-
-const chafa = spawnSync("chafa", ["--version"], { encoding: "utf8" });
-if (chafa.error) {
-  console.error("chafa is not on PATH; install it first (apt-get install chafa / brew install chafa)");
-  process.exit(2);
-}
 try {
-  measure(null); // warm the file system cache for both runs
-  const builtin = measure(null);
-  const viaChafa = measure("chafa");
-  console.log(`platform ${process.platform} ${os.arch()}, node ${process.version}, ${chafa.stdout.split("\n")[0]}`);
-  console.log(`one-shot render, median of ${RUNS} cold runs at the octant step:`);
-  console.log(`  built-in face: ${builtin.toFixed(1)} ms`);
-  console.log(`  chafa face:    ${viaChafa.toFixed(1)} ms`);
-  console.log(`  built-in minus chafa: ${(builtin - viaChafa).toFixed(1)} ms (${builtin <= viaChafa ? "within" : "OVER"} the target)`);
+  const first = run();
+  const cached = median(Array.from({ length: RUNS }, run));
+  console.log(`platform ${process.platform} ${os.arch()}, node ${process.version}`);
+  console.log("one-shot render at the octant step:");
+  console.log(`  first run, converts the face:     ${first.toFixed(1)} ms`);
+  console.log(`  median of ${RUNS}, face from the cache: ${cached.toFixed(1)} ms`);
 } finally {
   rmSync(sandbox, { recursive: true, force: true });
 }

@@ -349,8 +349,8 @@ function main() {
   for (const n of notes) console.log(`  note       : ${n}`);
   console.log();
   console.log("Next:");
-  console.log("  1. (optional) install chafa for a sharper mugshot; without it a pre-rendered face is used.");
-  console.log("  2. restart Claude Code.");
+  console.log("  1. restart Claude Code.");
+  console.log("  2. (optional) run `claude-doom-statusbar test-card` to see which glyphs this terminal draws.");
   console.log("  Clickable links need FORCE_HYPERLINK=1 (set for you here; on Windows Terminal you may");
   console.log("  also need to launch with it:  $env:FORCE_HYPERLINK='1'; claude ).");
 }

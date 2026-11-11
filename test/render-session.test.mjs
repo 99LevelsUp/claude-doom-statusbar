@@ -40,7 +40,7 @@ mkdirSync(TMPDIR, { recursive: true });
 // tests must not pick the mugshot's glyphs, so its identifying variables go.
 Object.assign(process.env, { TEMP: TMPDIR, TMP: TMPDIR, TMPDIR, PATH: "", DOOMBAR_MSYS_REAP: "0",
   DOOMBAR_THEME: "doom", DOOMBAR_RATELIMITS_SHARE: "0", DOOMBAR_PRESET: path.join(PRESETS, "minimal.toml") });
-for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "DOOMBAR_GLYPHS", "DOOMBAR_FACE_RENDERER"]) delete process.env[k];
+for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "DOOMBAR_GLYPHS"]) delete process.env[k];
 const { renderSession } = await import("../src/statusline.js");
 
 const NOW_MS = 1793500000123;

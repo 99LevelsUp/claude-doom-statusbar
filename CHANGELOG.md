@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **The mugshot no longer needs chafa.** The bar converts the face to block glyphs itself, at
+  any height, so no process starts to draw it and it looks the same with or without chafa
+  installed. The conversion samples the sprite smoothly and picks each cell's glyph by its shape,
+  as chafa does; side by side with chafa on all 42 faces it drew the cleaner outlines. The
+  pre-rendered `.ans` faces are gone from the package, and chafa is no longer used at all.
+- **The face's glyphs follow the terminal.** Windows Terminal, kitty and Ghostty get octants,
+  VS Code, WezTerm and VTE terminals wedges, tmux, screen and unknown terminals half blocks,
+  which every font draws. `DOOMBAR_GLYPHS` overrides the pick, and the presets' `[mugshot]
+  glyphs` key caps it for the face.
 - **Finished tasks stay in the count for the whole session.** Ten seconds after the last task
   settles only the task list empties; the count no longer drops back to zero. When Claude Code
   cleans up a finished list (it deletes the task files and keeps `.highwatermark`), the tasks
@@ -30,6 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the machine's real temp directory. The test suite now leaves nothing there.
 
 ### Added
+- **`claude-doom-statusbar test-card`** prints every glyph step and the mugshot drawn at each,
+  then names the step the bar picked for this terminal.
 - Snapshot tests that pin what the DOOM presets and the Minecraft hotbar draw, and a Linux test
   workflow that runs the suite on every push to `master`.
 

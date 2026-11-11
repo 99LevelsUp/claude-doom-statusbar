@@ -16,7 +16,6 @@ import { fileURLToPath } from "node:url";
 import { decodePng } from "../src/png.js";
 import { convertImage, faceSize } from "../src/glyph-render.js";
 import { STEPS } from "../src/glyphs.js";
-import { toFace } from "../src/face.js";
 import { scoreFace } from "./face-score.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -38,7 +37,47 @@ const names = readdirSync(ALPHA).filter((f) => f.endsWith(".png")).map((f) => f.
   .filter((n) => !only || n === only).sort();
 const images = new Map(names.map((n) => [n, decodePng(readFileSync(path.join(ALPHA, n + ".png")))]));
 
-// chafa's output as face rows, in the same shape the converter returns.
+// chafa's ANSI output as exactly `rows` rows of [char, fg, bg] cells, the shape the converter
+// returns. Reverse video (7) swaps the colours, as the terminal would.
+function toFace(text, rows) {
+  const out = [];
+  let row = [], fgc = null, bgc = null, rev = false;
+  const chars = [...text]; // code points: the glyphs are astral
+  for (let i = 0; i < chars.length; i++) {
+    const c = chars[i];
+    if (c === "\r") continue;
+    if (c === "\n") { out.push(row); row = []; continue; }
+    if (c === "\x1b" && chars[i + 1] === "[") {
+      let j = i + 2;
+      while (j < chars.length && !/[A-Za-z]/.test(chars[j])) j++;
+      if (chars[j] === "m") {
+        const ps = chars.slice(i + 2, j).join("").split(";").map((p) => (p === "" ? 0 : Number(p)));
+        for (let k = 0; k < ps.length; k++) {
+          const p = ps[k];
+          if (p === 0) { fgc = null; bgc = null; rev = false; }
+          else if (p === 7) rev = true;
+          else if (p === 27) rev = false;
+          else if (p === 39) fgc = null;
+          else if (p === 49) bgc = null;
+          else if ((p === 38 || p === 48) && ps[k + 1] === 2 && k + 4 < ps.length) {
+            const col = ps.slice(k + 2, k + 5);
+            if (p === 38) fgc = col; else bgc = col;
+            k += 4;
+          }
+        }
+      }
+      i = j;
+      continue;
+    }
+    row.push(rev ? [c, bgc, fgc] : [c, fgc, bgc]);
+  }
+  if (row.length) out.push(row);
+  const face = out.slice(0, rows);
+  while (face.length < rows) face.push([]);
+  return face;
+}
+
+// chafa's face for one sprite at the converter's size.
 function chafaFace(name, rows, symbols) {
   const img = images.get(name);
   const size = faceSize(img.width, img.height, rows);

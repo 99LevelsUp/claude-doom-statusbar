@@ -1,7 +1,7 @@
 name: One-shot face cost
 
-# Measures what drawing the mugshot costs the one-shot status line on Linux and macOS (no render
-# daemon there), built-in converter against chafa, at the richest glyph step. Runs when the
+# Measures what the one-shot status line costs on Linux and macOS (no render daemon there) at the
+# richest glyph step, with the face converted and with it read from the disk cache. Runs when the
 # converter or the measurement changes, and by hand.
 
 on:
@@ -33,19 +33,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-
-      # Homebrew is preinstalled on the Linux runners too, and does not depend on the Ubuntu archive
-      # mirrors, which have failed to resolve on these runners.
-      - name: Install chafa (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-          brew install chafa
-          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
-
-      - name: Install chafa (macOS)
-        if: runner.os == 'macOS'
-        run: brew install chafa
 
       - name: Install dependencies
         run: npm ci

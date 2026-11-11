@@ -38,8 +38,7 @@ syncBuiltinESMExports();
 const SB = mkdtempSync(path.join(os.tmpdir(), "doombar-daemon-"));
 const TMPDIR = path.join(SB, "tmp");
 for (const d of ["tmp", "tasks", "proj"]) mkdirSync(path.join(SB, d), { recursive: true });
-// Before the imports: statusline.js takes its temp dir when it loads. No chafa on PATH, so an
-// opt-in chafa face falls back to the built-in one.
+// Before the imports: statusline.js takes its temp dir when it loads.
 const SANDBOX_ENV = {
   TEMP: TMPDIR, TMP: TMPDIR, TMPDIR, PATH: "", DOOMBAR_MSYS_REAP: "0", DOOMBAR_THEME: "doom",
   DOOMBAR_THEME_FILE: path.join(SB, "no-theme.json"), DOOMBAR_RATELIMITS_SHARE: "0",
@@ -49,13 +48,11 @@ const SANDBOX_ENV = {
 };
 Object.assign(process.env, SANDBOX_ENV);
 // The terminal that runs the tests must not pick the mugshot's glyphs for one side of a comparison.
-for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "DOOMBAR_GLYPHS", "DOOMBAR_FACE_RENDERER"]) delete process.env[k];
+for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "DOOMBAR_GLYPHS"]) delete process.env[k];
 const { renderSession } = await import("../src/statusline.js");
 const { sessionPaths, daemonPaths, rootHash } = await import("../src/fold.js");
 const { parseFrame } = await import("../src/frame.js");
-const { setFaceNoSpawn } = await import("../src/face.js");
 const { createState, runPass, pipePath, maybeStartReaper } = await import("../src/daemon.js");
-setFaceNoSpawn(true);
 
 const HASH = rootHash();
 const OTHER = rootHash(path.join(SB, "elsewhere"));

@@ -14,17 +14,14 @@ Last reviewed: 11.11.2026 (0.13.1).
 ## Render daemon, glyph renderer, minimap
 Source: [ideation/2026-11-09-render-daemon-and-minimap.md](ideation/2026-11-09-render-daemon-and-minimap.md)
 
-Owner's order: daemon first, renderer second, minimap and WC3 after. The daemon (D-1) is done, see *Done*; next is the renderer (D-3, gated by D-8).
+Owner's order: daemon first, renderer second, minimap and WC3 after. The daemon (D-1) and the renderer (D-3, D-4, D-8) are done, see *Done*; next are the minimap and WC3.
 
 | ID | Item | Status |
 |---|---|---|
 | D-2 | Hook events into the daemon without a spawn per tool call (HTTP hooks, if Claude Code supports them and fails safe) | idea |
-| D-3 | Built-in bitmap → glyph renderer: per-cell search like chafa, a glyph set per image, capped by a terminal level read from the terminal type. Requirements: [plans/2026-11-11-1150-feat-builtin-glyph-renderer-plan.md](plans/2026-11-11-1150-feat-builtin-glyph-renderer-plan.md) (with D-8 as its gate and D-4 as its verdict) | next, planned |
-| D-4 | Compare the built-in renderer with chafa on the mugshot; drop chafa if close enough. The owner decides by eye, the D-8 score informs (D-3 plan, R11–R12) | next, with D-3 |
 | D-5 | WC3 minimap: layered metrics (terrain, fog, units per agent, pings), map larger than the view, event-driven camera. Which metric goes to which layer is open | idea |
 | D-6 | WC3 console elements beyond the minimap: portrait with races (original art), info panel, inventory, command card, resource bar, day/night clock | idea |
 | D-7 | Frame reel with a deadline, read by a write-once client (Part 6 idea 1). The deadline header shipped with D-1 (`slots=1`); the multi-slot reel is still open | open |
-| D-8 | Glyph truth on the real terminal: test card + fallback ladder, render-back error score vs chafa (Part 6 idea 2). Gate for D-3 and D-4, part of the D-3 plan (R6, R9, R10) | next, with D-3 |
 | D-9 | Per-repo ledger behind the map, "changed since Claude read it" layer, provenance, allied sessions (Part 6 idea 3). Data model for D-5 | idea |
 | D-10 | Animation cadence per element: telemetry on data arrival, effects as fast as the display allows (~10 ms), DOOM mugshot fixed at ~1 s; pose-to-pose sampling where the display is 1 Hz (Part 6 idea 4). For D-6 portrait | idea |
 | D-11 | Crash-only daemon with a version-named pipe as singleton and upgrade path (Part 6 idea 5). Absorbed by D-1: one pipe per installation, version mismatch restarts the daemon | done with D-1 |
@@ -125,6 +122,9 @@ Source: [ideation/2026-06-06-doom-statusbar-ideation.md](ideation/2026-06-06-doo
 | Snapshot tests of the DOOM presets and the Minecraft hotbar, Linux test workflow on every push (G-1) | unreleased |
 | Hooks leave a starved daemon alone while the machine is busy (P-5: under 150 s of full load the old hooks claimed two restarts, spending a PowerShell identity check and a new node each; now none) | unreleased |
 | Render daemon per installation with a builtins-only bash client, deadline frames greyed OFFLINE when stale, hook supervision (D-1, absorbs D-11 and P-2; Windows with Git Bash) | unreleased |
+| Built-in bitmap → glyph renderer for the mugshot: smooth sampling, chafa-style shape shortlist, glyph step per image capped by the terminal type, disk cache for the one-shot status line (D-3; [plan](plans/2026-11-11-1150-feat-builtin-glyph-renderer-plan.md)) | unreleased |
+| Glyph truth on the real terminal: `test-card` command, fallback ladder half → quadrant → sextant → wedge → octant, OKLab render-back score in `scripts/compare-faces.mjs` (D-8). Owner's check 11.11.2026: Windows Terminal draws every step, so it gets octants; the console host could not be started on the owner's PC and gets half blocks | unreleased |
+| chafa dropped (D-4). Owner's verdict 11.11.2026 from the side-by-side faces: the built-in conversion is better than chafa at the same step and than the set the bar used before. The one-shot cost is lower too: 62.8 vs 81.0 ms on ubuntu-latest, 98.2 vs 130.1 ms on macos-latest (median of 21) | unreleased |
 
 ## Won't do
 

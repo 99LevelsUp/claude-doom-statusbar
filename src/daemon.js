@@ -20,7 +20,6 @@ import { writeFrame } from "./frame.js";
 import {
   rootHash, daemonPaths, payloadPrefix, framePrefix, writeAtomic, pipePath, PACKAGE_ROOT, envNum, packageVersion,
 } from "./fold.js";
-import { setFaceNoSpawn } from "./face.js";
 
 export { pipePath };
 
@@ -38,7 +37,7 @@ const SRC_CHECK_MS = 2000;
 export const FORWARDED_ENV = [
   "COLUMNS", "DOOMBAR_PRESET", "DOOMBAR_THEME", "DOOMBAR_TEXT_OVERFLOW", "DOOMBAR_INDENT", "DOOMBAR_FRAME_WINDOW",
   "MUGSHOT_STATE", "CLAUDE_CODE_TASK_LIST_ID", "CLAUDE_CONFIG_DIR",
-  "WT_SESSION", "TERM_PROGRAM", "TMUX", "DOOMBAR_GLYPHS", "DOOMBAR_FACE_RENDERER",
+  "WT_SESSION", "TERM_PROGRAM", "TMUX", "DOOMBAR_GLYPHS",
 ];
 const sessionEnv = (forwarded) => {
   const env = { ...process.env };
@@ -196,7 +195,6 @@ export function startDaemon({ root = PACKAGE_ROOT, env = process.env } = {}) {
     server.listen(pipePath(hash), () => {
       try { os.setPriority(os.constants.priority.PRIORITY_BELOW_NORMAL); } catch {}
       try { process.chdir(dir); } catch {}
-      setFaceNoSpawn(true);
 
       const src = path.join(root, "src");
       const original = srcSnapshot(src);

@@ -783,12 +783,11 @@ export function renderSession({ data, env = process.env, now = Date.now() / 1000
   if (headroom !== null) values["health.headroom"] = headroom;
   // Right before the builders, which read these values: no other session's render may come
   // between this call and the bar it feeds. The face options are the same kind of slot: the glyph
-  // step this session's terminal allows for the mugshot, and the renderer that draws it.
+  // step this session's terminal allows for the mugshot, and the background it is fitted against.
   setValues(values);
   const mugshot = cfg.mugshot || {};
   setFaceOptions({
     step: effectiveStep(env, mugshot.glyphs),
-    renderer: env.DOOMBAR_FACE_RENDERER,
     background: rgbOf(mugshot.background ?? "#000000"),
   });
 

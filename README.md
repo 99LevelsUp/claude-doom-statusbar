@@ -26,8 +26,7 @@ Anything the session can't supply is hidden automatically, so the same config de
 ## Requirements
 
 - **Node.js 18+**. One runtime dependency (`smol-toml`, a TOML parser); everything else is Node built-ins.
-- **[chafa](https://hpjansson.org/chafa/)** — *optional*. With it, the mugshot rasterises at any height. Without it, the HUD falls back to pre-rendered ANSI faces (heights 4–16, clamped to the nearest), so the mugshot still draws.
-- A terminal with **truecolor** and **legacy-computing glyph** support (the mugshot and fine bars use Unicode block/sextant/octant glyphs). Windows Terminal, WezTerm, kitty, foot all work.
+- A terminal with **truecolor**. The mugshot is converted to block glyphs inside the bar at any height, with no external tool; terminals that draw the Unicode legacy-computing glyphs (sextants, wedges, octants) get a finer face, and the rest get half blocks (see [Glyph test card](#glyph-test-card)). Windows Terminal, WezTerm, kitty, Ghostty and foot all work.
 
 ## Install
 
@@ -139,7 +138,18 @@ The mugshot is drawn with block glyphs, from plain half blocks up to Unicode 16 
 npx claude-doom-statusbar test-card
 ```
 
-It prints each glyph step in turn, then the mugshot drawn at every step. A step whose glyphs show as boxes, question marks or gaps is one this terminal cannot draw.
+It prints each glyph step in turn, then the mugshot drawn at every step. A step whose glyphs show as boxes, question marks or gaps is one this terminal cannot draw. The last line names the step the bar picked for this terminal.
+
+The steps, from plainest to richest: `half`, `quadrant`, `sextant`, `wedge`, `octant`. The bar picks one from the terminal type:
+
+| Terminal | Step |
+|---|---|
+| tmux or screen (`TMUX` set, or `TERM` starting with `tmux` or `screen`) | `half` |
+| Windows Terminal (`WT_SESSION`), kitty, Ghostty | `octant` |
+| VS Code, WezTerm, VTE-based terminals (GNOME Terminal, Tilix, …) | `wedge` |
+| anything else | `half` |
+
+Set `DOOMBAR_GLYPHS` to one of the step names to override the pick, for example `DOOMBAR_GLYPHS=sextant` when the font lacks octants. The preset's `[mugshot] glyphs` key caps the step for the image itself; the face uses the lower of the two.
 
 ## Presets
 
@@ -169,7 +179,7 @@ On **Windows with Git Bash** the statusLine command is a bash client, not a rend
 
 - **`src/statusline.js`** is the one-shot statusLine command (and the renderer the daemon calls). Claude Code pipes session JSON on stdin; it maps that (plus the hook's git snapshot, system metrics from Node built-ins, and the hook state file) to metric values, picks the mugshot sprite, and renders the preset. It spawns nothing — git moved into the hook precisely to keep the render path free of child processes.
 - **`src/hook.js`** is an event bus. Lifecycle hooks write a small state file (face reaction with decay, tool-run intervals for the geiger, the running-subagent squad). The status line reads it on each refresh — the two never block each other. Those files live in the temp directory keyed by session id (or next to `MUGSHOT_STATE` when set). `SessionEnd` deletes a session's files when it ends, keeping only its savings total for a later resume. `SessionStart` sweeps what is left by sessions that ended without it: a session that never showed a bar (a headless `claude -p` run) after `DOOMBAR_UNRENDERED_TTL` (default 1 hour), any other after `DOOMBAR_JOURNAL_TTL` (default 7 days, `off` to disable). Shared state and a live session's files are never touched. Re-run `install` after upgrading to add the `SessionEnd` hook.
-- **`src/render.js`** is the rendering engine; **`src/face.js`** rasterises the mugshot via chafa (with pre-baked transparent sprites as the fallback). **`bin/cli.js`** is the installer.
+- **`src/render.js`** is the rendering engine; **`src/face.js`** draws the mugshot from pre-baked transparent sprites, converted to glyphs by **`src/glyph-render.js`** with the step **`src/glyph-level.js`** picks for the terminal. **`bin/cli.js`** is the installer.
 
 See [`docs/ideation/`](docs/ideation/) for the full design write-up.
 
@@ -199,7 +209,7 @@ The daemon gives every frame a validity window (`DOOMBAR_FRAME_WINDOW`, default 
 ## Credits
 
 - The status-face sprites are from **DOOM** (1993), id Software. The Minecraft theme is a fan-made look; this project isn't affiliated with Mojang.
-- Mugshot rasterisation by **[chafa](https://hpjansson.org/chafa/)** (Hans Petter Jansson).
+- The mugshot's glyph conversion follows the approach of **[chafa](https://hpjansson.org/chafa/)** (Hans Petter Jansson), which drew it in earlier versions.
 - Prior art that shaped what this HUD shows: **[claude-hud](https://github.com/jarrodwatts/claude-hud)** and **[ccstatusline](https://github.com/sirmalloc/ccstatusline)**.
 
 ## License

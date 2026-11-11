@@ -24,7 +24,7 @@ const HASH = "abc1234567";
 const OFFLINE = "doombar: offline\n";
 const FORWARDED = ["COLUMNS", "DOOMBAR_PRESET", "DOOMBAR_THEME", "DOOMBAR_TEXT_OVERFLOW",
   "DOOMBAR_INDENT", "DOOMBAR_FRAME_WINDOW", "MUGSHOT_STATE", "CLAUDE_CODE_TASK_LIST_ID", "CLAUDE_CONFIG_DIR",
-  "WT_SESSION", "TERM_PROGRAM", "TMUX", "DOOMBAR_GLYPHS", "DOOMBAR_FACE_RENDERER"];
+  "WT_SESSION", "TERM_PROGRAM", "TMUX", "DOOMBAR_GLYPHS"];
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
