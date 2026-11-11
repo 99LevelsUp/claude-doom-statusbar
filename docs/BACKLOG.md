@@ -28,6 +28,7 @@ Owner's order: daemon first, renderer second, minimap and WC3 after. The daemon 
 | D-12 | Cell-space compositor with two resolvers: lookup table for map and chrome, error search for portrait (Part 6 idea 6). Shape of D-3 | idea |
 | D-13 | XP from resolved work, kept per repo (Part 6 idea 7). For D-6 / G-8 | idea |
 | D-14 | A new session shows `doombar: offline` for about 3 s before its first frame, even with the daemon running (live test 2026-11-11): the first statusLine call writes the payload and finds no frame. (With no daemon running, `SessionStart` now waits up to 10 s for the payload and starts the daemon then; before, the first frame waited for the first tool call or Stop) | idea |
+| D-15 | Render daemon and bash client on Linux (and macOS with bash 5): `exec bash` from dash, a path socket and per-session files in a private 0700 directory, `/proc` identity check, platform temp order. Pi 5: ~1.5–2 ms per tick instead of ~250 ms. Findings: [ideation/2026-11-11-render-daemon-on-linux.md](ideation/2026-11-11-render-daemon-on-linux.md). Overlaps L-A | next |
 
 ## Housekeeping: temp-file leaks and wasted hook work
 Source: [ideation/2026-10-31-temp-file-leaks-and-hook-cost.md](ideation/2026-10-31-temp-file-leaks-and-hook-cost.md)
@@ -35,7 +36,7 @@ Source: [ideation/2026-10-31-temp-file-leaks-and-hook-cost.md](ideation/2026-10-
 | ID | Item | Status |
 |---|---|---|
 | L-D | No git / tasklist probes in headless sessions (verify `CLAUDE_CODE_ENTRYPOINT` or probe only after first render) | open |
-| L-A | Own directory `%TEMP%/claude-game-bar/<session>/`, sweep lists only that; first sweep removes old-style files | open, with R-1 |
+| L-A | Own directory `%TEMP%/claude-game-bar/<session>/`, sweep lists only that; first sweep removes old-style files. On Linux and macOS it must be private (0700, see D-15) | open, with R-1 |
 | L-H | Give the savings file a bar-specific prefix (the sweep now owns the generic `savings_` prefix in the temp dir) and narrow `.tmp` cleanup to bar-owned names under a custom `MUGSHOT_STATE`; both disappear with L-A | open, with L-A |
 | L-I | An async Stop hook still running at session end can recreate a journal line or git marker after SessionEnd cleanup; the 1-hour sweep collects them. Revisit with L-A | idea |
 | L-J | Add a `windows-latest` job to the Test workflow; Windows runs only locally today | idea |
