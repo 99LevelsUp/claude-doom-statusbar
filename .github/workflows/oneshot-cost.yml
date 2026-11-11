@@ -34,9 +34,14 @@ jobs:
         with:
           node-version: 22
 
+      # Homebrew is preinstalled on the Linux runners too, and does not depend on the Ubuntu archive
+      # mirrors, which have failed to resolve on these runners.
       - name: Install chafa (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y chafa
+        run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          brew install chafa
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
 
       - name: Install chafa (macOS)
         if: runner.os == 'macOS'
