@@ -47,7 +47,7 @@ function run(tmp, ...args) {
 }
 function runEnv(tmp, env, ...args) {
   return execFileSync(process.execPath, [CLI, ...args],
-    { cwd: tmp, encoding: "utf-8", env: withEnv({ TEMP: tmp, TMP: tmp, TMPDIR: tmp, ...env }) });
+    { cwd: tmp, encoding: "utf-8", env: withEnv({ TEMP: tmp, TMP: tmp, TMPDIR: tmp, DOOMBAR_NO_FONTS: "1", ...env }) });
 }
 const settingsPath = (tmp) => path.join(tmp, ".claude", "settings.json");
 const read = (tmp) => JSON.parse(readFileSync(settingsPath(tmp), "utf-8"));

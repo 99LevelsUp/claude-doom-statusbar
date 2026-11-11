@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **The installer makes sure Linux can draw the emoji.** On Linux, `install` asks fontconfig
+  whether a font covers the bar's emoji. If none does, it downloads Noto Color Emoji v2.051,
+  checks its SHA-256 and installs it for the user (`~/.local/share/fonts`, no `sudo`), then runs
+  `fc-cache`. It installs nothing over SSH and skips Windows and macOS, which ship emoji fonts.
+  `--no-fonts` or `DOOMBAR_NO_FONTS=1` turns it off.
+- **`claude-doom-statusbar test-card`** prints every glyph step and the mugshot drawn at each,
+  then names the step the bar picked for this terminal.
+- Snapshot tests that pin what the DOOM presets and the Minecraft hotbar draw, and a Linux test
+  workflow that runs the suite on every push to `master`.
+
 ### Changed
 - **The mugshot no longer needs chafa.** The bar converts the face to block glyphs itself, at
   any height, so no process starts to draw it and it looks the same with or without chafa
@@ -37,12 +48,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Every per-session file follows `MUGSHOT_STATE`.** The probe markers, the advisor cache and
   the savings file used to go to the system temp directory regardless, so `npm test` wrote into
   the machine's real temp directory. The test suite now leaves nothing there.
-
-### Added
-- **`claude-doom-statusbar test-card`** prints every glyph step and the mugshot drawn at each,
-  then names the step the bar picked for this terminal.
-- Snapshot tests that pin what the DOOM presets and the Minecraft hotbar draw, and a Linux test
-  workflow that runs the suite on every push to `master`.
 
 ## [0.13.1] - 2026-10-31
 
