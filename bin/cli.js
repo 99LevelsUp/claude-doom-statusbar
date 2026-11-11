@@ -10,6 +10,7 @@
 //   claude-doom-statusbar theme minecraft       # switch game theme: doom | minecraft
 //   claude-doom-statusbar theme next            # cycle to the next theme
 //   claude-doom-statusbar theme                 # list themes, show the current one
+//   claude-doom-statusbar test-card             # show which glyphs this terminal draws
 //
 // It merges into your existing settings (other hooks / statusline are preserved or
 // backed up), is safe to re-run, and prints what to do next.
@@ -21,6 +22,9 @@ import { fileURLToPath } from "node:url";
 import { THEMES, THEME_NAMES, currentTheme, saveTheme, nextTheme, resolveTheme } from "../src/theme.js";
 import { rootHash, daemonPaths, daemonPrefix, payloadPrefix, framePrefix } from "../src/fold.js";
 import { confirmedDaemonPid } from "../src/hook.js";
+import { STEPS, testCardLines } from "../src/glyphs.js";
+import { convertImage } from "../src/glyph-render.js";
+import { decodePng } from "../src/png.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url)); // bin/
 const ROOT = path.dirname(HERE); // package root
@@ -250,6 +254,7 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a === "install" || a === "uninstall") out.cmd = a;
     else if (a === "theme" || a === "themes") { out.cmd = "theme"; out.theme = argv[++i] ?? null; }
+    else if (a === "test-card") out.cmd = "test-card";
     else if (a === "--uninstall") out.cmd = "uninstall";
     else if (a === "--project") out.project = true;
     else if (a === "--preset") out.preset = argv[++i];
@@ -289,9 +294,28 @@ function theme(name) {
   }
 }
 
+// The glyph test card, then one mugshot drawn at every step side by side, so the steps this
+// terminal draws correctly can be judged by eye.
+function testCard() {
+  console.log("Glyph test card: each step below should show clean block shapes, no boxes, question");
+  console.log("marks or gaps. The last step that looks right is the richest one this terminal can draw.\n");
+  for (const line of testCardLines()) console.log(line);
+  const img = decodePng(readFileSync(path.join(ROOT, "assets", "images", "mugshot", "alpha", "STFST01.png")));
+  const faces = STEPS.map((step) => convertImage(img, 8, step));
+  const width = Math.max(...faces.flatMap((f) => f.map((r) => r.length)));
+  const cell = ([ch, fg, bg]) => `\x1b[38;2;${(fg || [0, 0, 0]).join(";")}m\x1b[48;2;${(bg || [0, 0, 0]).join(";")}m${ch}`;
+  console.log("\nThe mugshot at each step:");
+  console.log("  " + STEPS.map((s) => s.padEnd(width + 2)).join(""));
+  for (let r = 0; r < 8; r++) {
+    const parts = faces.map((f) => (f[r] || []).map(cell).join("") + "\x1b[0m" + " ".repeat(width + 2 - (f[r] || []).length));
+    console.log("  " + parts.join(""));
+  }
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.cmd === "theme") return theme(args.theme);
+  if (args.cmd === "test-card") return testCard();
   const p = settingsFile(args.project);
   const cfg = load(p);
 

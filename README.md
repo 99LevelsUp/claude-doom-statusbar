@@ -131,6 +131,16 @@ The colour of your model's name in the Minecraft chat follows Claude Code's reas
 
 The choice is saved in `~/.claude/doombar-theme.json`; set `DOOMBAR_THEME` to override it for one shell. To change what's in the hotbar, edit the `[[slot]]` entries in `presets/minecraft.toml`; to change the chat, edit the `SCRIPT` in `src/chat.js`.
 
+### Glyph test card
+
+The mugshot is drawn with block glyphs, from plain half blocks up to Unicode 16 octants. Not every terminal or font draws the richer ones. To see which ones yours draws, run:
+
+```bash
+npx claude-doom-statusbar test-card
+```
+
+It prints each glyph step in turn, then the mugshot drawn at every step. A step whose glyphs show as boxes, question marks or gaps is one this terminal cannot draw.
+
 ## Presets
 
 `DOOMBAR_PRESET` picks the layout (defaults to `presets/standard.toml`):

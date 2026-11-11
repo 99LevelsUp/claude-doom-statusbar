@@ -196,3 +196,22 @@ export function glyphsFor(step) {
 
 export const spaceGlyph = SPACE;
 export const fullGlyph = FULL;
+
+// The test card: for each step, a label and the glyphs it adds, drawn in one colour on another so
+// a glyph the terminal or font cannot draw stands out as a box, a question mark or a gap. The
+// steps a terminal draws correctly, read from the top, are the steps it can be given.
+const CARD_FG = [255, 176, 0];
+const CARD_BG = [24, 32, 72];
+export function testCardLines({ perRow = 26 } = {}) {
+  const paint = `\x1b[38;2;${CARD_FG.join(";")}m\x1b[48;2;${CARD_BG.join(";")}m`;
+  const lines = [];
+  STEPS.forEach((step, i) => {
+    const glyphs = CLASSES[step];
+    lines.push(`${i + 1}. ${step} (${glyphs.length} glyphs)`);
+    for (let k = 0; k < glyphs.length; k += perRow) {
+      const row = glyphs.slice(k, k + perRow).map((g) => g.ch).join(" ");
+      lines.push(`   ${paint} ${row} \x1b[0m`);
+    }
+  });
+  return lines;
+}
