@@ -53,7 +53,7 @@ for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "D
 const { renderSession } = await import("../src/statusline.js");
 const { sessionPaths, daemonPaths, rootHash, daemonSocket, procStartTicks } = await import("../src/fold.js");
 const { parseFrame } = await import("../src/frame.js");
-const { createState, runPass, pipePath, maybeStartReaper } = await import("../src/daemon.js");
+const { createState, runPass, pipePath, maybeStartReaper, FORWARDED_ENV } = await import("../src/daemon.js");
 
 const HASH = rootHash();
 const OTHER = rootHash(path.join(SB, "elsewhere"));
@@ -572,6 +572,17 @@ try {
 } finally {
   await stopAll();
   rmSync(SB, { recursive: true, force: true });
+}
+
+// The names the daemon takes from a session's payload are exactly the names the client writes:
+// one missing on either side would render that session with the daemon's own value.
+{
+  const src = readFileSync(path.join(ROOT, "src", "doombar-client.sh"), "utf8");
+  const m = /for name in ([\s\S]*?); do/.exec(src);
+  const clientNames = m ? m[1].replace(/\\\r?\n/g, " ").trim().split(/\s+/).sort() : [];
+  const daemonNames = [...FORWARDED_ENV].sort();
+  ok(clientNames.length > 0 && JSON.stringify(clientNames) === JSON.stringify(daemonNames),
+    `the client forwards exactly FORWARDED_ENV (client ${clientNames.join(",")}; daemon ${daemonNames.join(",")})`);
 }
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILED`);

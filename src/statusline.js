@@ -206,7 +206,7 @@ function _pick(bucket) {
 }
 
 // Claude Code keeps each session's task list on disk (~/.claude/tasks/<list id>/<task id>.json),
-// and that survives a reboot and `claude --resume`; our journal in the temp dir doesn't. The
+// and that survives a reboot and `claude --resume`; our journal in the runtime directory doesn't. The
 // list id is CLAUDE_CODE_TASK_LIST_ID when set, otherwise the session id. DOOMBAR_TASKS_DIR
 // overrides the whole directory (tests). Returns null when there is no list directory.
 export function tasksDir(sessionId, env = process.env) {

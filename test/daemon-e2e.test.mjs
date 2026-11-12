@@ -204,7 +204,7 @@ const PAUSE_LOG = path.join(TMP, "e2e-daemon-pause.log");
 const CLIENT = path.join(PKG, "src", "doombar-client.sh").replace(/\\/g, "/");
 const CLIENT_CMD = WIN
   ? `DOOMBAR_ROOT_HASH=${HASH}; f="${CLIENT}"; if [ -r "$f" ]; then . "$f"; else echo 'doombar: offline'; fi`
-  : `b="${POSIX_BASH}"; f="${CLIENT}"; if [ -r "$f" ] && [ -x "$b" ]; then unset BASH_ENV; ` +
+  : `b='${POSIX_BASH}'; f='${CLIENT}'; if [ -r "$f" ] && [ -x "$b" ]; then unset BASH_ENV; ` +
     `exec "$b" --norc --noprofile "$f" ${HASH}; else echo 'doombar: offline'; fi`;
 const SOCKET = daemonSocket(HASH, { DOOMBAR_RUNTIME_DIR: TMP });
 

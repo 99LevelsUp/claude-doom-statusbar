@@ -14,7 +14,7 @@
 // renameFailures counts frame and heartbeat writes that failed. On Linux it also carries
 // startTicks, the process start time from /proc, which hooks compare before killing the pid.
 
-import { readFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, unlinkSync, openSync, closeSync } from "node:fs";
 import { spawn as spawnChild } from "node:child_process";
 import net from "node:net";
 import os from "node:os";
@@ -176,17 +176,40 @@ function srcSnapshot(dir) {
   } catch { return "unreadable"; }
 }
 
-// Which daemon answers on addr: its pid, null when none does, or "unknown" when the answer does
-// not come in time (a busy machine). Every daemon answers a connection with its own pid.
+// Which daemon answers on addr: its pid, null when none does (the path is gone or refused), or
+// "unknown" when the answer does not come in time or the connection fails for another reason (a
+// busy machine, a full backlog). Every daemon answers a connection with its own pid.
 const answerer = (addr) => new Promise((resolve) => {
   let text = "";
   const s = net.connect(addr);
   s.setEncoding("utf8");
   s.on("data", (d) => { text += d; });
   s.once("end", () => resolve(/^\d+$/.test(text) ? Number(text) : null));
-  s.once("error", () => resolve(null));
+  s.once("error", (e) => resolve(["ENOENT", "ECONNREFUSED"].includes(e.code) ? null : "unknown"));
   s.setTimeout(1000, () => { s.destroy(); resolve("unknown"); });
 });
+
+// Takes over a socket file a killed daemon left behind, at most one starter at a time: under an
+// exclusive lock file, and only when the socket still does not answer once the lock is held, so a
+// second starter never removes the socket the first one just bound. A lock left by a starter that
+// died is cleared after a few seconds; the starter that finds it gives up, and the next start
+// takes over.
+const RECLAIM_LOCK_STALE_MS = 5000;
+async function reclaimStaleSocket(addr, lock, listen) {
+  let fd;
+  try { fd = openSync(lock, "wx"); } catch {
+    try { if (Date.now() - statSync(lock).mtimeMs > RECLAIM_LOCK_STALE_MS) unlinkSync(lock); } catch {}
+    return { code: "EADDRINUSE" };
+  }
+  try {
+    if (await addressBound(addr, 1000)) return { code: "EADDRINUSE" };
+    try { unlinkSync(addr); } catch {}
+    return await listen();
+  } finally {
+    try { closeSync(fd); } catch {}
+    try { unlinkSync(lock); } catch {}
+  }
+}
 
 // Resolves once the daemon serves. Exits at once when another daemon of this installation
 // already holds the address.
@@ -212,10 +235,8 @@ export async function startDaemon({ root = PACKAGE_ROOT, env = process.env } = {
     server.listen(addr);
   });
   let err = await listen();
-  // A socket file nobody answers on was left by a daemon that was killed: take it over.
   if (err && err.code === "EADDRINUSE" && posix && !(await addressBound(addr, 1000))) {
-    try { unlinkSync(addr); } catch {}
-    err = await listen();
+    err = await reclaimStaleSocket(addr, `${addr}.lock`, listen);
   }
   if (err) process.exit(err.code === "EADDRINUSE" ? 0 : 1);
   server.on("error", () => {});
@@ -259,6 +280,7 @@ export async function startDaemon({ root = PACKAGE_ROOT, env = process.env } = {
     if (now - srcChecked >= SRC_CHECK_MS) {
       srcChecked = now;
       if (srcSnapshot(src) !== original || !(await ownsSocket())) { stop(); return; }
+      if (stopping) return; // a SIGTERM arrived while the socket was being asked
       now = Date.now();
     }
     maybeStartReaper(state, { now, env });

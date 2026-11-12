@@ -38,7 +38,7 @@ const hash = rootHash(ROOT);
 const client = path.join(ROOT, "src", "doombar-client.sh").replace(/\\/g, "/");
 const cmd = WIN
   ? `DOOMBAR_ROOT_HASH=${hash}; f="${client}"; if [ -r "$f" ]; then . "$f"; else echo 'doombar: offline'; fi`
-  : `b="${bash}"; f="${client}"; if [ -r "$f" ] && [ -x "$b" ]; then unset BASH_ENV; ` +
+  : `b='${bash}'; f='${client}'; if [ -r "$f" ] && [ -x "$b" ]; then unset BASH_ENV; ` +
     `exec "$b" --norc --noprofile "$f" ${hash}; else echo 'doombar: offline'; fi`;
 const shell = WIN ? bash : "/bin/sh";
 

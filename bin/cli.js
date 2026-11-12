@@ -63,10 +63,12 @@ const NODE_CMD = `node "${STATUSLINE}"`;
 // path it was found at, so a Homebrew upgrade keeps it valid), with the hash as an argument.
 // BASH_ENV is cleared because bash would source it even with --norc. When that bash is gone the
 // bar prints the offline line. Without a bash 5 (macOS ships 3.2; Windows without Git Bash runs
-// PowerShell) the one-shot renderer stays.
+// PowerShell) the one-shot renderer stays. The paths are single-quoted: a `$`, backtick or `"` in
+// a home directory name stays text instead of running in /bin/sh on every tick.
 const WIN_CLIENT_CMD = `DOOMBAR_ROOT_HASH=${HASH}; f="${CLIENT}"; ` +
   `if [ -r "$f" ]; then . "$f"; else echo 'doombar: offline'; fi`;
-const posixClientCmd = (bash) => `b="${bash}"; f="${CLIENT}"; ` +
+const shQuote = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
+const posixClientCmd = (bash) => `b=${shQuote(bash)}; f=${shQuote(CLIENT)}; ` +
   `if [ -r "$f" ] && [ -x "$b" ]; then unset BASH_ENV; exec "$b" --norc --noprofile "$f" ${HASH}; ` +
   `else echo 'doombar: offline'; fi`;
 
@@ -276,6 +278,21 @@ function runtimeCandidates(env = process.env) {
   return [...dirs];
 }
 
+// SIGTERM lets the daemon close its socket and drop its heartbeat; it exits on its own within 2 s
+// (STOP_WAIT_MS leaves room). One still running then is killed. True when the pid is gone.
+const STOP_WAIT_MS = 3000;
+const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; } };
+const sleepSync = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+function stopPid(pid) {
+  try { process.kill(pid); } catch { return !pidAlive(pid); }
+  for (let waited = 0; pidAlive(pid) && waited < STOP_WAIT_MS; waited += 50) sleepSync(50);
+  if (pidAlive(pid)) {
+    try { process.kill(pid, "SIGKILL"); } catch {}
+    for (let waited = 0; pidAlive(pid) && waited < 1000; waited += 50) sleepSync(50);
+  }
+  return !pidAlive(pid);
+}
+
 function stopDaemon() {
   const notes = [];
   const posix = process.platform !== "win32";
@@ -292,7 +309,8 @@ function stopDaemon() {
     if (hb && Number.isInteger(hb.pid) && hb.pid > 0) {
       const pid = confirmedDaemonPid(hb);
       if (pid !== null) {
-        try { process.kill(pid); notes.push(`stopped the render daemon (pid ${pid})`); } catch {}
+        notes.push(stopPid(pid) ? `stopped the render daemon (pid ${pid})`
+          : `could not stop the render daemon (pid ${pid}); its files are removed, and it exits after its idle time`);
       } else {
         notes.push(`left pid ${hb.pid} running: not confirmed as this installation's render daemon`);
       }

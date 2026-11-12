@@ -17,7 +17,7 @@
 // It can still be fed from ABOVE, by the shell Claude Code wraps our render command in. That is
 // what reapStaleShells() below cleans up.
 //
-// Journal: <checkpoint>.jsonl where checkpoint is $MUGSHOT_STATE or <temp>/mugshot_<sid>.json.
+// Journal: <checkpoint>.jsonl where checkpoint is $MUGSHOT_STATE or <runtime dir>/mugshot_<sid>.json (runtimeDir in fold.js).
 
 import {
   appendFileSync, writeFileSync, readFileSync, readdirSync, statSync, unlinkSync, existsSync,
@@ -526,10 +526,10 @@ export function staleStateFiles(names, ageOf, { ttl = JOURNAL_TTL, unrenderedTtl
 function sweepState(sid) {
   if (process.env.DOOMBAR_JOURNAL_TTL === "off") return 0;
   const { checkpoint } = statePaths(sid);
-  // Sweep the directory our state actually lives in, not os.tmpdir() blindly. They are the same
+  // Sweep the directory our state actually lives in, not the runtime directory blindly. They are the same
   // in normal use, but MUGSHOT_STATE relocates the checkpoint — and a sweep that ignored it would
   // delete from the real temp dir while writing to a sandbox. That bit the test suite: firing a
-  // SessionStart with MUGSHOT_STATE set swept the developer's actual temp directory.
+  // SessionStart with MUGSHOT_STATE set swept the developer's actual runtime directory.
   const dir = path.dirname(checkpoint);
   let names;
   try { names = readdirSync(dir); } catch { return 0; }

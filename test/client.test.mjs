@@ -285,6 +285,11 @@ try {
       serializeFrame({ daemon: "0.14.0", deadline: now + 60e6, slots: [{ start: now, lines: ["planted"] }] }));
     const l = run({ sid: "rt-link", env: { DOOMBAR_RUNTIME_DIR: link } });
     ok(l.out === OFFLINE, `a symlinked runtime dir prints the offline line, not its frame (got ${show(l.out)})`);
+    // A directory of another user (root's /usr) is never used. Nothing to test as root.
+    if (process.geteuid() !== 0) {
+      const o = run({ sid: "rt-other", env: { DOOMBAR_RUNTIME_DIR: "/usr" } });
+      ok(o.out === OFFLINE, `a runtime dir owned by another user prints the offline line (got ${show(o.out)})`);
+    }
     ok(!existsSync(path.join(real, fileName("rt-link", "payload"))), "and no payload is written through the link");
 
     run({ sid: "rt-mode" });

@@ -4,7 +4,7 @@
 // so we assert behavior on a temp settings.json instead of diffing.
 
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, readdirSync, chmodSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, readdirSync, chmodSync, symlinkSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -274,7 +274,7 @@ if (!WIN && BASH5) {
   const env = clientEnv(tmp);
   runEnv(tmp, env, "install", "--project");
   const cmd = read(tmp).statusLine?.command || "";
-  ok(cmd.startsWith(`b="${BASH5}"; f="${CLIENT}";`), `client command names the bash and the client (got: ${cmd})`);
+  ok(cmd.startsWith(`b='${BASH5}'; f='${CLIENT}';`), `client command names the bash and the client (got: ${cmd})`);
   ok(cmd.includes(`exec "$b" --norc --noprofile "$f" ${HASH};`), "client command execs that bash with the install hash");
   ok(cmd.includes('[ -r "$f" ] && [ -x "$b" ]') && cmd.includes("unset BASH_ENV"),
     "client command guards a missing client or bash and clears BASH_ENV");
@@ -285,9 +285,26 @@ if (!WIN && BASH5) {
   ok(readFileSync(settingsPath(tmp), "utf-8") === before, "re-install leaves settings.json byte-identical");
   ok(!/replaced your existing statusLine/.test(out), "re-install does not call our own client foreign");
   // Claude Code runs it through /bin/sh. A bash that went away prints the offline line, exit 0.
-  const gone = cmd.replace(`b="${BASH5}"`, `b="${path.join(tmp, "no-bash")}"`);
+  const gone = cmd.replace(`b='${BASH5}'`, `b='${path.join(tmp, "no-bash")}'`);
   const r = spawnSync("/bin/sh", ["-c", gone], { input: "{}", encoding: "utf8", env: withEnv(sandboxEnv(tmp)) });
   ok(r.status === 0 && r.stdout === "doombar: offline\n", `a bash that is gone prints the offline line (got ${JSON.stringify(r.stdout)})`);
+  rmSync(tmp, { recursive: true, force: true });
+}
+
+// 6c. A bash path with shell syntax in it stays text: /bin/sh runs the command on every tick, so
+// a `$(...)`, a quote or a backtick in a directory name must never run.
+if (!WIN && BASH5) {
+  const tmp = tmpdir();
+  const odd = path.join(tmp, "b $(touch pwned) `touch pwned2` 'q\" dir");
+  mkdirSync(odd, { recursive: true });
+  symlinkSync(BASH5, path.join(odd, "bash"));
+  runEnv(tmp, { DOOMBAR_BASH: path.join(odd, "bash") }, "install", "--project");
+  const cmd = read(tmp).statusLine?.command || "";
+  ok(cmd.includes("exec \"$b\""), `an odd bash path still gets the client command (got: ${cmd})`);
+  const r = spawnSync("/bin/sh", ["-c", cmd], { cwd: tmp, input: "{}", encoding: "utf8", env: withEnv(sandboxEnv(tmp)) });
+  ok(!r.error && !/not found|syntax error/i.test(r.stderr), `the command runs under /bin/sh (stderr ${JSON.stringify(r.stderr)})`);
+  ok(!existsSync(path.join(tmp, "pwned")) && !existsSync(path.join(tmp, "pwned2")),
+    "nothing in the bash path ran as a command");
   rmSync(tmp, { recursive: true, force: true });
 }
 

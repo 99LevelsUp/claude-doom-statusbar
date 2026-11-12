@@ -56,6 +56,13 @@ if (POSIX) {
   let parentMade = true;
   try { statSync(path.join(SB, "no-parent")); } catch { parentMade = false; }
   ok(!parentMade, "and its parent is not created");
+  // A directory of another user (root's /usr) is refused and left as it is. Root owns it, so
+  // there is nothing to test as root.
+  if (process.geteuid() !== 0) {
+    const before = statSync("/usr").mode;
+    ok(ensureRuntimeDir(env("/usr")) === null, "a directory another user owns is refused");
+    ok(statSync("/usr").mode === before, "and its mode is not touched");
+  }
 } else {
   ok(ensureRuntimeDir({}) === os.tmpdir(), "Windows uses the temp directory as it is");
 }
