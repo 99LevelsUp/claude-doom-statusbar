@@ -541,6 +541,7 @@ try {
       ok(existsSync(sock), "a daemon killed with SIGKILL leaves its socket file");
       const d2 = startDaemon(D, st);
       ok(await waitFor(() => heartbeat(D.hash, st)?.pid === d2.pid), `a new daemon takes the stale socket over ${d2.err}`);
+      ok(!existsSync(`${sock}.lock`), "and leaves no takeover lock behind");
       session("sd", { hash: D.hash, dir: st });
       ok(await waitFor(() => existsSync(frameFile("sd", D.hash, st))), "and renders");
 
@@ -555,15 +556,17 @@ try {
       ok(await exitWithin(d3, 5000) === 0, "SIGTERM makes the daemon exit with code 0");
       ok(!existsSync(sock) && !existsSync(heartbeatFile(D.hash, st)), "and it leaves neither socket nor heartbeat");
 
-      // Two daemons that find the same stale socket at once settle on one, which keeps its socket.
+      // Daemons that find the same stale socket at once take it over one at a time (a lock beside
+      // the socket) and settle on one, which keeps its socket.
       const d4 = startDaemon(D, st);
       ok(await waitFor(() => heartbeat(D.hash, st)?.pid === d4.pid), "the race-test daemon starts");
       d4.kill("SIGKILL");
       await d4.exited;
-      const racers = [startDaemon(D, st), startDaemon(D, st)];
+      const racers = [startDaemon(D, st), startDaemon(D, st), startDaemon(D, st), startDaemon(D, st)];
       await sleep(5000);
       const alive = racers.filter((c) => c.exitCode === null && c.signalCode === null);
-      ok(alive.length === 1, `two daemons on one stale socket leave exactly one running (got ${alive.length})`);
+      ok(alive.length === 1, `four daemons on one stale socket leave exactly one running (got ${alive.length})`);
+      ok(!existsSync(`${sock}.lock`), "and no takeover lock is left behind");
       ok(alive.length === 1 && await answers(sock), "and that one still answers on the socket");
       ok(alive.length === 1 && await waitFor(() => heartbeat(D.hash, st)?.pid === alive[0].pid, 2000),
         "and it is the one writing the heartbeat");

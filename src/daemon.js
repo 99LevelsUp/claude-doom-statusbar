@@ -14,7 +14,7 @@
 // renameFailures counts frame and heartbeat writes that failed. On Linux it also carries
 // startTicks, the process start time from /proc, which hooks compare before killing the pid.
 
-import { readFileSync, readdirSync, statSync, unlinkSync, openSync, closeSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, unlinkSync, openSync, closeSync, fstatSync } from "node:fs";
 import { spawn as spawnChild } from "node:child_process";
 import net from "node:net";
 import os from "node:os";
@@ -206,8 +206,9 @@ async function reclaimStaleSocket(addr, lock, listen) {
     try { unlinkSync(addr); } catch {}
     return await listen();
   } finally {
+    // Only our own lock: a slow takeover's lock may have been cleared as stale and taken by another.
+    try { if (statSync(lock).ino === fstatSync(fd).ino) unlinkSync(lock); } catch {}
     try { closeSync(fd); } catch {}
-    try { unlinkSync(lock); } catch {}
   }
 }
 

@@ -100,7 +100,7 @@ Linux also differs in a way Windows never had to handle. `%TEMP%` belongs to one
 - **Moving persistent state to `XDG_STATE_HOME` to survive logout.** It costs journal writes in home, which wears the Pi's SD card. It would be worth building if losing state at logout bothers users.
 - **Surviving `KillUserProcesses=yes`** (`systemd-run --user`). Debian's default is no. Where it is yes, the next hook restarts the daemon.
 - **Supervising only on a fresh payload.** A payload left by an earlier client setup can start a daemon that only idles out after 10 minutes. The claim throttle limits that to one start per window. The check would also change Windows hook behaviour, which R7 keeps. It would be worth building if idle-only daemons are reported.
-- **A lock around the stale-socket reclaim.** Two daemons reclaiming at once settle within about 2 s through the inode self-check and the inode-conditional unlink (KTD3). It would be worth building if the U3 race test shows a gap.
+- **A lock around the stale-socket reclaim.** *Built after code review (finding #1):* the inode self-check was racy, ownership moved to the pid that answers on the socket, and two starters could still unlink each other's freshly bound socket. The reclaim now runs under an exclusive `<socket>.lock` and re-checks the socket while holding it; the U3 race test runs four starters.
 - **A mode-bit check in the client.** Bash builtins cannot read permission bits. Only the owner can loosen a directory they own, and every hook, one-shot and daemon start puts it back to 0700 (KTD2).
 
 ### Sources / Research
