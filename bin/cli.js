@@ -281,7 +281,15 @@ function runtimeCandidates(env = process.env) {
 // SIGTERM lets the daemon close its socket and drop its heartbeat; it exits on its own within 2 s
 // (STOP_WAIT_MS leaves room). One still running then is killed. True when the pid is gone.
 const STOP_WAIT_MS = 3000;
-const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; } };
+// A zombie (exited, not yet reaped by its parent) still answers kill(pid, 0) but is gone.
+function pidAlive(pid) {
+  try { process.kill(pid, 0); } catch (e) { return e.code === "EPERM"; }
+  if (process.platform !== "linux") return true;
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf-8");
+    return stat.slice(stat.lastIndexOf(")") + 2, stat.lastIndexOf(")") + 3) !== "Z";
+  } catch { return false; }
+}
 const sleepSync = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 function stopPid(pid) {
   try { process.kill(pid); } catch { return !pidAlive(pid); }

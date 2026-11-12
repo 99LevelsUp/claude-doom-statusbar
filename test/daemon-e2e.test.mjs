@@ -395,10 +395,11 @@ try {
 
     const h3 = await hook("PostToolUse");
     ok(h3.code === 0 && readJson(CLAIM)?.suspectSince === sighting && alive(hung.pid), "a hook inside the grace period does nothing");
+
+    // Checked once the grace period has run out: up to h3 the span can be shorter than one tick.
+    await sleepUntil(sighting + GRACE + 200);
     const greyed = ticksFrom(hung.renewed + WINDOW + 1000, Date.now());
     ok(greyed.length >= 1 && greyed.every((t) => t.kind === "grey"), `meanwhile the output is grey (${summary(greyed)})`);
-
-    await sleepUntil(sighting + GRACE + 200);
     const h4 = await hook("PostToolUse");
     ok(h4.code === 0, "the hook after the grace period exits 0");
     ok(await waitFor(() => !alive(hung.pid), 5000), "the hung daemon is stopped");

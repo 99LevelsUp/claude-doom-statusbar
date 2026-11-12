@@ -337,7 +337,7 @@ if (WIN || BASH5) {
   }, null, 2));
   const out = runEnv(tmp, clientEnv(tmp), "install", "--project");
   const sl = read(tmp).statusLine;
-  ok(sl?.command?.includes(`"${CLIENT}"`), "old statusline.js command upgraded to the client");
+  ok(sl?.command?.includes(WIN ? `"${CLIENT}"` : `'${CLIENT}'`), "old statusline.js command upgraded to the client");
   ok(sl?.refreshInterval === 1, "upgrade keeps the 1 s refresh");
   ok(!/replaced your existing statusLine/.test(out), "upgrade recognises the old command as ours");
   rmSync(tmp, { recursive: true, force: true });
