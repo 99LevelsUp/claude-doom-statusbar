@@ -187,7 +187,7 @@ const TTL = 7 * DAY;
   stamp("mugshot_daemon_0123456789.json", 30 * DAY);
   stamp("mugshot_daemon_0123456789.claim", 30 * DAY);
 
-  // TMPDIR points the hook's os.tmpdir() at our sandbox; MUGSHOT_STATE keeps its own checkpoint
+  // sandboxEnv points the hook's runtime directory at our sandbox; MUGSHOT_STATE keeps its own checkpoint
   // there too, so `keep` covers a real path inside the swept directory.
   const sid = "sweeptest";
   execFileSync(process.execPath, [HOOK], {

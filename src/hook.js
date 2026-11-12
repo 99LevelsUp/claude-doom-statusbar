@@ -25,11 +25,10 @@ import {
 } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import {
-  base, statePaths, sessionPaths, daemonPaths, rootHash, sidKey, daemonSocket, procStartTicks, PACKAGE_ROOT,
+  base, statePaths, sessionPaths, daemonPaths, rootHash, sidKey, daemonSocket, procStartTicks, addressBound, PACKAGE_ROOT,
   ROOT_HASH_LEN, WRITE_TOOLS,
   writeAtomic, envNum, packageVersion as readPackageVersion, runtimeDir, ensureRuntimeDir,
 } from "./fold.js";
@@ -182,7 +181,7 @@ const BUSY_SAMPLE_MS = 250;
 const PROBE_MS = 150;
 const LOCK_STALE_MS = 2000; // a lock holder does a few file operations; older means it died
 const START_SLACK_MS = 2000; // heartbeat start vs the process list's creation time
-const RELEASE_MS = 2000; // how long a stopped daemon may take to release its pipe
+const RELEASE_MS = 2000; // how long a stopped daemon may take to release its address
 const DAEMON_EVENTS = new Set([
   "SessionStart", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied",
   "SubagentStart", "SubagentStop", "TaskCreated", "TaskCompleted", "Stop",
@@ -196,24 +195,10 @@ function packageVersion() {
 
 const readJson = (file) => { try { return JSON.parse(readFileSync(file, "utf8")); } catch { return null; } };
 
-// Is anything bound to the daemon's address? Only "no such pipe or socket" and, for a socket file
-// a killed daemon left behind, "connection refused" mean no. A timeout or any other error (all
-// pipe instances busy, a daemon whose loop hangs) counts as bound: the heartbeat then decides.
+// Is anything bound to the daemon's address? See addressBound in fold.js; a hung daemon's
+// heartbeat then decides.
 export function probePipe(pipe, timeoutMs = PROBE_MS) {
-  return new Promise((resolve) => {
-    let sock = null, timer = null, done = false;
-    const finish = (bound) => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      try { sock.destroy(); } catch {}
-      resolve(bound);
-    };
-    timer = setTimeout(() => finish(true), timeoutMs);
-    sock = net.connect(pipe);
-    sock.on("connect", () => finish(true));
-    sock.on("error", (e) => finish(!(e && (e.code === "ENOENT" || e.code === "ECONNREFUSED"))));
-  });
+  return addressBound(pipe, timeoutMs);
 }
 
 // Pure: what a heartbeat says about the daemon at `now`. A missing heartbeat is both stale and
@@ -332,7 +317,6 @@ export function isOurPsDaemon(row, start, daemonJs = DAEMON_JS) {
   return Number.isFinite(start) && Number.isFinite(created) && Math.abs(created - start) <= START_SLACK_MS + 1000;
 }
 
-// The heartbeat's pid, once the process list confirms it is this installation's daemon, else null.
 export function confirmedDaemonPid(hb, platform = process.platform) {
   const pid = hb && hb.pid;
   if (!Number.isInteger(pid) || pid <= 0 || pid === process.pid) return null;
@@ -483,7 +467,7 @@ const msysMarkerPath = (sid) => sessionPaths(sid).msys;
 //     (default 1 hour), because nothing will ever read its files.
 // Orphaned `<checkpoint>.<pid>.tmp` files from interrupted atomic writes belong to their
 // session. So do the render daemon's payload and frame (and their `.tmp` leftovers), which always
-// live in the system temp dir: they are swept with their session when the checkpoint lives there
+// live in the runtime directory: they are swept with their session when the checkpoint lives there
 // too (the normal case), not when MUGSHOT_STATE moves the checkpoint elsewhere. Failures are ignored per file: housekeeping must never cost a hook its exit 0.
 const JOURNAL_TTL = envNum(process.env.DOOMBAR_JOURNAL_TTL, 7 * 24 * 60 * 60 * 1000); // ms
 const UNRENDERED_TTL = envNum(process.env.DOOMBAR_UNRENDERED_TTL, 60 * 60 * 1000); // ms
@@ -579,7 +563,7 @@ function endSession(sid) {
   for (const f of [p.journal, p.checkpoint, p.git, p.msys, p.adv]) {
     try { unlinkSync(f); } catch { /* never written, or already gone */ }
   }
-  // The daemon's payload and frame (and their `.<pid>.tmp` leftovers) live in the system temp dir
+  // The daemon's payload and frame (and their `.<pid>.tmp` leftovers) live in the runtime directory
   // under an install hash. The session may have been served by more than one installation, so
   // every hash's files for this exact key go.
   const key = sidKey(sid), tmpDir = path.dirname(p.payload);

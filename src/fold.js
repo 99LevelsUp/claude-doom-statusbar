@@ -8,6 +8,7 @@
 // so every downstream consumer (activityValues, the tests) is unchanged.
 
 import { readFileSync, writeFileSync, renameSync, unlinkSync, statSync, lstatSync, mkdirSync, chmodSync } from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -37,18 +38,23 @@ export const sidKey = (id) => String(id || "default").replace(/[^A-Za-z0-9_-]/g,
 //   5. otherwise /tmp/doombar-<effective uid>.
 const ownerUid = (p) => { try { return statSync(p).uid; } catch { return null; } };
 const absolute = (p) => typeof p === "string" && p.startsWith("/");
-export function runtimeDir(env = process.env, { platform = process.platform,
-  euid = process.geteuid ? process.geteuid() : null, ownerOf = ownerUid } = {}) {
+// The daemon looks the directory up many times per render; with this process's own uid and
+// filesystem, the answer for an environment is kept rather than stat-ed again.
+const resolvedDirs = new Map();
+export function runtimeDir(env = process.env, opts = {}) {
+  const { platform = process.platform, euid = process.geteuid ? process.geteuid() : null, ownerOf = ownerUid } = opts;
   if (env.DOOMBAR_RUNTIME_DIR) return env.DOOMBAR_RUNTIME_DIR;
   if (platform === "win32") return os.tmpdir();
-  const xdg = env.XDG_RUNTIME_DIR;
-  if (absolute(xdg)) {
-    const owner = ownerOf(xdg);
-    if (owner === null || owner === euid) return path.posix.join(xdg, "doombar");
-  }
-  const tmp = env.TMPDIR;
-  if (platform === "darwin" && absolute(tmp) && ownerOf(tmp) === euid) return path.posix.join(tmp, "doombar");
-  return `/tmp/doombar-${euid}`;
+  const cacheable = opts.ownerOf === undefined && opts.euid === undefined;
+  const key = `${platform}|${env.XDG_RUNTIME_DIR}|${env.TMPDIR}`;
+  if (cacheable && resolvedDirs.has(key)) return resolvedDirs.get(key);
+  let dir = `/tmp/doombar-${euid}`;
+  const xdg = env.XDG_RUNTIME_DIR, tmp = env.TMPDIR;
+  const xdgOwner = absolute(xdg) ? ownerOf(xdg) : undefined;
+  if (absolute(xdg) && (xdgOwner === null || xdgOwner === euid)) dir = path.posix.join(xdg, "doombar");
+  else if (platform === "darwin" && absolute(tmp) && ownerOf(tmp) === euid) dir = path.posix.join(tmp, "doombar");
+  if (cacheable) resolvedDirs.set(key, dir);
+  return dir;
 }
 
 // The runtime directory when it is safe to use, else null. On Linux and macOS it is created with
@@ -100,6 +106,27 @@ export const pipePath = (hash) => `\\\\.\\pipe\\doombar-${hash}`;
 export const daemonSocket = (hash, env = process.env, platform = process.platform) =>
   platform === "win32" ? pipePath(hash) : path.join(runtimeDir(env, { platform }), `${daemonPrefix(hash)}sock`);
 
+// Is anything bound to a daemon address? Only "no such pipe or socket" and, for a socket file a
+// killed daemon left behind, "connection refused" mean no. A timeout or any other error (all pipe
+// instances busy, a daemon whose loop hangs) counts as bound, so a live daemon is never taken for
+// gone.
+export function addressBound(addr, timeoutMs) {
+  return new Promise((resolve) => {
+    let sock = null, timer = null, done = false;
+    const finish = (bound) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try { sock.destroy(); } catch {}
+      resolve(bound);
+    };
+    timer = setTimeout(() => finish(true), timeoutMs);
+    sock = net.connect(addr);
+    sock.on("connect", () => finish(true));
+    sock.on("error", (e) => finish(!(e && (e.code === "ENOENT" || e.code === "ECONNREFUSED"))));
+  });
+}
+
 // Linux: a process's start time, in clock ticks since boot (field 22 of /proc/<pid>/stat), or
 // null. Read after the last ")", because the command name before it may hold spaces and ")".
 // Together with the command line it tells a daemon apart from another process that got its pid.
@@ -124,6 +151,7 @@ export const daemonPrefix = (hash) => `mugshot_daemon_${hash}.`;
 export function sessionPaths(sessionId, hash = ROOT_HASH, env = process.env) {
   const { checkpoint, journal } = statePaths(sessionId, env);
   const dir = path.dirname(checkpoint);
+  const rt = runtimeDir(env);
   const key = sidKey(sessionId);
   return {
     checkpoint,
@@ -132,8 +160,8 @@ export function sessionPaths(sessionId, hash = ROOT_HASH, env = process.env) {
     msys: path.join(dir, `mugshot_msys_${key}.json`),   // bash-count probe throttle marker
     adv: path.join(dir, `mugshot_adv_${key}.json`),     // advisor consult cache
     savings: path.join(dir, `savings_${key}.json`),     // lean-ctx savings accumulator
-    payload: path.join(runtimeDir(env), `${payloadPrefix(hash)}${key}.json`), // client -> daemon input
-    frame: path.join(runtimeDir(env), `${framePrefix(hash)}${key}.json`),     // daemon -> client output
+    payload: path.join(rt, `${payloadPrefix(hash)}${key}.json`), // client -> daemon input
+    frame: path.join(rt, `${framePrefix(hash)}${key}.json`),     // daemon -> client output
   };
 }
 

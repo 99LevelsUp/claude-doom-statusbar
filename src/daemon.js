@@ -6,7 +6,8 @@
 // mugshot_daemon_<hash>.sock in the runtime directory elsewhere. "Address in use" means a daemon
 // already runs, and the new one exits at once without writing anything. A socket file can also
 // be left behind by a daemon that was killed: when nothing answers on it, it is removed and taken
-// over. The address answers nothing; hooks only probe whether it is bound.
+// over. The address answers every connection with the daemon's pid, which is how a daemon tells
+// that its socket file is still its own; hooks only probe whether it is bound.
 //
 // Heartbeat, mugshot_daemon_<hash>.json: { pid, start, version, window, renewed, renameFailures }
 // start and renewed are epoch milliseconds, window is the largest window in use (seconds),
@@ -23,7 +24,7 @@ import { renderSession } from "./statusline.js";
 import { writeFrame } from "./frame.js";
 import {
   rootHash, daemonPaths, payloadPrefix, framePrefix, writeAtomic, pipePath, PACKAGE_ROOT, envNum, packageVersion,
-  runtimeDir, ensureRuntimeDir, daemonSocket, procStartTicks,
+  runtimeDir, ensureRuntimeDir, daemonSocket, procStartTicks, addressBound,
 } from "./fold.js";
 
 export { pipePath };
@@ -175,15 +176,6 @@ function srcSnapshot(dir) {
   } catch { return "unreadable"; }
 }
 
-// Whether a daemon answers on addr. Refused or gone means no; any other failure, or no answer in
-// time, counts as yes, so a live daemon's socket is never taken from it.
-const answers = (addr) => new Promise((resolve) => {
-  const s = net.connect(addr);
-  s.once("connect", () => { s.destroy(); resolve(true); });
-  s.once("error", (e) => resolve(!["ECONNREFUSED", "ENOENT"].includes(e.code)));
-  s.setTimeout(1000, () => { s.destroy(); resolve(true); });
-});
-
 // Which daemon answers on addr: its pid, null when none does, or "unknown" when the answer does
 // not come in time (a busy machine). Every daemon answers a connection with its own pid.
 const answerer = (addr) => new Promise((resolve) => {
@@ -221,7 +213,7 @@ export async function startDaemon({ root = PACKAGE_ROOT, env = process.env } = {
   });
   let err = await listen();
   // A socket file nobody answers on was left by a daemon that was killed: take it over.
-  if (err && err.code === "EADDRINUSE" && posix && !(await answers(addr))) {
+  if (err && err.code === "EADDRINUSE" && posix && !(await addressBound(addr, 1000))) {
     try { unlinkSync(addr); } catch {}
     err = await listen();
   }

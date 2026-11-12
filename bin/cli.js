@@ -25,7 +25,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { THEMES, THEME_NAMES, currentTheme, saveTheme, nextTheme, resolveTheme } from "../src/theme.js";
-import { rootHash, daemonPaths, daemonPrefix, payloadPrefix, framePrefix, runtimeDir } from "../src/fold.js";
+import { rootHash, daemonPrefix, payloadPrefix, framePrefix, runtimeDir } from "../src/fold.js";
 import { confirmedDaemonPid } from "../src/hook.js";
 import { STEPS, testCardLines } from "../src/glyphs.js";
 import { convertImage } from "../src/glyph-render.js";
@@ -36,7 +36,7 @@ import { ensureEmojiFont } from "../src/emoji-font.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url)); // bin/
 const ROOT = path.dirname(HERE); // package root
-const HASH = rootHash(ROOT); // this installation's daemon, pipe and temp files
+const HASH = rootHash(ROOT); // this installation's daemon and its files
 
 // Normalise to forward slashes, like install.py's `.replace("\\", "/")`. The marker we
 // DETECT below must match the command we WRITE byte-for-byte, including slash direction —
@@ -105,7 +105,6 @@ function gitBash(env = process.env) {
   return cands.find((p) => p && existsSync(p)) ?? null;
 }
 
-// The client's statusLine command for this machine, or null for the one-shot renderer.
 function clientCommand() {
   if (process.platform === "win32") return gitBash() !== null ? WIN_CLIENT_CMD : null;
   const bash = posixBash();
@@ -289,7 +288,7 @@ function stopDaemon() {
       } catch { continue; }
     }
     let hb = null;
-    try { hb = JSON.parse(readFileSync(path.join(dir, path.basename(daemonPaths(HASH).heartbeat)), "utf-8")); } catch {}
+    try { hb = JSON.parse(readFileSync(path.join(dir, `${daemonPrefix(HASH)}json`), "utf-8")); } catch {}
     if (hb && Number.isInteger(hb.pid) && hb.pid > 0) {
       const pid = confirmedDaemonPid(hb);
       if (pid !== null) {

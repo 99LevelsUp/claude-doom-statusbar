@@ -37,7 +37,7 @@ syncBuiltinESMExports();
 const SB = mkdtempSync(path.join(os.tmpdir(), "doombar-session-"));
 const TMPDIR = path.join(SB, "tmp");
 mkdirSync(TMPDIR, { recursive: true });
-// Before the import: statusline.js takes its temp dir when it loads. The terminal that runs the
+// Before the import: the sandbox is the runtime directory for the renders. The terminal that runs the
 // tests must not pick the mugshot's glyphs, so its identifying variables go.
 Object.assign(process.env, { ...sandboxEnv(TMPDIR), PATH: "", DOOMBAR_MSYS_REAP: "0",
   DOOMBAR_THEME: "doom", DOOMBAR_RATELIMITS_SHARE: "0", DOOMBAR_PRESET: path.join(PRESETS, "minimal.toml") });

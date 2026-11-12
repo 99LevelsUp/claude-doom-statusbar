@@ -114,7 +114,7 @@ const near = (a, b, eps = 0.5) => Math.abs(a - b) <= eps;
 // 9. Integration: the live wiring (rateHealthValue -> values["health.headroom"] -> hpRow) must
 //    render without crashing and persist the accumulator. Sole end-to-end coverage of the path.
 //    The accumulator is GLOBAL (one file, not keyed by session_id) because rate limits are
-//    account-wide; we point os.tmpdir() at an isolated dir (TEMP/TMP/TMPDIR) so the test never
+//    account-wide; we point the runtime directory at an isolated dir (sandboxEnv) so the test never
 //    touches the real shared file.
 {
   const tmp = mkdtempSync(path.join(os.tmpdir(), "doombar-ratewire-"));
@@ -123,7 +123,7 @@ const near = (a, b, eps = 0.5) => Math.abs(a - b) <= eps;
     ...process.env,
     DOOMBAR_PRESET: path.join(HERE, "..", "presets", "standard.toml"),
     MUGSHOT_STATE: path.join(tmp, "state.json"),
-    ...sandboxEnv(tmp), // isolate os.tmpdir() -> the global accumulator lands here
+    ...sandboxEnv(tmp), // the global accumulator lands here
     COLUMNS: "100",
   };
   const payload = (sid, p5) => JSON.stringify({

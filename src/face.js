@@ -5,7 +5,6 @@
 
 import { readFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { createHash } from "node:crypto";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { RESET, sgrBg } from "./ansi.js";
@@ -50,7 +49,7 @@ function converterStamp() {
   }
   return createHash("sha1").update(parts.join("|")).digest("hex").slice(0, 12);
 }
-// Named on first use, not at load, so the temp directory in force when a face is first drawn
+// Named on first use, not at load, so the runtime directory in force when a face is first drawn
 // is the one used.
 let _diskFile = null;
 const diskFile = () => (_diskFile ||= path.join(runtimeDir(), `doombar_faces_${converterStamp()}.json`));

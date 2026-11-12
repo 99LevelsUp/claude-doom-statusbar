@@ -11,7 +11,7 @@ let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 const glyphs = (f) => new Set(f.flat().map((cell) => cell[0]));
 
-// Before the import: face.js names its disk cache after the temp dir when it loads.
+// Before the import: the sandbox is the runtime directory face.js caches its faces in.
 const SB = mkdtempSync(path.join(os.tmpdir(), "doombar-face-"));
 Object.assign(process.env, { ...sandboxEnv(SB) });
 const OLD = path.join(SB, "doombar_faces_000000000000.json");
