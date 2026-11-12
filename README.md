@@ -27,6 +27,7 @@ Anything the session can't supply is hidden automatically, so the same config de
 
 - **Node.js 18+**. One runtime dependency (`smol-toml`, a TOML parser); everything else is Node built-ins.
 - A terminal with **truecolor**. The mugshot is converted to block glyphs inside the bar at any height, with no external tool; terminals that draw the Unicode legacy-computing glyphs (sextants, wedges, octants) get a finer face, and the rest get half blocks (see [Glyph test card](#glyph-test-card)). Windows Terminal, WezTerm, kitty, Ghostty and foot all work.
+- For the render daemon and its fast client: **Git Bash** on Windows, **bash 5 or newer** on Linux and macOS (every Linux distribution ships one; macOS ships 3.2, so a Mac needs Homebrew's `bash`). Without it the bar still works, with the slower one-shot renderer (see [How it works](#how-it-works)).
 - A **colour emoji font**. Windows and macOS ship one. On Linux the installer checks for one and installs Noto Color Emoji for you if it is missing (see [Emoji font on Linux](#emoji-font-on-linux)).
 
 ## Install
@@ -40,6 +41,7 @@ That writes the `statusLine`, the lifecycle hooks, and the preset into `~/.claud
 ```bash
 npx claude-doom-statusbar install --preset full   # full | standard | minimal (default: full)
 npx claude-doom-statusbar install --project       # write ./.claude/settings.json instead of ~/.claude
+npx claude-doom-statusbar install --local         # write ./.claude/settings.local.json (overrides settings.json)
 npx claude-doom-statusbar install --refresh 5     # also re-render on a 5s timer (0 = events only)
 npx claude-doom-statusbar install --no-fonts      # skip the emoji font check (Linux)
 npx claude-doom-statusbar uninstall                # remove everything the installer added
@@ -68,7 +70,7 @@ npm i -g claude-doom-statusbar@latest    # global install
 npx claude-doom-statusbar@latest install
 ```
 
-After a global upgrade from a version without the render daemon, run `claude-doom-statusbar install` once. That moves the statusLine to the client on Windows with Git Bash. Later upgrades in the same place reach the client without it.
+After a global upgrade from a version without the render daemon on your platform, run `claude-doom-statusbar install` once (with `--project` or `--local` if that is where you installed). That moves the statusLine to the client: on Windows with Git Bash since 0.14.0, on Linux and macOS with bash 5 since this version. Later upgrades in the same place reach the client without it.
 
 ### Windows: Git Bash and the 1-second tick
 
@@ -186,12 +188,16 @@ As the terminal narrows, the HUD shrinks: bars contract and text columns shrink 
 
 ## How it works
 
-On **Windows with Git Bash** the statusLine command is a bash client, not a renderer. The installer writes `DOOMBAR_ROOT_HASH=<install hash>; f="<package>/src/doombar-client.sh"; if [ -r "$f" ]; then . "$f"; else echo 'doombar: offline'; fi`, which sources `src/doombar-client.sh` into the bash Claude Code already starts for each tick. The client uses bash builtins only and starts no process. It hands the session JSON to the **render daemon** and prints the frame the daemon prepared. There is one daemon per installation (`src/daemon.js`, single instance through the named pipe `\\.\pipe\doombar-<install hash>`). The hooks start it and restart it when it dies or is outdated, and it exits on its own after `DOOMBAR_DAEMON_IDLE_MS` (default 10 minutes) with no active session. Upgrading the package in place updates the client without touching `settings.json`.
+The statusLine command is a small bash client, not a renderer, wherever a suitable bash exists. The client uses bash builtins only and starts no process. It hands the session JSON to the **render daemon** and prints the frame the daemon prepared. There is one daemon per installation (`src/daemon.js`), running at below-normal priority. The hooks start it and restart it when it dies or is outdated, and it exits on its own after `DOOMBAR_DAEMON_IDLE_MS` (default 10 minutes) with no active session. Upgrading the package in place updates the client without touching `settings.json`.
 
-**Everywhere else** (macOS, Linux, Windows without Git Bash) the statusLine stays the one-shot renderer `node "<package>/src/statusline.js"`. That command also keeps working on Windows, so sessions opened before an upgrade keep their bar until Claude Code restarts them.
+- On **Windows with Git Bash** the installer writes `DOOMBAR_ROOT_HASH=<install hash>; f="<package>/src/doombar-client.sh"; if [ -r "$f" ]; then . "$f"; else echo 'doombar: offline'; fi`, which sources the client into the bash Claude Code already starts for each tick. The daemon is a single instance through the named pipe `\\.\pipe\doombar-<install hash>`.
+- On **Linux and macOS with bash 5** Claude Code runs the statusLine through `/bin/sh` (dash on Debian), so the installer writes `b="<bash>"; f="<package>/src/doombar-client.sh"; if [ -r "$f" ] && [ -x "$b" ]; then unset BASH_ENV; exec "$b" --norc --noprofile "$f" <install hash>; else echo 'doombar: offline'; fi`. A tick costs about as much as starting bash: 3 ms on a GitHub Actions Linux runner, against 40 ms there for the one-shot renderer (on a Raspberry Pi 5 the one-shot takes about 250 ms). The daemon is a single instance through the socket file `mugshot_daemon_<install hash>.sock` in the runtime directory below; a socket left by a daemon that was killed is taken over by the next one.
+- **Everywhere else** (macOS with its own bash 3.2, Windows without Git Bash) the statusLine stays the one-shot renderer `node "<package>/src/statusline.js"`. That command also keeps working where the client is used, so sessions opened before an upgrade keep their bar until Claude Code restarts them.
+
+**Where the files live.** On Windows the temp directory (`%TEMP%`), which belongs to one user. On Linux and macOS `/tmp` is shared by every user, so the bar keeps all its files (session state, the daemon's files, the face cache) in a private directory: `$XDG_RUNTIME_DIR/doombar` (usually `/run/user/<uid>/doombar`), on macOS `$TMPDIR/doombar`, otherwise `/tmp/doombar-<uid>`. The hooks create it with mode 0700. If it is not a real directory of this user (another user created it, or it is a link), nothing is read from or written to it and the bar shows `doombar: offline`. `DOOMBAR_RUNTIME_DIR` overrides the place on every platform. The runtime directory is cleared at logout, so a session resumed after a logout starts its HUD state afresh.
 
 - **`src/statusline.js`** is the one-shot statusLine command (and the renderer the daemon calls). Claude Code pipes session JSON on stdin; it maps that (plus the hook's git snapshot, system metrics from Node built-ins, and the hook state file) to metric values, picks the mugshot sprite, and renders the preset. It spawns nothing — git moved into the hook precisely to keep the render path free of child processes.
-- **`src/hook.js`** is an event bus. Lifecycle hooks write a small state file (face reaction with decay, tool-run intervals for the geiger, the running-subagent squad). The status line reads it on each refresh — the two never block each other. Those files live in the temp directory keyed by session id (or next to `MUGSHOT_STATE` when set). `SessionEnd` deletes a session's files when it ends, keeping only its savings total for a later resume. `SessionStart` sweeps what is left by sessions that ended without it: a session that never showed a bar (a headless `claude -p` run) after `DOOMBAR_UNRENDERED_TTL` (default 1 hour), any other after `DOOMBAR_JOURNAL_TTL` (default 7 days, `off` to disable). Shared state and a live session's files are never touched. Re-run `install` after upgrading to add the `SessionEnd` hook.
+- **`src/hook.js`** is an event bus. Lifecycle hooks write a small state file (face reaction with decay, tool-run intervals for the geiger, the running-subagent squad). The status line reads it on each refresh — the two never block each other. Those files live in the bar's runtime directory (see above) keyed by session id (or next to `MUGSHOT_STATE` when set). `SessionEnd` deletes a session's files when it ends, keeping only its savings total for a later resume. `SessionStart` sweeps what is left by sessions that ended without it: a session that never showed a bar (a headless `claude -p` run) after `DOOMBAR_UNRENDERED_TTL` (default 1 hour), any other after `DOOMBAR_JOURNAL_TTL` (default 7 days, `off` to disable). Shared state and a live session's files are never touched. Re-run `install` after upgrading to add the `SessionEnd` hook.
 - **`src/render.js`** is the rendering engine; **`src/face.js`** draws the mugshot from pre-baked transparent sprites, converted to glyphs by **`src/glyph-render.js`** with the step **`src/glyph-level.js`** picks for the terminal. **`bin/cli.js`** is the installer.
 
 See [`docs/ideation/`](docs/ideation/) for the full design write-up.
@@ -205,8 +211,9 @@ The daemon gives every frame a validity window (`DOOMBAR_FRAME_WINDOW`, default 
 
 ### Troubleshooting the daemon
 
-- **Heartbeat**: `mugshot_daemon_<install hash>.json` in the temp directory (`%TEMP%`) holds the daemon's pid, start time, version, window and last renewal. The `<install hash>` is the one after `DOOMBAR_ROOT_HASH=` in your statusLine command. Per-session files sit next to it as `mugshot_payload_<hash>_<session>.json` and `mugshot_frame_<hash>_<session>.json`.
-- **Restart**: run any tool in Claude Code. Every hook checks the daemon and starts a missing one, at most once per throttle window. A hung or outdated daemon is replaced after it has stayed suspect for the grace period. To force a fresh start, end the `node … src/daemon.js` process and the next tool call starts a new one.
+- **Heartbeat**: `mugshot_daemon_<install hash>.json` in the runtime directory (`%TEMP%` on Windows, see [Where the files live](#how-it-works) elsewhere) holds the daemon's pid, start time, version, window and last renewal (on Linux also `startTicks`, its start time from `/proc`). The `<install hash>` is the one after `DOOMBAR_ROOT_HASH=` in your statusLine command, or its last word on Linux and macOS. Per-session files sit next to it as `mugshot_payload_<hash>_<session>.json` and `mugshot_frame_<hash>_<session>.json`, and on Linux and macOS the daemon's socket as `mugshot_daemon_<hash>.sock`.
+- **A plain `doombar: offline` that never goes away** on Linux or macOS: check that the bash in the statusLine command still exists and is version 5 (`"<bash>" --version`), and that the runtime directory is a directory you own with mode `drwx------` (`ls -ld "$XDG_RUNTIME_DIR/doombar"` or `/tmp/doombar-$(id -u)`). If another user created `/tmp/doombar-<your uid>`, remove it or set `DOOMBAR_RUNTIME_DIR`.
+- **Restart**: run any tool in Claude Code. Every hook checks the daemon and starts a missing one, at most once per throttle window. A hung or outdated daemon is replaced after it has stayed suspect for the grace period. To force a fresh start, end the `node … src/daemon.js` process and the next tool call starts a new one. On Linux, where `KillUserProcesses=yes` (not the Debian default), a daemon started from an ssh session ends when that session logs out; the next tool call starts a new one.
 - **Knobs** go in the `env` block of `settings.json`. The hooks and the daemon they start inherit them.
   - `DOOMBAR_FRAME_WINDOW` (seconds, default 3): how long a frame stays valid before it greys. It is forwarded per session.
   - `DOOMBAR_COLLECT_MS` (ms, default 1000): minimum interval between CPU samples.
@@ -217,7 +224,7 @@ The daemon gives every frame a validity window (`DOOMBAR_FRAME_WINDOW`, default 
 - `DOOMBAR_PAYLOAD_WAIT_MS` (ms, default 10000): how long the `SessionStart` hook waits for the session's first payload before it decides this installation's client is not in use there and starts nothing.
 
   The daemon reads its own settings when it starts, so a change takes effect once it is restarted.
-- **Uninstall** stops this installation's daemon and removes its temp files. It stops a pid only after the process list confirms it is node running this package's `src/daemon.js`. A heartbeat that names any other process is reported and left alone.
+- **Uninstall** stops this installation's daemon and removes its files. It stops a pid only after the process list confirms it is node running this package's `src/daemon.js`, started when the heartbeat says (on Linux: the start time in `/proc` matches exactly). A heartbeat that names any other process is reported and left alone. On Linux and macOS it looks in every runtime directory of yours, because the shell you run it from may see another `XDG_RUNTIME_DIR` than Claude Code did, and removes the directory once it is empty. A session still running keeps writing its payload until Claude Code restarts, so the hooks may start the daemon again until then.
 
 ## Credits
 

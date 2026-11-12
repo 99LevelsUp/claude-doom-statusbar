@@ -37,7 +37,7 @@ refresh that is a quarter of a core given back on the Pi.
    the whole tick. The client sources bash-only syntax (`[[ ]]`, arrays, `EPOCHREALTIME`), so the Linux
    command must be `exec bash --norc --noprofile <client>` or `exec bash -c '. <client>'`. With `exec`,
    bash inherits stdin, so the payload still arrives.
-2. **Temp directory.** `TMPDIR` was unset and `os.tmpdir()` gave `/tmp` (tmpfs). The client picks
+2. **Temp directory.** (Superseded: the port uses one private runtime directory, so the client never reads the temp variables off Windows.) `TMPDIR` was unset and `os.tmpdir()` gave `/tmp` (tmpfs). The client picks
    `TEMP`, `TMP`, `TMPDIR`, `/tmp` in that order, which is Node's order on Windows; on POSIX Node reads
    `TMPDIR` first, so the client's order must depend on the platform.
 3. **Singleton.** Node can listen on an abstract Unix socket (`\0doombar-<hash>`). But abstract sockets

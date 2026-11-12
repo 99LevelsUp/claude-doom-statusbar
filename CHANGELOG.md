@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **The render daemon and its fast client on Linux, and on macOS with bash 5.** A status line
+  tick no longer starts Node there: `install` writes a command that hands the tick from
+  `/bin/sh` to bash, which prints the frame the daemon already drew. A tick costs about as much
+  as starting bash (3 ms on a GitHub Linux runner, against 40 ms for the one-shot renderer; on a
+  Raspberry Pi 5 the one-shot takes about 250 ms). Without a bash 5, as on a stock Mac, the
+  one-shot renderer stays. Run `claude-doom-statusbar install` once after upgrading to switch.
+  macOS with bash 5 is not tested on a real Mac yet.
+- **`install --local`** writes the project's `.claude/settings.local.json`, which overrides
+  `settings.json`, for a checkout wired to itself.
+
+### Changed
+- **On Linux and macOS the bar's files leave the shared `/tmp`.** Other users could read them
+  there, and plant some, such as the face cache, whose text goes straight to the terminal. They
+  now live in a private directory: `$XDG_RUNTIME_DIR/doombar`, on macOS `$TMPDIR/doombar`,
+  otherwise `/tmp/doombar-<uid>`, mode 0700. A directory that is not this user's own is never
+  read or written; the bar shows `doombar: offline` instead. The runtime directory is cleared at
+  logout, so a session resumed after one starts its HUD state afresh. Files a previous version
+  left in `/tmp` are not moved; a reboot clears them. `DOOMBAR_RUNTIME_DIR` sets the place.
+- **Each session's glyphs follow its own terminal on Linux too:** `TERM` and `VTE_VERSION` now
+  travel with the session to the daemon.
+
 ## [0.14.0] - 2026-11-11
 
 ### Added
