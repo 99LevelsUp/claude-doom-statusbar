@@ -172,12 +172,12 @@ Internal and free to change:
 
 Not in 1.0.0: merging the hotbar into the shared planner (G-4, G-5), chat as data (G-6, G-7), the user preset overlay (G-3), and Warcraft III (G-8, D-5). These come in 1.x, on top of the new tree.
 
-## 7. Decisions for the owner
+## 7. Decisions (owner, 2026-11-13)
 
-| # | Question | Recommendation |
+| # | Question | Decision |
 |---|---|---|
-| 1 | What 1.0.0 contains | Steps 1-8: structure, neutral reaction, render context, registry, rename. No new game and no behaviour change |
-| 2 | How long the `DOOMBAR_*`, old prefix and old client fallbacks last | All of 1.x; removed in 2.0.0 with a changelog note |
-| 3 | Local directory `claude-doom-statusbar` | Leave it for now; rename later as its own step with re-wiring and the memory move |
+| 1 | What 1.0.0 contains | Steps 1–8: structure, neutral reaction, render context, registry, rename. No new game, no behaviour change |
+| 2 | How long the `DOOMBAR_*`, old prefix, old theme file and old client fallbacks last | **A few 1.x releases**, not all of 1.x. The release that removes them says so in the changelog. Removing a fallback breaks old settings, so that release names it as a breaking change, even though it is a minor version |
+| 3 | Local directory `claude-doom-statusbar` | **Renamed with 1.0.0**, at the end of step 7. It needs: the explicit re-wiring of this repo's `settings.local.json`, a move of the auto-memory directory, and the Pi's clone renamed with its global settings re-wired. The Pi's settings change only with the owner's OK |
 | 4 | First publish of `claude-game-bar` on npm | The owner sets up the package on npmjs.com (trusted publisher, possibly one manual publish); CI publishes after that |
 | 5 | The old package | A final 0.16.0 that prints "renamed to claude-game-bar", then `npm deprecate` |
