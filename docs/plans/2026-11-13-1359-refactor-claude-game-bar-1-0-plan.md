@@ -21,7 +21,9 @@ execution: code
   - a merged step leaves a live bar offline for longer than a daemon restart;
   - the Pi's settings would change without the owner's OK.
 - **Who finishes:** this session builds and merges every PR and publishes through CI. The owner runs the npm account steps (runbook B–D) and confirms the Pi switch.
-- **Open blockers:** none for implementation. Before the 1.0.0 tag, the owner bootstraps the `claude-game-bar` package and its trusted publisher (R15; runbook B).
+- **Open blockers:** none for implementation.
+  - The owner reserves the npm name early (runbook B1) and sets up the trusted publisher just before the 1.0.0 tag (R15; runbook B2).
+  - How the two packages' `claude-doom-statusbar` command coexist (Open Questions) must be decided before PR6 is built.
 
 ---
 
@@ -163,7 +165,7 @@ The full findings, with file-level evidence, are in `docs/ideation/2026-11-13-re
 
 **Considered and not built:**
 - **Dual-name payload and frame files during the fallback.** Client and daemon always ship together, and a renamed package or directory gets a new install hash and a new daemon anyway. Evidence that would change this: an install path that runs an old client against a new daemon.
-- **Sweeping the old `doombar_faces_*` cache from the old runtime directory on POSIX.** The directory is a tmpfs cleared at logout or reboot. `uninstall` removes the old directory as a whole (U13).
+- **Removing the old runtime directory as a whole on POSIX.** The old global package may still be running from it, and its learned state is read from it (KTD10). U13 removes only this installation's files and stale old-prefix files, and removes the directory only when it is empty. A tmpfs is also cleared at logout or reboot.
 
 ### Dependencies / Assumptions
 
@@ -196,7 +198,7 @@ The full findings, with file-level evidence, are in `docs/ideation/2026-11-13-re
 
 ### Key Technical Decisions
 
-- KTD1. **Eight step PRs into master, each output-neutral, structure before rename.** This instantiates the Key Decision on step-by-step delivery (Governs R6, R7). (session-settled: user-approved — chosen over rename-first and over one integration branch.) The snapshots and the Pi gate prove each step.
+- KTD1. **Seven step PRs into master, each output-neutral, structure before rename.** This instantiates the Key Decision on step-by-step delivery (Governs R6, R7). (session-settled: user-approved — chosen over rename-first and over one integration branch.) The snapshots and the Pi gate prove each step.
 - KTD2. **The entry files keep their paths. The client is renamed and the old path becomes a shim.**
   - `src/hook.js`, `src/statusline.js` and `src/daemon.js` stay where they are. Installed settings and the daemon identity check (`hook.js:174` `DAEMON_JS`, `isOurDaemon` and its Linux and `ps` variants) point at them.
   - `src/doombar-client.sh` becomes a shim that sources `src/gamebar-client.sh` and passes `"$@"` on. It starts no process, so the Windows sourced path and the POSIX exec path both keep working (R7).
@@ -211,15 +213,17 @@ The full findings, with file-level evidence, are in `docs/ideation/2026-11-13-re
   - The client's forwarding list (`doombar-client.sh:171-172`) and `FORWARDED_ENV` (`daemon.js:43-47`) carry both spellings, so `sessionEnv` never mixes the daemon's values with a session's.
   - The test sandbox (`test/_sandbox-env.mjs`) sets both.
   - `MUGSHOT_STATE` becomes `GAMEBAR_STATE`.
-- KTD7. **The neutral reaction is `{expr, exprAge, hp, god, dead}`. The DOOM part picks the idle glance from the clock.**
-  - The hotbar needs the raw `expr` and `exprAge` for its 6 s hold.
-  - The DOOM portrait needs `hp` and `now` for the 1.5 s decay and the idle glance.
+- KTD7. **The neutral reaction is `{expr, exprAge, flash, hp, god, dead}`. The DOOM part picks the idle glance from the clock.**
+  - `flash` is the decayed reaction both games use today, computed once in the metrics layer with today's precedence: dead, then god, then `expr` while `exprAge` < 1.5 s. The DOOM face and the Minecraft heart colour both read it.
+  - The hotbar also needs the raw `expr` and `exprAge` for its 6 s slot hold.
+  - The DOOM portrait needs `hp` and `now` for the idle glance.
   - `hpRow` moves to the metrics side because it reads only values.
 - KTD8. **A render context replaces the module-level session state.** `VALUES`/`setValues` (`render.js:55-56`) and `_opts`/`setFaceOptions` (`face.js:22-29`) become a context passed to the layout. Content caches stay module-level, because their keys already include step and background.
 - KTD9. **The internal protocol names are renamed in the rename PR, with no dual protocol.** The runtime directory becomes `gamebar`, the pipe `gamebar-<hash>`, the tags `gamebar-env` and `gamebar-frame`, and the client functions `__gamebar_*`. This instantiates the "DOOM is only a look" Key Decision (Governs R9). (session-settled: user-directed — chosen over keeping them until a later release.)
   - Checkouts see a few seconds of grey while the daemon restarts.
   - npm users get a new install path, so a new hash and a fresh daemon.
 - KTD10. **Learned state is read under the old name when the new one is missing.** That state is the rate-limit pool, rate-health `k` and the savings totals. On Windows the old name is the old prefix in `%TEMP%`. On POSIX it is the same file in the old runtime directory. This passes the "stored data" test in Phase 3.8.
+  - Every POSIX access to an old runtime directory (this fallback read, and the uninstall cleanup in U13) first passes the same check `ensureRuntimeDir` applies today: `lstat`, a real directory and not a link, owned by the effective uid. It never creates or `chmod`s the directory, and it skips it silently on any failure. A `/tmp/doombar-<uid>` path that 1.0.0 no longer guards could otherwise be planted by another user.
 - KTD11. **The final 0.16.0 is built on a `release/0.16` branch from `v0.15.0` and tagged there, before the GitHub rename.** This instantiates the Key Decision on the old package (Governs R16). The branch is outside the default-branch ruleset, and the old package's trusted publisher still matches the old repository name. (session-settled: user-approved.)
 - KTD12. **Tests move into per-layer folders in the move PR, as a commit of their own.** The runner (U1) finds test files recursively, so the move does not touch the runner.
 - KTD13. **The 0.16.0 notice is one line after the bar, added where every layout's lines are returned.** The daemon renders through `renderSession`, so one place covers DOOM boxes, the Minecraft hotbar, the daemon frame and the one-shot render.
@@ -265,13 +269,17 @@ Release order. The last three steps change things outside this repository.
 
 ```mermaid
 flowchart TB
-  P1[PR1-PR5: structure, output-neutral] --> P7[PR7: rename in code]
-  R016[U11: publish claude-doom-statusbar 0.16.0 from release/0.16] --> GH[U15: rename the GitHub repo]
-  P7 --> GH
-  GH --> BOOT[Owner: placeholder publish + trusted publisher]
-  BOOT --> P8[PR8: 1.0.0 release PR, then tag v1.0.0]
-  P8 --> DEP[Owner: npm deprecate the old package]
-  P8 --> MIG[U16: move this PC and the Pi to claude-game-bar, rename local dirs]
+  B1[Owner B1: placeholder publish reserves the npm name] --> P1[PR1-PR5: structure, output-neutral]
+  P1 --> P7[PR7: rename in code]
+  P7 --> P8G[PR8 release PR green, PR6 green]
+  subgraph Sitting["One sitting"]
+    R016[U11: publish claude-doom-statusbar 0.16.0 from release/0.16] --> GH[U15: rename the GitHub repo]
+    GH --> B2[Owner B2: trusted publisher]
+    B2 --> TAG[PR8 merged, tag v1.0.0, 1.0.0 on npm]
+  end
+  P8G --> R016
+  TAG --> DEP[Owner C: npm deprecate the old package]
+  TAG --> MIG[U16: move this PC and the Pi to claude-game-bar, rename local dirs]
 ```
 
 ### Output Structure
@@ -306,7 +314,19 @@ assets/images/                     README images only
 
 ### Sequencing
 
-PR1 → PR2 → PR3 → PR4 → PR5 → PR7 → PR8, each merged and Pi-checked before the next starts. PR6 (0.16.0, U11) can be built at any time, but it must be published before the GitHub rename in U15.
+PR1 → PR2 → PR3 → PR4 → PR5 → PR7 → PR8, each merged and Pi-checked before the next starts. PR8 stays unmerged until the release sitting.
+
+- The owner runs runbook B1 before PR1 lands, so nobody else can claim the npm name that the docs and the 0.16.0 notice announce.
+- PR6 (0.16.0, U11) can be built at any time.
+- 0.16.0 is published only once PR7 is merged and PR8 is green. The release then runs in one sitting:
+  1. publish 0.16.0;
+  2. rename the GitHub repository;
+  3. owner runbook B2;
+  4. merge PR8 and tag `v1.0.0`;
+  5. check that `npm view claude-game-bar version --prefer-online` shows 1.0.0.
+
+  This keeps the window in which the 0.16.0 notice points at the placeholder down to minutes. It also keeps the settled order: 0.16.0 before the GitHub rename, the rename before 1.0.0.
+- The `npm` GitHub environment has no deployment-branch policy (checked 2026-11-13), so a tag on `release/0.16` publishes.
 
 ---
 
@@ -414,7 +434,7 @@ Waits on: PR2 (merge order only). It is a separate PR because each step is verif
 - **Requirements:** R1.
 - **Dependencies:** U7. `src/render.js` must first be freed by the kit split.
 - **Files:**
-  - new `src/metrics/{index,session,activity,tasks,system,savings,ratelimits}.js` and the new `src/render.js`;
+  - new `src/metrics/{index,session,activity,tasks,system,savings,ratelimits}.js`, and `src/render.js` (emptied by U7, refilled here);
   - modified `src/statusline.js` and `src/daemon.js`;
   - tests under `test/metrics/`.
 - **Approach:**
@@ -502,14 +522,15 @@ Waits on: PR3 (merge order only). It is a separate PR because each step is verif
   - modified `src/render.js`, `src/games/doom/layout.js`, `src/games/minecraft/layout.js`, `src/kit/planner.js`;
   - tests `test/metrics/reaction.test.mjs` and `test/games/render-snapshot.test.mjs`.
 - **Approach:** per KTD7.
-  1. `reaction.js` computes `{expr, exprAge, hp, god, dead}` from the folded state, the values, the god flash and exhaustion. Today that happens in `spriteFor` and `hpRow`.
+  1. `reaction.js` computes `{expr, exprAge, flash, hp, god, dead}` from the folded state, the values, the god flash and exhaustion. Today that happens in `spriteFor` and `hpRow`.
   2. `portrait.js` maps the reaction plus `now` to the `STF*` sprite and the idle glance.
-  3. The hotbar reads `god`, `dead`, `expr` and `exprAge` directly. `spriteExpr` goes.
+  3. The hotbar colours its hearts from `flash` and holds its slot from `expr` and `exprAge`. `spriteExpr` goes.
   4. The planner and the layouts take the reaction instead of a `spriteFor` callback, and the kit's `STFST…` defaults go.
   5. The snapshot harness passes reactions instead of sprite callbacks. The `.txt` files do not change.
 - **Test scenarios:**
   - Each folded expression (`ouch`, `kill`, `evl`, `tl`, `tr`) within 1.5 s yields that `expr` with its age.
   - After 1.5 s the DOOM portrait shows the idle glance and the hotbar still holds its slot for 6 s.
+  - At `exprAge` 2 after an `ouch`, the Minecraft hearts are back to their normal colour while the errors slot stays selected, as in 0.15.0.
   - Exhausted limits yield `dead`, and an active god flash yields `god`. `dead` wins over `god`, as today.
   - DOOM maps `{expr: "ouch", hp: 2}` to `STFOUCH2`, and `{dead: true}` to `STFDEAD0`.
   - All U2 reaction snapshots and the Minecraft ouch and exhausted snapshots are unchanged.
@@ -549,12 +570,12 @@ Waits on: PR4 (merge order only). It is a separate PR because each step is verif
   - modified `src/render.js` (layout comes from the registry, not `if layout === "hotbar"`);
   - `git mv presets/*.toml` → `src/games/doom/presets/` and `src/games/minecraft/presets/`;
   - `git mv assets/images/mugshot` → `src/games/doom/assets/mugshot`;
-  - `bin/cli.js` (test-card asset path, preset path);
+  - `bin/cli.js` (the test card asks the registry for its sample image; preset path);
   - `package.json` `files`;
   - `CONTRIBUTING.md` (adding a game);
   - tests `test/games/registry.test.mjs`, `test/games/fixture-game/` (test only), `test/install/installer.test.mjs`.
 - **Approach:**
-  - Each registry entry carries a name, a blurb, aliases, a layout and presets.
+  - Each registry entry carries a name, a blurb, aliases, a layout, presets and an optional sample image for the glyph test card. DOOM supplies its mugshot. The installer never names a game's asset path, so R1 holds for `bin/cli.js` too.
   - `THEMES` and `themePreset` derive from the registry.
   - `loadPreset` keeps the KTD5 fallback: an old `<root>/presets/<name>.toml` path resolves by basename.
   - `install` writes the new preset path.
@@ -566,7 +587,7 @@ Waits on: PR4 (merge order only). It is a separate PR because each step is verif
   - Covers AE2: a settings path `<root>/presets/full.toml` still renders DOOM `full` identically.
   - `theme next` cycles doom → minecraft → doom as before, and the `minecraft-hud` alias still resolves.
   - `install` writes `src/games/doom/presets/full.toml`.
-  - The test card finds the mugshot PNG at its new path.
+  - The test card prints the sample the registry supplies, which is the DOOM mugshot today. With the fixture game registered first, it still finds a sample.
 - **Verification:**
   - snapshots are identical;
   - `npm pack --dry-run` lists the moved presets and assets;
@@ -574,13 +595,16 @@ Waits on: PR4 (merge order only). It is a separate PR because each step is verif
 
 ### PR6: Final release of the old package (branch `release/0.16`, not into master)
 
-Waits on: nothing. It is a separate PR because it ships a different package line from `v0.15.0`, and the final release must be published before the GitHub rename (KTD11).
+Waits on: nothing to build. Publishing waits for the release sitting in Sequencing (PR7 merged, PR8 green). It is a separate PR because it ships a different package line from `v0.15.0`, and the final release must be published before the GitHub rename (KTD11).
 
 ### U11. claude-doom-statusbar 0.16.0 with the move notice
 
 - **Goal:** users of the old package see, permanently in their bar, that it moved and how to switch.
 - **Requirements:** R16.
-- **Dependencies:** none (built from tag `v0.15.0`).
+- **Dependencies:**
+  - built from tag `v0.15.0`;
+  - published only in the release sitting (Sequencing), after runbook B1;
+  - the notice's command waits on the Open Question about the shared command name.
 - **Files:**
   - `src/statusline.js` (`renderSession` appends the notice line, KTD13);
   - `bin/cli.js` (`install` and `uninstall` print the notice);
@@ -637,7 +661,7 @@ Waits on: PR5 (merge order only). It is a separate PR because each step is verif
   - With only `mugshot_ratelimits_global.json` present, the shared rate limits load. With only the old theme file, the saved theme is used.
 - **Verification:**
   - snapshots are identical;
-  - `grep -ri doom src` finds hits only under `src/games/doom/`, in the shim and in the fallback name lists;
+  - the Leftover names gate in the Verification Contract passes;
   - the Pi turns live again after the merge with one daemon.
 
 ### U13. Installer migration, sweep and uninstall for old and new names
@@ -655,7 +679,8 @@ Waits on: PR5 (merge order only). It is a separate PR because each step is verif
   - `env.DOOMBAR_*` is renamed to `GAMEBAR_*`, and the old preset path is rewritten.
   - The old theme file is migrated.
   - When a `claude-doom-statusbar` global package is found, the installer prints `npm uninstall -g claude-doom-statusbar`.
-  - The sweep and `uninstall` match old and new prefixes, and `uninstall` also removes the old runtime directory candidates.
+  - The sweep and `uninstall` match old and new prefixes.
+  - In each old runtime directory candidate that passes the KTD10 check, `uninstall` removes this installation's hash-prefixed daemon, payload and frame files, and old-prefix session files and `doombar_faces_*` older than the sweep TTL. It removes the directory only when it is empty, as `stopDaemon` does today. The old global package may still be running from the same directory (R10).
   - The reaper matches both client names.
 - **Test scenarios:**
   - Covers AE1: a settings file wired by 0.15.0 from another package root, with `DOOMBAR_PRESET` and a Minecraft theme file, ends up after `install` with:
@@ -667,6 +692,8 @@ Waits on: PR5 (merge order only). It is a separate PR because each step is verif
   - Re-running `install` changes nothing.
   - Covers AE5: `mugshot_*` and `doombar_faces_*` files older than the TTL are swept like `gamebar_*` files, and `uninstall` removes the old-prefix daemon files.
   - `uninstall` after the migration removes every entry and the env names.
+  - An old runtime directory that holds another installation's daemon files keeps them, and keeps the directory.
+  - An old runtime directory owned by another uid, or a symlink in its place, is left untouched by `uninstall`. The learned-state fallback ignores it too (KTD10).
 - **Verification:** the installer test passes on Windows and on CI, and this PC's `.claude/settings.local.json` migrates in a dry run against a copy.
 
 ### U14. README, CLAUDE.md and CONTRIBUTING rewritten for the new project
@@ -696,7 +723,7 @@ Waits on: PR5 (merge order only). It is a separate PR because each step is verif
 
 ### PR8: Release 1.0.0
 
-Waits on: PR7, and U15's GitHub rename and the owner's runbook step B. The rename and the npm setup must be in place before the tag can publish.
+Waits on: PR7. The merge waits for U15's GitHub rename and runbook B2 in the release sitting, because the tag can publish only after both.
 
 ### U15. GitHub rename and the 1.0.0 release
 
@@ -705,8 +732,9 @@ Waits on: PR7, and U15's GitHub rename and the owner's runbook step B. The renam
 - **Dependencies:** U11 published, U14 merged.
 - **Files:** `CHANGELOG.md`, `package.json`, `package-lock.json`, `docs/BACKLOG.md`.
 - **Approach:**
-  1. `gh repo rename claude-game-bar`. Then update the `origin` URL locally and ask the Pi session to do the same, with no change to its settings. This happens after U11 is published.
-  2. The owner runs runbook B and confirms.
+  These steps run in the release sitting described in Sequencing.
+  1. `gh repo rename claude-game-bar`, right after U11 is published. Then update the `origin` URL locally and ask the Pi session to do the same, with no change to its settings.
+  2. The owner runs runbook B2 and confirms.
   3. Release PR per `CONTRIBUTING.md`, *Releasing*:
      - the changelog as its own commit, covering 1.0.0 with migration notes and the fallback list;
      - `npm version major --no-git-tag-version`;
@@ -744,17 +772,31 @@ Waits on: PR7, and U15's GitHub rename and the owner's runbook step B. The renam
 
 ---
 
+## Deferred / Open Questions
+
+### From 2026-11-13 review
+
+- [Affects R8, R10, R16][User decision, before PR6 is built] **Both packages would ship a `claude-doom-statusbar` command.**
+  - npm refuses a global install whose command file belongs to another installed package (`EEXIST`, unless `--force`). So `npm i -g claude-game-bar` fails on every machine that still has `claude-doom-statusbar`, including in U16, and the 0.16.0 notice text is frozen once published.
+  - Options:
+    - (a) drop the alias command from 1.0.0. The old command works until the old package is removed. The notice becomes `npm i -g claude-game-bar && claude-game-bar install && npm uninstall -g claude-doom-statusbar`.
+    - (b) keep the alias, and have the notice remove the old package first. The bar and its hooks fail for the seconds between the two commands.
+    - (c) keep the alias and install with `--force`, which silently takes over the old package's command files.
+  - Recommendation: (a). It changes R8's "the old CLI name still works as an alias" to "works until the old package is removed".
+
+---
+
 ## Verification Contract
 
 | Gate | How | Applies to |
 |---|---|---|
 | Unit and integration suite | `npm test` (U1 runner). On the owner's PC run it at below-normal priority, with the scratchpad runner `runtests.ps1` | every PR |
 | Daemon end to end | `npm run test:e2e`, alone, never at the same time as anything else | PR1–PR5, PR7 |
-| Snapshot freeze | `git diff --exit-code -- test/snapshots` against the branch base after the run | PR1 (after U2 adds files), PR2–PR5, PR7 |
+| Snapshot freeze | PR1: `git diff --exit-code --diff-filter=MD -- test/snapshots` (U2 adds files; none may change or go). PR2–PR5, PR7: `git diff --exit-code -- test/snapshots` against the branch base after the run | PR1–PR5, PR7 |
 | CI | GitHub Actions `test` and `e2e` green (they are required by the ruleset) | every PR into master and `release/0.16` |
 | Live check | after each merge, the Pi session pulls master and reports: bar live, exactly one `daemon.js`, nice 10 | PR1–PR5, PR7, PR8 |
 | Registry | `npm view <pkg> version --prefer-online` and `gh run watch` on `Publish to npm` | U11, U15 |
-| Leftover names | `grep -rniE "doom|STF" src` hits only `src/games/doom/`, the client shim and the fallback name lists | after U12 |
+| Leftover names | `grep -rn STF src` (case-sensitive) hits only `src/games/doom/`. `grep -rni doom src` hits only `src/games/doom/`, the `doom` entry in `src/games/index.js`, the client shim and the fallback name lists | after U12 |
 
 ---
 
@@ -772,9 +814,9 @@ Waits on: PR7, and U15's GitHub rename and the owner's runbook step B. The renam
 
 ### Owner runbook (npm steps need the owner's npm login)
 
-**A. Before U15:** nothing. Wait for the go.
+**A.** Nothing else is needed from the owner until a step below asks for it.
 
-**B. Create the `claude-game-bar` package and its trusted publisher.** Do this after the GitHub rename, just before the 1.0.0 tag.
+**B1. Reserve the name `claude-game-bar` on npm.** Do this now, before PR1 lands. The name is already public in this repository's docs, and an unclaimed name could be published by someone else, whose code the 0.16.0 notice would then tell users to install.
 
 ```powershell
 npm login
@@ -792,7 +834,7 @@ npm publish --access public
 npm view claude-game-bar version
 ```
 
-Then on npmjs.com:
+**B2. Set up the trusted publisher**, in the release sitting, right after the GitHub rename and just before the 1.0.0 tag. On npmjs.com:
 1. Open package **claude-game-bar** → **Settings** → **Trusted Publisher** → **GitHub Actions**.
 2. Fill in:
    - Organization or user: `99LevelsUp`
