@@ -44,7 +44,7 @@ const has = (o, k) => Object.prototype.hasOwnProperty.call(o || {}, k);
 // starts. That half is handled by the reaper — see maybeReap below and reapStaleShells in hook.js.
 
 // Clip a display label to at most `n` code points, ending with … when truncated,
-// so an oversized PACKAGE_ROOT or branch name can't blow up the PROJECT box width.
+// so an oversized repo or branch name can't blow up the PROJECT box width.
 const clip = (s, n) => ([...String(s)].length > n ? [...String(s)].slice(0, n - 1).join("") + "…" : String(s));
 
 // Human-readable token count: 8263 -> "8.3k", 1200000 -> "1.2M", 512 -> "512".
@@ -157,9 +157,9 @@ export function buildValues(data, git, now = Date.now() / 1000) {
   const style = (data.output_style || {}).name;
   if (style) v["model.style"] = style;
 
-  const PACKAGE_ROOT = (data.workspace || {}).PACKAGE_ROOT || {};
+  const repo = (data.workspace || {}).repo || {};
   let repoUrl = "";
-  if (PACKAGE_ROOT.host && PACKAGE_ROOT.owner && PACKAGE_ROOT.name) repoUrl = `https://${PACKAGE_ROOT.host}/${PACKAGE_ROOT.owner}/${PACKAGE_ROOT.name}`;
+  if (repo.host && repo.owner && repo.name) repoUrl = `https://${repo.host}/${repo.owner}/${repo.name}`;
 
   const sname = data.session_name || data.session_id; // session_name only set via /rename or --name
   // Clip generously, not to box width: the renderer fits each field to its box (marquee or
