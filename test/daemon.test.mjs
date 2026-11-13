@@ -498,6 +498,20 @@ try {
     b1.kill();
     await b1.exited;
 
+    // A change to a file in a subfolder of src/ makes the daemon exit too: the source is split
+    // into folders, and a running daemon must pick up a change anywhere in it.
+    {
+      const E = copyPackage("pkg-e");
+      mkdirSync(path.join(E.dir, "src", "nested"));
+      writeFileSync(path.join(E.dir, "src", "nested", "probe.js"), "export const probe = 1;\n");
+      const rtE = path.join(SB, "rt-nested");
+      mkdirSync(rtE);
+      const e1 = startDaemon(E, rtE);
+      ok(await waitFor(() => heartbeat(E.hash, rtE)?.pid === e1.pid), `the nested-source daemon starts ${e1.err}`);
+      appendFileSync(path.join(E.dir, "src", "nested", "probe.js"), "// touched\n");
+      ok(await exitWithin(e1, 10000) !== "timeout", "a change in a subfolder of the daemon's src/ makes it exit");
+    }
+
     // With no payload for the idle period, the daemon exits and removes its pipe and heartbeat,
     // nothing else.
     const idle = path.join(SB, "rt-idle");

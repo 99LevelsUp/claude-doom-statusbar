@@ -12,7 +12,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { fileURLToPath } from "node:url";
+import { PACKAGE_ROOT } from "./package-root.js";
 
 export const GEIGER_WINDOW = 30.0; // seconds of tool-run history kept for the sparkline
 export const MAX_RUN = 300.0; // drop an unclosed span after this (assume the Post was lost)
@@ -90,7 +90,6 @@ export function statePaths(sessionId, env = process.env) {
 // same Windows path give the same hash. Only Node computes it; the installer bakes it into the
 // statusLine command.
 export const ROOT_HASH_LEN = 10;
-export const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export function rootHash(root = PACKAGE_ROOT) {
   const norm = path.resolve(root).replace(/\\/g, "/").toLowerCase();
   return createHash("sha1").update(norm).digest("hex").slice(0, ROOT_HASH_LEN);

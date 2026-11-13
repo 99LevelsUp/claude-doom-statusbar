@@ -27,8 +27,9 @@ import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import os from "node:os";
 import path from "node:path";
+import { PACKAGE_ROOT, SRC_DIR } from "./package-root.js";
 import {
-  base, statePaths, sessionPaths, daemonPaths, rootHash, sidKey, daemonSocket, procStartTicks, addressBound, PACKAGE_ROOT,
+  base, statePaths, sessionPaths, daemonPaths, rootHash, sidKey, daemonSocket, procStartTicks, addressBound,
   ROOT_HASH_LEN, WRITE_TOOLS,
   writeAtomic, envNum, packageVersion as readPackageVersion, runtimeDir, ensureRuntimeDir,
 } from "./fold.js";
@@ -171,7 +172,7 @@ export function reapStaleShells() {
 }
 
 // --- Render daemon supervision ----------------------------------------------------------------
-const DAEMON_JS = path.join(PACKAGE_ROOT, "src", "daemon.js");
+const DAEMON_JS = path.join(SRC_DIR, "daemon.js");
 const DAEMON_THROTTLE_MS = envNum(process.env.DOOMBAR_DAEMON_THROTTLE_MS, 15000);
 const DAEMON_GRACE_MS = envNum(process.env.DOOMBAR_DAEMON_GRACE_MS, 20000);
 const PAYLOAD_WAIT_MS = envNum(process.env.DOOMBAR_PAYLOAD_WAIT_MS, 10000);

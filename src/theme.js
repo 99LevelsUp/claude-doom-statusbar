@@ -9,9 +9,7 @@
 import { readFileSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const REPO = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+import { PACKAGE_ROOT } from "./package-root.js";
 
 // theme -> preset file (null = follow DOOMBAR_PRESET), plus a one-line blurb for the CLI.
 export const THEMES = {
@@ -46,7 +44,7 @@ export function currentTheme(env = process.env) {
 // The preset file to render for `theme`, or null to keep the caller's default.
 export function themePreset(theme) {
   const p = (THEMES[theme] || {}).preset;
-  return p ? path.join(REPO, "presets", p) : null;
+  return p ? path.join(PACKAGE_ROOT, "presets", p) : null;
 }
 
 export function saveTheme(theme) {

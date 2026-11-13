@@ -72,6 +72,24 @@ for (const preset of ["full", "standard", "minimal"]) {
   }
 }
 
+// --- DOOM reactions: the face for each reaction the statusline can choose ------------------
+// The sprite names are the ones the statusline picks for a reaction at the given health row.
+{
+  const reactions = {
+    ouch: (hp) => `STFOUCH${hp}`,
+    kill: (hp) => `STFKILL${hp}`,
+    god: () => "STFGOD0",
+    dead: () => "STFDEAD0",
+  };
+  for (const [name, spriteFor] of Object.entries(reactions)) {
+    setValues(FIXTURE);
+    const cfg = loadPreset("full");
+    const selected = resolvePreset(cfg, 120, loadPreset, spriteFor);
+    const overflow = selected.text_overflow || cfg.text_overflow || "scroll";
+    check(`doom-full-120-${name}`, buildBar(selected, 120, spriteFor, 0, overflow).lines);
+  }
+}
+
 // --- Minecraft hotbar -------------------------------------------------------------------
 {
   const cfg = loadPreset("minecraft");
@@ -85,6 +103,11 @@ for (const preset of ["full", "standard", "minimal"]) {
   // A tool just failed: hearts flash and the selected slot jumps to the errors slot.
   check("minecraft-160-ouch",
     buildHotbar(cfg, 160, FIXTURE, { ...base, sprite: "STFOUCH0", expr: "ouch", exprAge: 1 }).lines);
+  // God mode: the hearts turn gold.
+  check("minecraft-160-god", buildHotbar(cfg, 160, FIXTURE, { ...base, sprite: "STFGOD0" }).lines);
+  // An ouch that has faded from the face (2 s ago) while the errors slot is still held.
+  check("minecraft-160-ouch-faded",
+    buildHotbar(cfg, 160, FIXTURE, { ...base, sprite: "STFST01", expr: "ouch", exprAge: 2 }).lines);
 }
 
 console.log(fails ? `\n${fails} FAILED` : "\nALL PASS");
