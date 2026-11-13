@@ -27,12 +27,12 @@ import { fileURLToPath } from "node:url";
 import { THEMES, THEME_NAMES, currentTheme, saveTheme, nextTheme, resolveTheme } from "../src/theme.js";
 import { rootHash, daemonPrefix, payloadPrefix, framePrefix, runtimeDir } from "../src/fold.js";
 import { confirmedDaemonPid } from "../src/hook.js";
-import { STEPS, testCardLines } from "../src/glyphs.js";
-import { convertImage } from "../src/glyph-render.js";
-import { terminalStep } from "../src/glyph-level.js";
-import { decodePng } from "../src/png.js";
-import { sgrFg, sgrBg } from "../src/ansi.js";
-import { ensureEmojiFont } from "../src/emoji-font.js";
+import { STEPS, testCardLines } from "../src/kit/raster/glyphs.js";
+import { convertImage } from "../src/kit/raster/glyph-render.js";
+import { terminalStep } from "../src/kit/raster/glyph-level.js";
+import { decodePng } from "../src/kit/raster/png.js";
+import { sgrFg, sgrBg } from "../src/kit/ansi.js";
+import { ensureEmojiFont } from "../src/install/emoji-font.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url)); // bin/
 const ROOT = path.dirname(HERE); // package root

@@ -7,8 +7,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseToml } from "smol-toml";
-import { RESET, BOLD, TERM_RGB, sgrFg, sgrBg, pyround } from "./ansi.js";
-import { loadFace, faceCell } from "./face.js";
+import { RESET, BOLD, TERM_RGB, sgrFg, sgrBg, pyround } from "./kit/ansi.js";
+import { loadFace, faceCell } from "./games/doom/face.js";
 import { PACKAGE_ROOT } from "./package-root.js";
 
 // SGR + OSC 8 hyperlinks — stripped for width measurement.

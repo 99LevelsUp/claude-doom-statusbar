@@ -9,10 +9,10 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - src/glyphs.js
-      - src/glyph-render.js
-      - src/png.js
-      - src/face.js
+      - src/kit/raster/glyphs.js
+      - src/kit/raster/glyph-render.js
+      - src/kit/raster/png.js
+      - src/games/doom/face.js
       - scripts/measure-oneshot.mjs
       - scripts/measure-client.mjs
       - src/doombar-client.sh

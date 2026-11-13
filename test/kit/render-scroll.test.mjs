@@ -1,0 +1,107 @@
+#!/usr/bin/env node
+import "../_temp-sandbox.mjs"; // before the modules that name temp paths
+import { setValues, metricFixedWidth, scrollWindow, buildBar, vlen, SAMPLE } from "../../src/render.js";
+import { parse as parseToml } from "smol-toml";
+import { readFileSync } from "node:fs";
+import path2 from "node:path";
+import { fileURLToPath as f2u } from "node:url";
+let fails = 0;
+const ok = (c, m) => { console.log((c?"  ok   ":"  FAIL ")+m); if(!c) fails++; };
+
+// metricFixedWidth handles the object item shape (mark + text), truncated by box later.
+setValues({ "act.tasklist": [{ mark:"✅", markRgb:null, text:"render engine" }] });
+const w = metricFixedWidth({ id:"act.tasklist", render:"scroll" });
+ok(typeof w === "number" && w >= "render engine".length, `scroll width measures mark+text (got ${w})`);
+
+// Empty scroll value -> width is just the (absent) label, and box should be hidden via available.
+setValues({});
+ok(metricFixedWidth({ id:"act.tasklist", render:"scroll" }) === 0, "empty scroll -> zero width");
+
+// scrollWindow(n, H, anchor, boundary) -> { start, up, down }
+let r = scrollWindow(10, 4, "top", 0);
+ok(r.start === 0 && r.down === 6 && r.up === 0, "top: start 0, 6 hidden below");
+r = scrollWindow(3, 4, "top", 0);
+ok(r.start === 0 && r.down === 0 && r.up === 0, "top: all fit -> no overflow");
+r = scrollWindow(9, 5, "boundary", 4);     // B=4, H=5 -> start = 4 - 2 = 2
+ok(r.start === 2 && r.up === 2 && r.down === 2, "boundary centered (start 2)");
+r = scrollWindow(9, 5, "boundary", 1);     // few settled -> clamp start 0
+ok(r.start === 0 && r.up === 0, "few settled -> top clamp");
+r = scrollWindow(9, 5, "boundary", 8);     // few open -> clamp start N-H=4
+ok(r.start === 4 && r.down === 0, "few open -> bottom clamp");
+r = scrollWindow(4, 5, "boundary", 2);     // all fit
+ok(r.start === 0 && r.up === 0 && r.down === 0, "boundary all-fit -> top aligned");
+
+// Row-width uniformity: all HUD lines must have equal display width even when
+// an overflow marker (↑k / ↓k) is present on the first/last visible agent row.
+{
+  const longAgents = [];
+  for (let i = 0; i < 12; i++) longAgents.push([`a-really-long-agent-label-${i}`, "1m2s"]);
+  setValues({
+    ...SAMPLE,
+    "act.subagents": longAgents,
+    "act.tasklist": [
+      { mark: "✅", markRgb: null, text: "x" },
+      { mark: "🎯", markRgb: null, text: "y" },
+    ],
+  });
+  const cfgRoot = path2.dirname(path2.dirname(f2u(import.meta.url)));
+  const cfg = parseToml(readFileSync(path2.join(cfgRoot, "..", "presets", "full.toml"), "utf8"));
+  const res = buildBar(cfg, 160);
+  const widths = res.lines.map((l) => vlen(l));
+  ok(new Set(widths).size === 1, `all HUD rows equal width with overflow marker (widths: ${[...new Set(widths)].join(",")})`);
+}
+
+// Marquee integration: a long scrolled label keeps every HUD row equal width at
+// every tick, and the visible window actually moves as the tick advances.
+{
+  setValues({
+    ...SAMPLE,
+    "act.subagents": [["a-really-long-agent-label-that-overflows-its-box", "1m2s"]],
+    "act.tasklist": [{ mark: "⏩", markRgb: null, text: "port-PIL-alpha-compositing-into-JS-render" }],
+  });
+  const cfgRoot = path2.dirname(path2.dirname(f2u(import.meta.url)));
+  const cfg = parseToml(readFileSync(path2.join(cfgRoot, "..", "presets", "full.toml"), "utf8"));
+  let uniform = true;
+  const frames = new Set();
+  for (let t = 0; t < 24; t++) {
+    const res = buildBar(cfg, 160, undefined, t);
+    if (new Set(res.lines.map((l) => vlen(l))).size !== 1) uniform = false;
+    frames.add(res.lines.join("\n"));
+  }
+  ok(uniform, "marquee: all HUD rows stay equal width at every tick");
+  ok(frames.size > 1, "marquee: the rendered HUD changes as the tick advances");
+}
+
+// Responsive scale: at a narrow target the layout shrinks (small textCap) yet every HUD row
+// stays equal width across ticks, plain text marquees, and a hyperlink value (OSC8) now
+// marquees too — its visible text is windowed but the OSC8 structure + URL stay intact.
+{
+  const cfgRoot2 = path2.dirname(path2.dirname(f2u(import.meta.url)));
+  const full2 = parseToml(readFileSync(path2.join(cfgRoot2, "..", "presets", "full.toml"), "utf8"));
+  const url = "https://example.com/a/very/long/path";
+  const inner = "a-very-long-linked-cwd-name";
+  const link = `\x1b]8;;${url}\x1b\\${inner}\x1b]8;;\x1b\\`;
+  setValues({
+    ...SAMPLE,
+    "loc.cwd": link, // OSC8 hyperlink -> hyperlink-aware marquee (inner sliced, URL re-wrapped)
+    "act.tasklist": [{ mark: "⏩", markRgb: null, text: "port-PIL-alpha-compositing-into-JS-render" }],
+  });
+  let uniform = true;
+  const frames = new Set();
+  for (let t = 0; t < 18; t++) {
+    const res = buildBar(full2, 120, undefined, t); // 120 < full's ~143 floor -> narrow scale
+    if (new Set(res.lines.map((l) => vlen(l))).size !== 1) uniform = false;
+    frames.add(res.lines.join("\n"));
+  }
+  ok(uniform, "narrow scale: all HUD rows equal width across ticks");
+  ok(frames.size > 1, "narrow scale: plain text still marquees (frames change)");
+  const out0 = buildBar(full2, 120, undefined, 0).lines.join("\n");
+  // The link is now column-sliced (windowed), so the full original is NOT present verbatim,
+  // but the OSC8 wrapper + URL survive intact (the escape is never corrupted).
+  ok(!out0.includes(link), "narrow scale: hyperlink inner text is windowed (now marquees)");
+  ok(out0.includes(`\x1b]8;;${url}\x1b\\`) && out0.includes("\x1b]8;;\x1b\\"),
+    "narrow scale: OSC8 structure + URL preserved after slicing");
+}
+
+console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILED`);
+process.exit(fails === 0 ? 0 : 1);

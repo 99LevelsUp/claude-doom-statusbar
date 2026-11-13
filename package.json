@@ -19,7 +19,7 @@
     "theme": "node bin/cli.js theme",
     "compare-faces": "node scripts/compare-faces.mjs",
     "test": "node scripts/run-tests.mjs",
-    "test:e2e": "node test/daemon-e2e.test.mjs",
+    "test:e2e": "node test/e2e/daemon-e2e.test.mjs",
     "preversion": "npm test",
     "prepublishOnly": "npm test"
   },

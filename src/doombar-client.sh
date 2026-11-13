@@ -37,7 +37,7 @@
 #           Read it by splitting the line on TAB and each item at its first "=".
 #   rest    the stdin JSON exactly as received (bash cannot carry NUL bytes; there are none).
 #
-# Frame file layout and the choice rules: see src/frame.js. A frame that is missing, unreadable,
+# Frame file layout and the choice rules: see src/platform/frame.js. A frame that is missing, unreadable,
 # malformed or of a contract version other than 1 prints the built-in offline line.
 
 exec 2>/dev/null
