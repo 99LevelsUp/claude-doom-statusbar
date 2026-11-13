@@ -28,8 +28,8 @@ const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fai
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const SB = mkdtempSync(path.join(os.tmpdir(), "doombar-restart-"));
-const { sessionPaths, daemonPaths, rootHash } = await import("../../src/fold.js");
-const { claimRestart, idlePercent, isOurLinuxDaemon, isOurPsDaemon } = await import("../../src/hook.js");
+const { sessionPaths, daemonPaths, rootHash } = await import("../../src/platform/runtime.js");
+const { claimRestart, idlePercent, isOurLinuxDaemon, isOurPsDaemon } = await import("../../src/platform/supervise.js");
 
 const THROTTLE = 500;
 const GRACE = 1500;
@@ -45,7 +45,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { rootHash, daemonPaths, daemonSocket, procStartTicks } from "./fold.js";
+import { rootHash, daemonPaths, daemonSocket, procStartTicks } from "./platform/runtime.js";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const hash = rootHash(root);
 const log = path.join(os.tmpdir(), "fake-daemon.log");

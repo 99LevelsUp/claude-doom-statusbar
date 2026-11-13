@@ -9,7 +9,7 @@ import path from "node:path";
 import { RESET, sgrBg } from "../../kit/ansi.js";
 import { decodePng } from "../../kit/raster/png.js";
 import { convertImage } from "../../kit/raster/glyph-render.js";
-import { writeAtomic, packageVersion, runtimeDir } from "../../fold.js";
+import { writeAtomic, packageVersion, runtimeDir } from "../../platform/runtime.js";
 import { PACKAGE_ROOT, SRC_DIR } from "../../package-root.js";
 
 const ALPHA_DIR = path.join(PACKAGE_ROOT, "assets", "images", "mugshot", "alpha"); // pre-baked transparent

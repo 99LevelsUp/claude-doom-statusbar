@@ -11,7 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadState } from "../../src/statusline.js";
-import { foldBatch } from "../../src/fold.js";
+import { foldBatch } from "../../src/platform/journal.js";
 
 // Pin the DOOM theme so a theme saved on this machine (`theme minecraft`) can't change
 // what the statusline renders under test. Child processes inherit it via process.env.

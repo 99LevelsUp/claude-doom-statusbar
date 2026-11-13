@@ -51,7 +51,7 @@ Object.assign(process.env, SANDBOX_ENV);
 // The terminal that runs the tests must not pick the mugshot's glyphs for one side of a comparison.
 for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "DOOMBAR_GLYPHS"]) delete process.env[k];
 const { renderSession } = await import("../../src/statusline.js");
-const { sessionPaths, daemonPaths, rootHash, daemonSocket, procStartTicks } = await import("../../src/fold.js");
+const { sessionPaths, daemonPaths, rootHash, daemonSocket, procStartTicks } = await import("../../src/platform/runtime.js");
 const { parseFrame } = await import("../../src/platform/frame.js");
 const { createState, runPass, pipePath, maybeStartReaper, FORWARDED_ENV } = await import("../../src/daemon.js");
 

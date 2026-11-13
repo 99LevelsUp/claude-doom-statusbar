@@ -47,7 +47,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const T_START = Date.now();
 const at = () => `${((Date.now() - T_START) / 1000).toFixed(1)}s`;
 
-const { sessionPaths, daemonPaths, rootHash, daemonSocket } = await import("../../src/fold.js");
+const { sessionPaths, daemonPaths, rootHash, daemonSocket } = await import("../../src/platform/runtime.js");
 const { OFFLINE_MARKER } = await import("../../src/platform/frame.js");
 
 const THROTTLE = 1000;
@@ -200,7 +200,7 @@ const PAUSE = path.join(TMP, "e2e-daemon-pause");
 const PAUSE_LOG = path.join(TMP, "e2e-daemon-pause.log");
 
 // The statusLine command exactly as the installer writes it (WIN_CLIENT_CMD and posixClientCmd
-// in bin/cli.js): sourced into Git Bash on Windows, exec'd bash with the hash elsewhere.
+// in src/install/shell.js): sourced into Git Bash on Windows, exec'd bash with the hash elsewhere.
 const CLIENT = path.join(PKG, "src", "doombar-client.sh").replace(/\\/g, "/");
 const CLIENT_CMD = WIN
   ? `DOOMBAR_ROOT_HASH=${HASH}; f="${CLIENT}"; if [ -r "$f" ]; then . "$f"; else echo 'doombar: offline'; fi`

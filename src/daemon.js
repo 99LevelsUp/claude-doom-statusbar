@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Render daemon: one long-lived process per installation renders every active session.
 //
-// Single instance: the daemon listens on its installation's address (daemonSocket in fold.js):
+// Single instance: the daemon listens on its installation's address (daemonSocket in src/platform/runtime.js):
 // the named pipe \\.\pipe\doombar-<install hash> on Windows, the socket file
 // mugshot_daemon_<hash>.sock in the runtime directory elsewhere. "Address in use" means a daemon
 // already runs, and the new one exits at once without writing anything. A socket file can also
@@ -26,7 +26,7 @@ import { PACKAGE_ROOT, SRC_DIR } from "./package-root.js";
 import {
   rootHash, daemonPaths, payloadPrefix, framePrefix, writeAtomic, pipePath, envNum, packageVersion,
   runtimeDir, ensureRuntimeDir, daemonSocket, procStartTicks, addressBound,
-} from "./fold.js";
+} from "./platform/runtime.js";
 
 export { pipePath };
 

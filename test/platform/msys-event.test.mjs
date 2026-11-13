@@ -14,7 +14,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadState, activityValues } from "../../src/statusline.js";
-import { stalePids, parseBashShells } from "../../src/hook.js";
+import { stalePids, parseBashShells } from "../../src/platform/reap.js";
 import { sandboxEnv } from "../_sandbox-env.mjs";
 
 // Pin the DOOM theme so a theme saved on this machine (`theme minecraft`) can't change

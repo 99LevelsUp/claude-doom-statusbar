@@ -12,8 +12,8 @@ import { mkdtempSync, writeFileSync, readdirSync, rmSync, utimesSync, existsSync
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { staleStateFiles } from "../../src/hook.js";
-import { sessionPaths, daemonPaths, rootHash, runtimeDir } from "../../src/fold.js";
+import { staleStateFiles } from "../../src/platform/sweep.js";
+import { sessionPaths, daemonPaths, rootHash, runtimeDir } from "../../src/platform/runtime.js";
 import { sandboxEnv } from "../_sandbox-env.mjs";
 
 const HERE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -145,7 +145,7 @@ const TTL = 7 * DAY;
   ok(sweep(Object.fromEntries(daemon.map((n) => [n, 30 * DAY]))).length === 0,
     "the daemon heartbeat and claim of any install hash are never swept, however old");
 
-  // The names the writers actually produce (through fold.js) are the names the sweep recognizes.
+  // The names the writers actually produce (through src/platform/runtime.js) are the names the sweep recognizes.
   const sp = sessionPaths("named"), dp = daemonPaths();
   const real = [path.basename(sp.payload), path.basename(sp.frame), path.basename(sp.frame) + ".4242.tmp"];
   ok(all(real, sweep(Object.fromEntries(real.map((n) => [n, 2 * HOUR])))),

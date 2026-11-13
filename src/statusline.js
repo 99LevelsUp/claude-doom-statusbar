@@ -22,7 +22,8 @@ import { pyround, sgrFg } from "./kit/ansi.js";
 import { buildBar, setValues, resolvePreset, rgbOf, OK, TEXT, CRIT } from "./render.js";
 import { setFaceOptions } from "./games/doom/face.js";
 import { effectiveStep } from "./kit/raster/glyph-level.js";
-import { foldBatch, statePaths, sessionPaths, writeAtomic, TASK_LINGER, runtimeDir, ensureRuntimeDir } from "./fold.js";
+import { foldBatch, TASK_LINGER } from "./platform/journal.js";
+import { statePaths, sessionPaths, writeAtomic, runtimeDir, ensureRuntimeDir } from "./platform/runtime.js";
 import { currentTheme, themePreset } from "./theme.js";
 import { buildHotbar } from "./games/minecraft/layout.js";
 import { PACKAGE_ROOT, SRC_DIR } from "./package-root.js";
@@ -36,12 +37,12 @@ const GEIGER_BINS = 14;
 const has = (o, k) => Object.prototype.hasOwnProperty.call(o || {}, k);
 
 // git is no longer spawned here. The async hook snapshots it into the journal (see hook.js
-// + fold.js); buildValues reads the folded snapshot from state.git. The render path stays free of
+// + src/platform/journal.js); buildValues reads the folded snapshot from state.git. The render path stays free of
 // blocking spawns, so this process adds nothing to the Windows MSYS "bash flood".
 //
 // It does NOT make the flood impossible: on Windows Claude Code wraps this very command in
 // Git Bash (statusLine has no exec form), so each render costs two MSYS inits before node even
-// starts. That half is handled by the reaper — see maybeReap below and reapStaleShells in hook.js.
+// starts. That half is handled by the reaper — see maybeReap below and reapStaleShells in src/platform/reap.js.
 
 // Clip a display label to at most `n` code points, ending with … when truncated,
 // so an oversized repo or branch name can't blow up the PROJECT box width.
