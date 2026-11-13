@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import "../_temp-sandbox.mjs"; // before the modules that name temp paths
 import { statsValues } from "../../src/metrics/savings.js";
-import { setValues, SAMPLE } from "../../src/kit/values.js";
+import { SAMPLE } from "../../src/kit/values.js";
+import { renderContext } from "../../src/kit/context.js";
 import { buildBar } from "../../src/games/doom/layout.js";
 import { vlen } from "../../src/kit/text.js";
 import { parse as parseToml } from "smol-toml";
@@ -153,13 +154,11 @@ try {
   const noSave = { ...SAMPLE };
   delete noSave["save.leanctx"];
   delete noSave["save.lingua"];
-  setValues(noSave);
-  let out = buildBar(cfg, 200).lines.join("\n");
+  let out = buildBar(cfg, 200, renderContext({ values: noSave })).lines.join("\n");
   ok(!out.includes("SAVE"), "savings absent -> SAVE box collapses");
   ok(out.includes("USAGE") && out.includes("PROJECT"), "other boxes still render (collapse is targeted, not total)");
 
-  setValues({ ...SAMPLE });
-  out = buildBar(cfg, 200).lines.join("\n");
+  out = buildBar(cfg, 200, renderContext({ values: { ...SAMPLE } })).lines.join("\n");
   ok(out.includes("SAVE"), "savings present -> SAVE box renders");
 } finally {
   rmSync(tmp, { recursive: true, force: true });

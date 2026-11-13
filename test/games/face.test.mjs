@@ -6,6 +6,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync,
 import os from "node:os";
 import path from "node:path";
 import { sandboxEnv } from "../_sandbox-env.mjs";
+import { renderContext } from "../../src/kit/context.js";
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
@@ -23,19 +24,22 @@ for (const f of [OLD, OTHER]) utimesSync(f, twoDaysAgo, twoDaysAgo);
 const face = await import("../../src/games/doom/face.js");
 
 const SPRITE = "STFST01";
+const OCTANT = renderContext({ step: "octant" });
 
 try {
   console.log("built-in faces:");
   {
-    face.setFaceOptions({ step: "octant" });
-    const f = face.loadFace(SPRITE, 8);
+    const f = face.loadFace(SPRITE, 8, OCTANT);
     ok(f.length === 8 && f.every((r) => r.length > 0), "an 8-row face has 8 drawn rows");
-    ok(face.loadFace(SPRITE, 8) === f, "a face drawn once is served from the cache");
-    face.setFaceOptions({ step: "half" });
-    const half = face.loadFace(SPRITE, 8);
+    ok(face.loadFace(SPRITE, 8, OCTANT) === f, "a face drawn once is served from the cache");
+    ok(face.loadFace(SPRITE, 8) === f, "with no context the face is drawn at the octant step on black");
+    const half = face.loadFace(SPRITE, 8, renderContext({ step: "half" }));
+    ok(half !== f, "a face drawn at another step is not served from the octant face's cache entry");
     ok([...glyphs(half)].every((ch) => " █▀▄▌▐".includes(ch)), "at the half step the face uses half blocks only");
     ok(Math.max(...half.map((r) => r.length)) === Math.max(...f.map((r) => r.length)), "the face is as wide at every step");
-    const missing = face.loadFace("NOSUCHSPRITE", 5);
+    const grey = face.loadFace(SPRITE, 8, renderContext({ background: [128, 128, 128] }));
+    ok(grey !== f, "a face fitted against another background is not served from the black one's cache entry");
+    const missing = face.loadFace("NOSUCHSPRITE", 5, OCTANT);
     ok(missing.length === 5 && missing.every((r) => r.length === 0), "a missing sprite draws an empty face of the asked height");
   }
 
@@ -51,23 +55,20 @@ try {
     const cache = path.join(SB, own[0]);
     const sentinel = [[["X", [1, 2, 3], null]], [], [], [], [], [], [], []];
     const stored = JSON.parse(readFileSync(cache, "utf8"));
-    const key = Object.keys(stored).find((k) => k.startsWith(`${SPRITE}@8@octant@`));
-    ok(Boolean(key), `the cache holds the octant face under its sprite, rows and step (keys: ${Object.keys(stored).join(", ")})`);
+    const key = Object.keys(stored).find((k) => k === `${SPRITE}@8@octant@0,0,0`);
+    ok(Boolean(key), `the cache holds the octant face under its sprite, rows, step and background (keys: ${Object.keys(stored).join(", ")})`);
     writeFileSync(cache, JSON.stringify({ ...stored, [key]: sentinel }));
     const fresh = await import("../../src/games/doom/face.js?second-process");
-    fresh.setFaceOptions({ step: "octant" });
-    ok(JSON.stringify(fresh.loadFace(SPRITE, 8)) === JSON.stringify(sentinel), "a face in the disk cache is read, not converted again");
+    ok(JSON.stringify(fresh.loadFace(SPRITE, 8, OCTANT)) === JSON.stringify(sentinel), "a face in the disk cache is read, not converted again");
 
     // A cache file that is not an object of faces is ignored and the face is converted.
     writeFileSync(cache, "[]");
     const third = await import("../../src/games/doom/face.js?corrupt-cache");
-    third.setFaceOptions({ step: "octant" });
-    const redrawn = third.loadFace(SPRITE, 8);
+    const redrawn = third.loadFace(SPRITE, 8, OCTANT);
     ok(redrawn.length === 8 && redrawn.every((r) => r.length > 0) && redrawn[0][0][0] !== "X", "a cache file of the wrong shape is ignored and the face converted");
     writeFileSync(cache, "{not json");
     const fourth = await import("../../src/games/doom/face.js?broken-cache");
-    fourth.setFaceOptions({ step: "octant" });
-    ok(fourth.loadFace(SPRITE, 8).every((r) => r.length > 0), "an unreadable cache file is ignored and the face converted");
+    ok(fourth.loadFace(SPRITE, 8, OCTANT).every((r) => r.length > 0), "an unreadable cache file is ignored and the face converted");
   }
 
   console.log("no process:");

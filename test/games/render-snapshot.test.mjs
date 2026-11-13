@@ -15,14 +15,12 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseToml } from "smol-toml";
-import { SAMPLE, setValues } from "../../src/kit/values.js";
+import { SAMPLE } from "../../src/kit/values.js";
+import { renderContext } from "../../src/kit/context.js";
 import { resolvePreset } from "../../src/kit/planner.js";
 import { buildBar, mugshotFace } from "../../src/games/doom/layout.js";
 import { buildHotbar } from "../../src/games/minecraft/layout.js";
-import { setFaceOptions } from "../../src/games/doom/face.js";
 import { buildReaction } from "../../src/metrics/reaction.js";
-
-setFaceOptions({ step: "octant", background: [0, 0, 0] });
 
 const HERE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PRESETS = path.join(HERE, "..", "presets");
@@ -44,6 +42,9 @@ const FIXTURE = {
   "session.title": "doom-hud-demo",
 };
 const NOW = 1793500000;                       // fixed clock: chat position, idle slot, rainbow
+
+// A render context over the fixture, at the richest glyph step on a black mugshot background.
+const contextOf = (o = {}) => renderContext({ values: FIXTURE, step: "octant", background: [0, 0, 0], ...o });
 
 // The reaction the statusline builds for a session state over the fixture values.
 const reactionTo = ({ st = {}, godUntil = 0, exhausted = false, now = NOW } = {}) =>
@@ -71,11 +72,11 @@ function check(name, lines) {
 // No reaction and no clock: the calm face that holds still.
 for (const preset of ["full", "standard", "minimal"]) {
   for (const width of [80, 120, 200]) {
-    setValues(FIXTURE);
+    const ctx = contextOf();
     const cfg = loadPreset(preset);
-    const selected = resolvePreset(cfg, width, loadPreset, mugshotFace());
-    const overflow = selected.text_overflow || cfg.text_overflow || "scroll";
-    check(`doom-${preset}-${width}`, buildBar(selected, width, undefined, 0, overflow).lines);
+    const selected = resolvePreset(ctx, cfg, width, loadPreset, mugshotFace(ctx));
+    ctx.overflow = selected.text_overflow || cfg.text_overflow || "scroll";
+    check(`doom-${preset}-${width}`, buildBar(selected, width, ctx).lines);
   }
 }
 
@@ -88,33 +89,30 @@ for (const preset of ["full", "standard", "minimal"]) {
     dead: reactionTo({ exhausted: true }),
   };
   for (const [name, reaction] of Object.entries(reactions)) {
-    setValues(FIXTURE);
+    const ctx = contextOf({ reaction, now: NOW });
     const cfg = loadPreset("full");
-    const selected = resolvePreset(cfg, 120, loadPreset, mugshotFace(reaction, NOW));
-    const overflow = selected.text_overflow || cfg.text_overflow || "scroll";
-    check(`doom-full-120-${name}`, buildBar(selected, 120, reaction, 0, overflow, NOW).lines);
+    const selected = resolvePreset(ctx, cfg, 120, loadPreset, mugshotFace(ctx));
+    ctx.overflow = selected.text_overflow || cfg.text_overflow || "scroll";
+    check(`doom-full-120-${name}`, buildBar(selected, 120, ctx).lines);
   }
 }
 
 // --- Minecraft hotbar -------------------------------------------------------------------
 {
   const cfg = loadPreset("minecraft");
-  const base = { reaction: reactionTo(), now: NOW, indent: 2 };
+  const hud = (width, reaction = reactionTo()) =>
+    buildHotbar(cfg, width, contextOf({ reaction, now: NOW }), { indent: 2 }).lines;
   for (const width of [60, 100, 160]) {
-    check(`minecraft-${width}`, buildHotbar(cfg, width, FIXTURE, base).lines);
+    check(`minecraft-${width}`, hud(width));
   }
   // Out of usage: the hearts row turns into "You died!".
-  check("minecraft-160-exhausted",
-    buildHotbar(cfg, 160, FIXTURE, { ...base, reaction: reactionTo({ exhausted: true }) }).lines);
+  check("minecraft-160-exhausted", hud(160, reactionTo({ exhausted: true })));
   // A tool just failed: hearts flash and the selected slot jumps to the errors slot.
-  check("minecraft-160-ouch",
-    buildHotbar(cfg, 160, FIXTURE, { ...base, reaction: reactionTo({ st: { expr: "ouch", ts: NOW - 1 } }) }).lines);
+  check("minecraft-160-ouch", hud(160, reactionTo({ st: { expr: "ouch", ts: NOW - 1 } })));
   // God mode: the hearts turn gold.
-  check("minecraft-160-god",
-    buildHotbar(cfg, 160, FIXTURE, { ...base, reaction: reactionTo({ godUntil: NOW + 1 }) }).lines);
+  check("minecraft-160-god", hud(160, reactionTo({ godUntil: NOW + 1 })));
   // An ouch that has faded from the face (2 s ago) while the errors slot is still held.
-  check("minecraft-160-ouch-faded",
-    buildHotbar(cfg, 160, FIXTURE, { ...base, reaction: reactionTo({ st: { expr: "ouch", ts: NOW - 2 } }) }).lines);
+  check("minecraft-160-ouch-faded", hud(160, reactionTo({ st: { expr: "ouch", ts: NOW - 2 } })));
 }
 
 console.log(fails ? `\n${fails} FAILED` : "\nALL PASS");

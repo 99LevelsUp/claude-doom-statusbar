@@ -9,13 +9,14 @@ import { parse as parseToml } from "smol-toml";
 import { buildReaction, hpRow, DECAY } from "../../src/metrics/reaction.js";
 import { portrait } from "../../src/games/doom/portrait.js";
 import { buildHotbar } from "../../src/games/minecraft/layout.js";
+import { renderContext } from "../../src/kit/context.js";
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 
 const NOW = 1793500000;
-const VALUES = { "context.hp": 30 }; // 70% headroom -> health row 1
-const react = ({ expr, age = 0, godUntil = 0, exhausted = false, values = VALUES, now = NOW } = {}) =>
+const HP_ROW_1 = { "context.hp": 30 }; // 70% headroom -> health row 1
+const react = ({ expr, age = 0, godUntil = 0, exhausted = false, values = HP_ROW_1, now = NOW } = {}) =>
   buildReaction({ st: expr ? { expr, ts: now - age } : {}, values, godUntil, exhausted, now });
 
 // Health row: thresholds 20/40/60/80 on the headroom, rate-limit health first.
@@ -81,7 +82,7 @@ ok(react().expr === null && react().flash === null, "no expression: expr null, n
   const cfg = parseToml(readFileSync(path.join(ROOT, "presets", "minecraft.toml"), "utf8"));
   const vals = { "context.hp": 30, "ratelimit.5h": 40, "ratelimit.7d": 20, "act.errors": "1" };
   const errorsSlot = cfg.slot.findIndex((s) => s.id === "act.errors");
-  const hud = (reaction) => buildHotbar(cfg, 100, vals, { reaction, now: NOW });
+  const hud = (reaction) => buildHotbar(cfg, 100, renderContext({ values: vals, reaction, now: NOW }));
   const calmHearts = hud(react({ values: vals })).lines[0];
   const at = (age) => hud(react({ expr: "ouch", age, values: vals }));
   ok(at(1).lines[0] !== calmHearts && at(1).selected === errorsSlot, "hotbar: an ouch 1 s ago flashes the hearts and selects the errors slot");

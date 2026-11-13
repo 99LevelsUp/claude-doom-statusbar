@@ -12,7 +12,7 @@
 // metricFixedWidth -- the invariant box layout depends on.
 import { renderValue } from "../../src/kit/meters.js";
 import { metricFixedWidth } from "../../src/kit/planner.js";
-import { setValues } from "../../src/kit/values.js";
+import { renderContext } from "../../src/kit/context.js";
 import { vlen } from "../../src/kit/text.js";
 import { TEXT, OK, CRIT } from "../../src/kit/ansi.js";
 
@@ -26,10 +26,9 @@ const ANSI = /\x1b\[[0-9;]*m|\x1b\]8;[^\x07\x1b]*(?:\x1b\\|\x07)/g;
 const visible = (s) => s.replace(ANSI, "");
 // The foreground colour of each column, in order, parsed back out of the SGR runs.
 const fgs = (s) => [...s.matchAll(/38;2;(\d+);(\d+);(\d+)m/g)].map((m) => [+m[1], +m[2], +m[3]]);
-const eq = (vals, extra = {}) => {
-  setValues({ "x.cores": vals });
-  return renderValue({ id: "x.cores", render: "equalizer", color: "threshold", ...extra }, 0, BOX);
-};
+const coresOf = (vals) => renderContext({ values: { "x.cores": vals } });
+const eq = (vals, extra = {}) =>
+  renderValue(coresOf(vals), { id: "x.cores", render: "equalizer", color: "threshold", ...extra }, 0, BOX);
 
 // 1. Happy path: 3 channels -> 3 glyphs at empty/mid/full height.
 {
@@ -83,10 +82,10 @@ const eq = (vals, extra = {}) => {
 // 7. Width invariant: visible width == metricFixedWidth, under and over the cap.
 {
   for (const n of [3, 8, 16, 17, 32, 64]) {
-    setValues({ "x.cores": Array(n).fill(0.5) });
+    const ctx = coresOf(Array(n).fill(0.5));
     const entry = { id: "x.cores", render: "equalizer", color: "threshold" };
-    const w = metricFixedWidth(entry);
-    const rendered = renderValue(entry, 0, BOX);
+    const w = metricFixedWidth(ctx, entry);
+    const rendered = renderValue(ctx, entry, 0, BOX);
     ok(vlen(rendered) === w && w === Math.min(n, EQ_MAX),
        `N=${n}: vlen(${vlen(rendered)}) == fixedWidth(${w}) == min(N,cap)(${Math.min(n, EQ_MAX)})`);
   }

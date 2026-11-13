@@ -145,14 +145,15 @@ function chatColumn(values, now, rows, w) {
 // No reaction passed: nothing happened.
 const CALM = { expr: null, exprAge: Infinity, flash: null, hp: 0, god: false, dead: false };
 
-// Render the hotbar HUD. `values` are the statusline metric values; `opts`:
+// Render the hotbar HUD from the render context `ctx` (src/kit/context.js), which carries:
+//   values     the statusline metric values
 //   reaction   the session's reaction (src/metrics/reaction.js): its flash colours the
 //              hearts, expr and exprAge hold the reacting slot, dead -> "You died!"
 //   now        seconds; drives the idle slot, the chat and the rainbow
-//   indent     columns Claude Code shifts the status line right (default 2), so the
-//              hotbar lands in the true centre of the terminal
-export function buildHotbar(cfg, target, values, opts = {}) {
-  const { reaction = CALM, now = Date.now() / 1000, indent = 2 } = opts;
+// `indent` is the columns Claude Code shifts the status line right (default 2), so the
+// hotbar lands in the true centre of the terminal.
+export function buildHotbar(cfg, target, ctx, { indent = 2 } = {}) {
+  const { values, reaction = CALM, now = Date.now() / 1000 } = ctx;
   const { flash, expr, exprAge, dead: exhausted } = reaction;
   const hb = cfg.hotbar || {};
   const all = (cfg.slot || []).slice(0, 9);
