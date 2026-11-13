@@ -250,7 +250,11 @@ function withClaimLock(file, fn) {
   try { return fn(); } finally { try { unlinkSync(lock); } catch {} }
 }
 
-const claimFresh = (c, now, throttleMs) => c.claimedAt > 0 && c.claimedAt <= now && now - c.claimedAt < throttleMs;
+// Fresh within the throttle window on either side of `now`. A concurrent hook takes its `now`
+// before it waits for the lock, so the claim it finds there may be a few ms newer than its own
+// clock reading; that claim is fresh, not free. Only a claim further ahead (the clock was set
+// back) is free.
+const claimFresh = (c, now, throttleMs) => c.claimedAt > 0 && Math.abs(now - c.claimedAt) < throttleMs;
 
 // Claim a start or restart at `now`. True for exactly one caller per throttle window: a claim
 // older than the window (or one holding only a sighting) is free and is replaced.

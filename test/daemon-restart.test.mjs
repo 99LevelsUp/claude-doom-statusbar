@@ -181,6 +181,12 @@ try {
     ok(claimRestart(f, now, 15000) === true, "with no claim file the restart is claimed");
     ok(readJson(f)?.claimedAt === now, "the claim records when it was taken");
     ok(claimRestart(f, now + 1000, 15000) === false, "a fresh claim blocks a second restart");
+    // A concurrent hook read its clock before the winner wrote: the claim it finds is newer.
+    ok(claimRestart(f, now - 50, 15000) === false && readJson(f)?.claimedAt === now,
+      "a claim a few ms newer than the caller's clock blocks it too");
+    writeFileSync(f, JSON.stringify({ claimedAt: now + 20000 }));
+    ok(claimRestart(f, now, 15000) === true && readJson(f)?.claimedAt === now,
+      "a claim further ahead than the throttle window (the clock was set back) is free");
     writeFileSync(f, JSON.stringify({ claimedAt: now - 20000 }));
     ok(claimRestart(f, now, 15000) === true && readJson(f)?.claimedAt === now,
       "a claim older than the throttle window is taken over and replaced");
