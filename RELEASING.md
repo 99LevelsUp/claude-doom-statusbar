@@ -11,24 +11,13 @@ every pushed tag matching `v*.*.*` and publishes via npm trusted publishing (OID
 
 ## Cutting a release
 
-1. Make sure `master` is clean, all changes are committed, and the latest
-   **Test** workflow run (`.github/workflows/test.yml`, Linux) on `master` is green.
-2. Move the relevant `CHANGELOG.md` entries from `[Unreleased]` into a new
-   version section, then commit.
-3. Bump the version. This runs the test suite, updates `package.json` +
-   `package-lock.json`, creates a commit, and tags it `vX.Y.Z`:
+`master` is protected and takes changes only through a pull request, so the version
+bump goes through a pull request first and the tag is pushed afterwards, on the merged
+commit. The steps are in [CONTRIBUTING.md, *Releasing*](CONTRIBUTING.md#releasing).
 
-   ```bash
-   npm version patch   # 0.1.0 -> 0.1.1  (bug fixes)
-   npm version minor   # 0.1.0 -> 0.2.0  (new features)
-   npm version major   # 0.1.0 -> 1.0.0  (breaking changes)
-   ```
-
-4. The `postversion` script automatically pushes the commit and the tag
-   (`git push --follow-tags`). The tag triggers the publish workflow.
-
-That's it — no manual `npm publish`. The workflow runs `npm ci`, runs tests via
-`prepublishOnly`, and publishes the package.
+Do not run a plain `npm version`: it commits and tags locally, the push of the commit
+to `master` is rejected, and a tag pushed with it would publish a commit that is not
+on `master`.
 
 ## Prerequisites (one-time)
 
