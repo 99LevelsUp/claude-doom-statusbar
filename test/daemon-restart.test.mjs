@@ -279,12 +279,16 @@ try {
       ok(alive(bystander.pid), "nothing was killed");
     }
 
-    // Ten concurrent hooks against a dead daemon (and an expired claim) spawn exactly one.
+    // Ten concurrent hooks against a dead daemon (and an expired claim) spawn exactly one. The
+    // throttle here is far above the file's 500 ms: ten node starts reach the claim spread over
+    // most of a second on a Raspberry Pi, and a hook that comes after the throttle window, before
+    // the new daemon has bound, rightly claims again (the product default is 15 s).
     {
       const pkg = copyPackage();
       writePayload(pkg);
-      writeFileSync(pkg.claim, JSON.stringify({ claimedAt: Date.now() - 60000 }));
-      const runs = await Promise.all(Array.from({ length: 10 }, () => runHook(pkg, "PreToolUse")));
+      writeFileSync(pkg.claim, JSON.stringify({ claimedAt: Date.now() - 120000 }));
+      const runs = await Promise.all(Array.from({ length: 10 },
+        () => runHook(pkg, "PreToolUse", { DOOMBAR_DAEMON_THROTTLE_MS: "60000" })));
       await waitFor(() => lines(pkg, "bound").length > 0);
       await sleep(1000);
       ok(runs.every((r) => r.code === 0), "all ten hooks exit 0");

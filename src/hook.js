@@ -251,9 +251,10 @@ function withClaimLock(file, fn) {
 }
 
 // Fresh within the throttle window on either side of `now`. A concurrent hook takes its `now`
-// before it waits for the lock, so the claim it finds there may be a few ms newer than its own
+// before it waits for the lock, so the claim it finds there can be a little newer than its own
 // clock reading; that claim is fresh, not free. Only a claim further ahead (the clock was set
-// back) is free.
+// back) is free. A daemon that takes longer than the throttle window to bind may be spawned
+// twice; the second finds the address bound and exits.
 const claimFresh = (c, now, throttleMs) => c.claimedAt > 0 && Math.abs(now - c.claimedAt) < throttleMs;
 
 // Claim a start or restart at `now`. True for exactly one caller per throttle window: a claim
