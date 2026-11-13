@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { parse as parseToml } from "smol-toml";
 import { RESET, BOLD, TERM_RGB, sgrFg, sgrBg, pyround } from "./ansi.js";
 import { loadFace, faceCell } from "./face.js";
-import { PACKAGE_ROOT as REPO } from "./package-root.js";
+import { PACKAGE_ROOT } from "./package-root.js";
 
 // SGR + OSC 8 hyperlinks — stripped for width measurement.
 const ANSI_RE = /\x1b\[[0-9;]*m|\x1b\]8;[^\x07\x1b]*(?:\x1b\\|\x07)/g;
@@ -729,9 +729,9 @@ function main() {
   let p;
   if (arg) {
     p = path.isAbsolute(arg) ? arg : path.join(process.cwd(), arg);
-    try { readFileSync(p); } catch { p = path.join(REPO, "presets", path.basename(arg)); }
+    try { readFileSync(p); } catch { p = path.join(PACKAGE_ROOT, "presets", path.basename(arg)); }
   } else {
-    p = path.join(REPO, "presets", "standard.toml");
+    p = path.join(PACKAGE_ROOT, "presets", "standard.toml");
   }
   const target = process.argv[3] ? parseInt(process.argv[3], 10) : 100;
   const tick = process.argv[4] ? parseInt(process.argv[4], 10) : 0; // marquee phase for previews

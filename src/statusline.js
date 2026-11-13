@@ -25,7 +25,7 @@ import { effectiveStep } from "./glyph-level.js";
 import { foldBatch, statePaths, sessionPaths, writeAtomic, TASK_LINGER, runtimeDir, ensureRuntimeDir } from "./fold.js";
 import { currentTheme, themePreset } from "./theme.js";
 import { buildHotbar } from "./hotbar.js";
-import { PACKAGE_ROOT as REPO, SRC_DIR } from "./package-root.js";
+import { PACKAGE_ROOT, SRC_DIR } from "./package-root.js";
 
 const DECAY = 1.5; // seconds a reaction holds before relaxing to idle
 const IDLE_CYCLE = 2; // seconds per idle glance
@@ -44,7 +44,7 @@ const has = (o, k) => Object.prototype.hasOwnProperty.call(o || {}, k);
 // starts. That half is handled by the reaper — see maybeReap below and reapStaleShells in hook.js.
 
 // Clip a display label to at most `n` code points, ending with … when truncated,
-// so an oversized repo or branch name can't blow up the PROJECT box width.
+// so an oversized PACKAGE_ROOT or branch name can't blow up the PROJECT box width.
 const clip = (s, n) => ([...String(s)].length > n ? [...String(s)].slice(0, n - 1).join("") + "…" : String(s));
 
 // Human-readable token count: 8263 -> "8.3k", 1200000 -> "1.2M", 512 -> "512".
@@ -157,9 +157,9 @@ export function buildValues(data, git, now = Date.now() / 1000) {
   const style = (data.output_style || {}).name;
   if (style) v["model.style"] = style;
 
-  const repo = (data.workspace || {}).repo || {};
+  const PACKAGE_ROOT = (data.workspace || {}).PACKAGE_ROOT || {};
   let repoUrl = "";
-  if (repo.host && repo.owner && repo.name) repoUrl = `https://${repo.host}/${repo.owner}/${repo.name}`;
+  if (PACKAGE_ROOT.host && PACKAGE_ROOT.owner && PACKAGE_ROOT.name) repoUrl = `https://${PACKAGE_ROOT.host}/${PACKAGE_ROOT.owner}/${PACKAGE_ROOT.name}`;
 
   const sname = data.session_name || data.session_id; // session_name only set via /rename or --name
   // Clip generously, not to box width: the renderer fits each field to its box (marquee or
@@ -757,7 +757,7 @@ export function renderSession({ data, env = process.env, now = Date.now() / 1000
 
   // A non-DOOM theme (see theme.js) swaps in its own preset; doom keeps DOOMBAR_PRESET.
   const preset = themePreset(currentTheme(env))
-    || env.DOOMBAR_PRESET || path.join(REPO, "presets", "standard.toml");
+    || env.DOOMBAR_PRESET || path.join(PACKAGE_ROOT, "presets", "standard.toml");
   const cfg = loadPreset(preset);
 
   // Account-wide limits: use the freshest reading any session has seen (see syncRateLimits).
