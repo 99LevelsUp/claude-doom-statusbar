@@ -28,6 +28,7 @@ Owner's order: daemon first, renderer second, minimap and WC3 after. The daemon 
 | D-12 | Cell-space compositor with two resolvers: lookup table for map and chrome, error search for portrait (Part 6 idea 6). Shape of D-3 | idea |
 | D-13 | XP from resolved work, kept per repo (Part 6 idea 7). For D-6 / G-8 | idea |
 | D-14 | A new session shows `doombar: offline` for about 3 s before its first frame, even with the daemon running (live test 2026-11-11): the first statusLine call writes the payload and finds no frame. (With no daemon running, `SessionStart` now waits up to 10 s for the payload and starts the daemon then; before, the first frame waited for the first tool call or Stop) | idea |
+| D-16 | `install --local` over a global install registers every hook twice: it writes the full hook set into `settings.local.json`, and Claude Code merges hooks across scopes (found on the Raspberry Pi, 2026-11-13). Wanted: a dev checkout overrides only the statusLine and env of a global production install, with no second hook set. Option: skip hook entries the user scope already has, or note that hooks stay global. Whether Claude Code dedupes identical exec-form entries is unverified | open |
 
 ## Housekeeping: temp-file leaks and wasted hook work
 Source: [ideation/2026-10-31-temp-file-leaks-and-hook-cost.md](ideation/2026-10-31-temp-file-leaks-and-hook-cost.md)
