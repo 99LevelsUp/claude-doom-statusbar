@@ -4,7 +4,7 @@
 // a different measure from the squared sRGB error the built-in search minimises on an 8x8 grid,
 // so a lower score is not just the search agreeing with itself.
 
-import { glyphByChar, covers } from "../src/glyphs.js";
+import { glyphByChar, covers } from "../src/kit/raster/glyphs.js";
 
 const toLinear = (c) => { const v = c / 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
 

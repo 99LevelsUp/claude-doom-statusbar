@@ -52,7 +52,7 @@ Object.assign(process.env, SANDBOX_ENV);
 for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "DOOMBAR_GLYPHS"]) delete process.env[k];
 const { renderSession } = await import("../src/statusline.js");
 const { sessionPaths, daemonPaths, rootHash, daemonSocket, procStartTicks } = await import("../src/fold.js");
-const { parseFrame } = await import("../src/frame.js");
+const { parseFrame } = await import("../src/platform/frame.js");
 const { createState, runPass, pipePath, maybeStartReaper, FORWARDED_ENV } = await import("../src/daemon.js");
 
 const HASH = rootHash();
@@ -492,7 +492,7 @@ try {
     ok(a1.exitCode === null, "reading the files under src/ does not make the daemon exit");
 
     // Touching a file under the daemon's own src/ makes it exit.
-    appendFileSync(path.join(A.dir, "src", "ansi.js"), "\n// touched\n");
+    appendFileSync(path.join(A.dir, "src", "kit", "ansi.js"), "\n// touched\n");
     ok(await exitWithin(a1, 10000) !== "timeout", "a change under the daemon's own src/ makes it exit");
     ok(b1.exitCode === null, "the other installation's daemon keeps running");
     b1.kill();

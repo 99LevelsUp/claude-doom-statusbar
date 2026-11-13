@@ -19,8 +19,8 @@
 //                                     or the first slot when none has started yet
 // A file that is missing, malformed or declares a contract newer than FRAME_VERSION is "unknown".
 
-import { RESET, sgrFg } from "./ansi.js";
-import { writeAtomic } from "./fold.js";
+import { RESET, sgrFg } from "../kit/ansi.js";
+import { writeAtomic } from "../fold.js";
 
 export const FRAME_VERSION = 1;
 

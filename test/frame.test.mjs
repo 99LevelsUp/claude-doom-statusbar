@@ -11,7 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   FRAME_VERSION, OFFLINE_MARKER, serializeFrame, parseFrame, resolveFrame, greyLines, writeFrame,
-} from "../src/frame.js";
+} from "../src/platform/frame.js";
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };

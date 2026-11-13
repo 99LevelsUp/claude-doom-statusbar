@@ -12,7 +12,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { serializeFrame, greyLines } from "../src/frame.js";
+import { serializeFrame, greyLines } from "../src/platform/frame.js";
 import { sidKey, sessionPaths, runtimeDir } from "../src/fold.js";
 import { sandboxEnv } from "./_sandbox-env.mjs";
 

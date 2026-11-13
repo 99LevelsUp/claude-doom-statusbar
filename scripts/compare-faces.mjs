@@ -13,10 +13,10 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { decodePng } from "../src/png.js";
-import { convertImage, faceSize } from "../src/glyph-render.js";
-import { STEPS } from "../src/glyphs.js";
-import { sgrFg, sgrBg } from "../src/ansi.js";
+import { decodePng } from "../src/kit/raster/png.js";
+import { convertImage, faceSize } from "../src/kit/raster/glyph-render.js";
+import { STEPS } from "../src/kit/raster/glyphs.js";
+import { sgrFg, sgrBg } from "../src/kit/ansi.js";
 import { scoreFace } from "./face-score.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");

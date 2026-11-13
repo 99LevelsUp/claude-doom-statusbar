@@ -18,13 +18,13 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parse as parseToml } from "smol-toml";
-import { pyround, sgrFg } from "./ansi.js";
+import { pyround, sgrFg } from "./kit/ansi.js";
 import { buildBar, setValues, resolvePreset, rgbOf, OK, TEXT, CRIT } from "./render.js";
-import { setFaceOptions } from "./face.js";
-import { effectiveStep } from "./glyph-level.js";
+import { setFaceOptions } from "./games/doom/face.js";
+import { effectiveStep } from "./kit/raster/glyph-level.js";
 import { foldBatch, statePaths, sessionPaths, writeAtomic, TASK_LINGER, runtimeDir, ensureRuntimeDir } from "./fold.js";
 import { currentTheme, themePreset } from "./theme.js";
-import { buildHotbar } from "./hotbar.js";
+import { buildHotbar } from "./games/minecraft/layout.js";
 import { PACKAGE_ROOT, SRC_DIR } from "./package-root.js";
 
 const DECAY = 1.5; // seconds a reaction holds before relaxing to idle

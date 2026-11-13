@@ -16,8 +16,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseToml } from "smol-toml";
 import { SAMPLE, setValues, resolvePreset, buildBar } from "../src/render.js";
-import { buildHotbar } from "../src/hotbar.js";
-import { setFaceOptions } from "../src/face.js";
+import { buildHotbar } from "../src/games/minecraft/layout.js";
+import { setFaceOptions } from "../src/games/doom/face.js";
 
 setFaceOptions({ step: "octant", background: [0, 0, 0] });
 

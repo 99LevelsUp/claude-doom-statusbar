@@ -20,7 +20,7 @@ const OTHER = path.join(SB, "doombar_other.json");
 for (const f of [OLD, RECENT, OTHER]) writeFileSync(f, "{}");
 const twoDaysAgo = new Date(Date.now() - 2 * 24 * 3600 * 1000);
 for (const f of [OLD, OTHER]) utimesSync(f, twoDaysAgo, twoDaysAgo);
-const face = await import("../src/face.js");
+const face = await import("../src/games/doom/face.js");
 
 const SPRITE = "STFST01";
 
@@ -54,25 +54,25 @@ try {
     const key = Object.keys(stored).find((k) => k.startsWith(`${SPRITE}@8@octant@`));
     ok(Boolean(key), `the cache holds the octant face under its sprite, rows and step (keys: ${Object.keys(stored).join(", ")})`);
     writeFileSync(cache, JSON.stringify({ ...stored, [key]: sentinel }));
-    const fresh = await import("../src/face.js?second-process");
+    const fresh = await import("../src/games/doom/face.js?second-process");
     fresh.setFaceOptions({ step: "octant" });
     ok(JSON.stringify(fresh.loadFace(SPRITE, 8)) === JSON.stringify(sentinel), "a face in the disk cache is read, not converted again");
 
     // A cache file that is not an object of faces is ignored and the face is converted.
     writeFileSync(cache, "[]");
-    const third = await import("../src/face.js?corrupt-cache");
+    const third = await import("../src/games/doom/face.js?corrupt-cache");
     third.setFaceOptions({ step: "octant" });
     const redrawn = third.loadFace(SPRITE, 8);
     ok(redrawn.length === 8 && redrawn.every((r) => r.length > 0) && redrawn[0][0][0] !== "X", "a cache file of the wrong shape is ignored and the face converted");
     writeFileSync(cache, "{not json");
-    const fourth = await import("../src/face.js?broken-cache");
+    const fourth = await import("../src/games/doom/face.js?broken-cache");
     fourth.setFaceOptions({ step: "octant" });
     ok(fourth.loadFace(SPRITE, 8).every((r) => r.length > 0), "an unreadable cache file is ignored and the face converted");
   }
 
   console.log("no process:");
   {
-    const src = readFileSync(new URL("../src/face.js", import.meta.url), "utf8");
+    const src = readFileSync(new URL("../src/games/doom/face.js", import.meta.url), "utf8");
     ok(!/child_process/.test(src), "the face loader does not import child_process");
   }
 } finally {

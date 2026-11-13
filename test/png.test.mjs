@@ -3,7 +3,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { decodePng } from "../src/png.js";
+import { decodePng } from "../src/kit/raster/png.js";
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };

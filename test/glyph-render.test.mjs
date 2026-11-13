@@ -3,9 +3,9 @@
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { decodePng } from "../src/png.js";
-import { convertImage, faceSize } from "../src/glyph-render.js";
-import { STEPS, glyphByChar, covers } from "../src/glyphs.js";
+import { decodePng } from "../src/kit/raster/png.js";
+import { convertImage, faceSize } from "../src/kit/raster/glyph-render.js";
+import { STEPS, glyphByChar, covers } from "../src/kit/raster/glyphs.js";
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };

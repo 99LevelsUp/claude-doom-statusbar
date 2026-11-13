@@ -6,15 +6,15 @@
 import { readFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { RESET, sgrBg } from "./ansi.js";
-import { decodePng } from "./png.js";
-import { convertImage } from "./glyph-render.js";
-import { writeAtomic, packageVersion, runtimeDir } from "./fold.js";
-import { PACKAGE_ROOT, SRC_DIR } from "./package-root.js";
+import { RESET, sgrBg } from "../../kit/ansi.js";
+import { decodePng } from "../../kit/raster/png.js";
+import { convertImage } from "../../kit/raster/glyph-render.js";
+import { writeAtomic, packageVersion, runtimeDir } from "../../fold.js";
+import { PACKAGE_ROOT, SRC_DIR } from "../../package-root.js";
 
 const ALPHA_DIR = path.join(PACKAGE_ROOT, "assets", "images", "mugshot", "alpha"); // pre-baked transparent
 // The converter's sources: a change to any of them invalidates the faces cached on disk.
-const CONVERTER_FILES = ["glyphs.js", "glyph-render.js", "png.js"].map((f) => path.join(SRC_DIR, f));
+const CONVERTER_FILES = ["glyphs.js", "glyph-render.js", "png.js"].map((f) => path.join(SRC_DIR, "kit", "raster", f));
 const TERM_BG = "term-bg";
 
 const _cache = new Map();

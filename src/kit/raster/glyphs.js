@@ -16,7 +16,7 @@
 // left out, and the search covers those cells with other glyphs. U+1FB9A/B are left out of the
 // wedges because Windows Terminal's built-in glyphs stop at U+1FB94.
 
-import { sgrFg, sgrBg } from "./ansi.js";
+import { sgrFg, sgrBg } from "../ansi.js";
 
 export const STEPS = Object.freeze(["half", "quadrant", "sextant", "wedge", "octant"]);
 export const GRID = 8; // sub-pixels per cell side in a mask

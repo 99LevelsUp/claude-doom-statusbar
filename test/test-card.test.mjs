@@ -3,7 +3,7 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { STEPS, classGlyphs } from "../src/glyphs.js";
+import { STEPS, classGlyphs } from "../src/kit/raster/glyphs.js";
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };

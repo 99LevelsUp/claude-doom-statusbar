@@ -48,7 +48,7 @@ const T_START = Date.now();
 const at = () => `${((Date.now() - T_START) / 1000).toFixed(1)}s`;
 
 const { sessionPaths, daemonPaths, rootHash, daemonSocket } = await import("../src/fold.js");
-const { OFFLINE_MARKER } = await import("../src/frame.js");
+const { OFFLINE_MARKER } = await import("../src/platform/frame.js");
 
 const THROTTLE = 1000;
 const GRACE = 2000;

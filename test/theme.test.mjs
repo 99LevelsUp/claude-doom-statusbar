@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseToml } from "smol-toml";
 import { buildBar, setValues, renderValue, vlen } from "../src/render.js";
-import { buildHotbar, wrapMessage } from "../src/hotbar.js";
+import { buildHotbar, wrapMessage } from "../src/games/minecraft/layout.js";
 import { sandboxEnv } from "./_sandbox-env.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -74,7 +74,7 @@ ok(hearts === "♥♥♥♡♡♡♡♡♡♡", `icons: 70% used -> 3 of 10 hear
 
 // Chat timing: answers to questions come quickly, other pauses vary.
 {
-  const { chatLog } = await import("../src/chat.js");
+  const { chatLog } = await import("../src/games/minecraft/chat.js");
   const vals = { "model.name": "Opus 5.5" };
   const last = (t) => chatLog(vals, t, 1)[0].map((p) => p.text).join("");
   const gaps = [];
@@ -92,7 +92,7 @@ ok(hearts === "♥♥♥♡♡♡♡♡♡♡", `icons: 70% used -> 3 of 10 hear
 // Chat facts: everything the status bar knows shows up somewhere in the loop, and a sparse
 // session still makes a coherent chat (no unfilled {placeholders}, no unanswered questions).
 {
-  const { chatScript } = await import("../src/chat.js");
+  const { chatScript } = await import("../src/games/minecraft/chat.js");
   const { SAMPLE } = await import("../src/render.js");
   const full = chatScript({ ...SAMPLE, "model.name": "Opus 5.5", "model.effort_level": "high",
     "session.title": "status bar themes", "loc.added": "185" }).map((m) => m.map((p) => p.text).join(""));

@@ -21,7 +21,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { renderSession } from "./statusline.js";
-import { writeFrame } from "./frame.js";
+import { writeFrame } from "./platform/frame.js";
 import { PACKAGE_ROOT, SRC_DIR } from "./package-root.js";
 import {
   rootHash, daemonPaths, payloadPrefix, framePrefix, writeAtomic, pipePath, envNum, packageVersion,

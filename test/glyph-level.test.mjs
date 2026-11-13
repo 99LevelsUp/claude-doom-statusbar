@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Glyph step from the session's terminal, capped per image.
-import { terminalStep, effectiveStep, WINDOWS_TERMINAL_STEP } from "../src/glyph-level.js";
+import { terminalStep, effectiveStep, WINDOWS_TERMINAL_STEP } from "../src/kit/raster/glyph-level.js";
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };

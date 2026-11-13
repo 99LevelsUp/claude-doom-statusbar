@@ -11,8 +11,8 @@
 // feeds the hearts / hunger / XP, and each [[slot]] is { icon, id }. The chat on the left
 // is the looping script in chat.js.
 
-import { RESET, BOLD, sgrFg as f, sgrBg as b, pyround } from "./ansi.js";
-import { vlen } from "./render.js";
+import { RESET, BOLD, sgrFg as f, sgrBg as b, pyround } from "../../kit/ansi.js";
+import { vlen } from "../../render.js";
 import { chatLog, chatScript } from "./chat.js";
 
 // The reaction the DOOM sprite name encodes ("STFOUCH2" -> "ouch", "STFGOD0" -> "god").
