@@ -9,7 +9,7 @@ when the owner decides against something (move it to *Won't do*, with the reason
 Status: `next` = agreed, do soon · `open` = agreed direction, not scheduled · `idea` = not decided ·
 `blocked` = waiting on something outside the project.
 
-Last reviewed: 11.11.2026 (0.14.0).
+Last reviewed: 13.11.2026 (0.15.0).
 
 ## Render daemon, glyph renderer, minimap
 Source: [ideation/2026-11-09-render-daemon-and-minimap.md](ideation/2026-11-09-render-daemon-and-minimap.md)
@@ -29,6 +29,7 @@ Owner's order: daemon first, renderer second, minimap and WC3 after. The daemon 
 | D-13 | XP from resolved work, kept per repo (Part 6 idea 7). For D-6 / G-8 | idea |
 | D-14 | A new session shows `doombar: offline` for about 3 s before its first frame, even with the daemon running (live test 2026-11-11): the first statusLine call writes the payload and finds no frame. (With no daemon running, `SessionStart` now waits up to 10 s for the payload and starts the daemon then; before, the first frame waited for the first tool call or Stop) | idea |
 | D-16 | `install --local` over a global install registers every hook twice: it writes the full hook set into `settings.local.json`, and Claude Code merges hooks across scopes (found on the Raspberry Pi, 2026-11-13). Wanted: a dev checkout overrides only the statusLine and env of a global production install, with no second hook set. Option: skip hook entries the user scope already has, or note that hooks stay global. Whether Claude Code dedupes identical exec-form entries is unverified | open |
+| D-17 | Line art in the renderer (owner, 2026-11-13).<br>• Box drawing (U+2500–257F): horizontal and vertical lines, corners, T-junctions and crossings in light, heavy and double weights, rounded corners `╭╮╯╰`, dashed lines, and the diagonals `╱ ╲ ╳`.<br>• Symbols for Legacy Computing (U+1FB00–1FBFF): one-eighth lines and diagonal line segments at more angles.<br>• Line glyphs from the Symbols for Legacy Computing Supplement where terminals draw them.<br>Use: frames and dividers for game chrome (WC3 console, minimap edges) and line drawing in the glyph raster. Which glyphs a terminal draws is checked with the test card (D-8) and limited by the glyph level, as for the mugshot. Belongs in `kit/` after the restructure | idea |
 
 ## Housekeeping: temp-file leaks and wasted hook work
 Source: [ideation/2026-10-31-temp-file-leaks-and-hook-cost.md](ideation/2026-10-31-temp-file-leaks-and-hook-cost.md)
@@ -41,16 +42,22 @@ Source: [ideation/2026-10-31-temp-file-leaks-and-hook-cost.md](ideation/2026-10-
 | L-I | An async Stop hook still running at session end can recreate a journal line or git marker after SessionEnd cleanup; the 1-hour sweep collects them. Revisit with L-A | idea |
 | L-J | Add a `windows-latest` job to the Test workflow; Windows runs only locally today | idea |
 
-## Rename to `claude-game-bar`
-Source: [ideation/2026-10-31-shared-game-layout-engine.md](ideation/2026-10-31-shared-game-layout-engine.md), section *Rename*
+## Rename to `claude-game-bar` and restructure (1.0.0)
+Source: [ideation/2026-10-31-shared-game-layout-engine.md](ideation/2026-10-31-shared-game-layout-engine.md), section *Rename*; structure audit and phasing: [ideation/2026-11-13-repo-structure-audit.md](ideation/2026-11-13-repo-structure-audit.md)
+
+Owner, 2026-11-13: rename on GitHub and npm together with 1.0.0; the bar becomes a platform with one general rendering part and game parts (DOOM, Minecraft, Warcraft III next).
 
 | ID | Item | Status |
 |---|---|---|
-| R-0 | Agree the rename and the refactor with the contributor | next |
-| R-1 | Rename package, bin (old bin as alias), repo, env vars `DOOMBAR_*` → `GAMEBAR_*` (with fallback), theme file, temp prefix; DOOM-specific code keeps `doom` | open |
-| R-2 | Neutral reaction state `{expr, hp, god, dead}` instead of DOOM sprite names between engine and layouts | open |
-| R-3 | npm: set up trusted publishing for the new package, last `claude-doom-statusbar` release with a notice, `npm deprecate` | open |
-| R-4 | `install` migrates settings in place (paths, env names, theme file) | open |
+| R-0 | Agree the rename and the refactor with the contributor | done (2026-11-13) |
+| R-5 | Test runner that runs every file and summarises (audit step 1) | next |
+| R-6 | Move files into `platform/` · `metrics/` · `kit/` · `games/<game>/`, entry paths kept; split `statusline.js`, `render.js`, `hook.js`, `fold.js` (audit steps 2–3) | next |
+| R-2 | Neutral reaction state `{expr, hp, god, dead}` instead of DOOM sprite names between engine and layouts (audit step 4) | next |
+| R-7 | Render context instead of module-level `VALUES` / face options (audit step 5) | next |
+| R-8 | Game registry `games/index.js` replaces `THEMES`; presets and assets under their game (audit step 6) | next |
+| R-1 | Rename package, bin (old bin as alias), repo, env vars `DOOMBAR_*` → `GAMEBAR_*` (with fallback), theme file, file prefixes, client name; DOOM-specific code keeps `doom` (audit step 7) | next |
+| R-4 | `install` migrates settings in place (paths, env names, theme file) | next |
+| R-3 | npm: set up trusted publishing for the new package, last `claude-doom-statusbar` release with a notice, `npm deprecate` (audit step 8) | next |
 
 ## Shared game layout engine
 Source: [ideation/2026-10-31-shared-game-layout-engine.md](ideation/2026-10-31-shared-game-layout-engine.md)
