@@ -15,7 +15,7 @@ import { mkdtempSync, rmSync, chmodSync, existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { rootHash } from "../src/fold.js";
+import { rootHash } from "../src/platform/runtime.js";
 import { OFFLINE_MARKER } from "../src/platform/frame.js";
 import { sandboxEnv } from "../test/_sandbox-env.mjs";
 

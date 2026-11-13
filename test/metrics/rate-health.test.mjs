@@ -12,7 +12,7 @@ import { mkdtempSync, readFileSync, existsSync, rmSync, readdirSync } from "node
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { rateHeadroom } from "../../src/statusline.js";
+import { rateHeadroom } from "../../src/metrics/ratelimits.js";
 import { sandboxEnv } from "../_sandbox-env.mjs";
 
 // Pin the DOOM theme so a theme saved on this machine (`theme minecraft`) can't change

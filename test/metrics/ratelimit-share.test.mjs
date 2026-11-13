@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { fresherWindow, mergeRateLimits } from "../../src/statusline.js";
+import { fresherWindow, mergeRateLimits } from "../../src/metrics/ratelimits.js";
 import { sandboxEnv } from "../_sandbox-env.mjs";
 
 const ROOT = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "..");

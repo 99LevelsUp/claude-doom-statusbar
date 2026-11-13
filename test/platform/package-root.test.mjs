@@ -5,8 +5,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { rootHash, packageVersion } from "../../src/fold.js";
-import { isOurDaemon } from "../../src/hook.js";
+import { rootHash, packageVersion } from "../../src/platform/runtime.js";
+import { isOurDaemon } from "../../src/platform/supervise.js";
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };

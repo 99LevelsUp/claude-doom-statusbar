@@ -2,7 +2,7 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path"; import { fileURLToPath } from "node:url";
 import os from "node:os"; import { mkdtempSync, rmSync } from "node:fs";
-import { foldActivity } from "../../src/hook.js";
+import { foldActivity } from "../../src/platform/journal.js";
 import { sandboxEnv } from "../_sandbox-env.mjs";
 const HOOK = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "..", "src", "hook.js");
 let fails = 0;

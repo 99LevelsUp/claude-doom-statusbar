@@ -15,7 +15,9 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseToml } from "smol-toml";
-import { SAMPLE, setValues, resolvePreset, buildBar } from "../../src/render.js";
+import { SAMPLE, setValues } from "../../src/kit/values.js";
+import { resolvePreset } from "../../src/kit/planner.js";
+import { buildBar } from "../../src/games/doom/layout.js";
 import { buildHotbar } from "../../src/games/minecraft/layout.js";
 import { setFaceOptions } from "../../src/games/doom/face.js";
 

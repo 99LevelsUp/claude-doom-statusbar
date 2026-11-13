@@ -3,7 +3,7 @@
 import { mkdtempSync, mkdirSync, rmSync, statSync, symlinkSync, writeFileSync, chmodSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { runtimeDir, ensureRuntimeDir } from "../../src/fold.js";
+import { runtimeDir, ensureRuntimeDir } from "../../src/platform/runtime.js";
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };

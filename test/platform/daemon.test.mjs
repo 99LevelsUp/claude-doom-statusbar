@@ -39,7 +39,7 @@ syncBuiltinESMExports();
 const SB = mkdtempSync(path.join(os.tmpdir(), "doombar-daemon-"));
 const TMPDIR = path.join(SB, "tmp");
 for (const d of ["tmp", "tasks", "proj"]) mkdirSync(path.join(SB, d), { recursive: true });
-// Before the imports: statusline.js takes its temp dir when it loads.
+// Before the imports, so any path the render modules take when they load comes from the sandbox.
 const SANDBOX_ENV = {
   ...sandboxEnv(TMPDIR), PATH: "", DOOMBAR_MSYS_REAP: "0", DOOMBAR_THEME: "doom",
   DOOMBAR_THEME_FILE: path.join(SB, "no-theme.json"), DOOMBAR_RATELIMITS_SHARE: "0",
@@ -50,8 +50,8 @@ const SANDBOX_ENV = {
 Object.assign(process.env, SANDBOX_ENV);
 // The terminal that runs the tests must not pick the mugshot's glyphs for one side of a comparison.
 for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "DOOMBAR_GLYPHS"]) delete process.env[k];
-const { renderSession } = await import("../../src/statusline.js");
-const { sessionPaths, daemonPaths, rootHash, daemonSocket, procStartTicks } = await import("../../src/fold.js");
+const { renderSession } = await import("../../src/render.js");
+const { sessionPaths, daemonPaths, rootHash, daemonSocket, procStartTicks } = await import("../../src/platform/runtime.js");
 const { parseFrame } = await import("../../src/platform/frame.js");
 const { createState, runPass, pipePath, maybeStartReaper, FORWARDED_ENV } = await import("../../src/daemon.js");
 

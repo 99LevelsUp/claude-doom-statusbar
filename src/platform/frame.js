@@ -20,7 +20,7 @@
 // A file that is missing, malformed or declares a contract newer than FRAME_VERSION is "unknown".
 
 import { RESET, sgrFg } from "../kit/ansi.js";
-import { writeAtomic } from "../fold.js";
+import { writeAtomic } from "./runtime.js";
 
 export const FRAME_VERSION = 1;
 

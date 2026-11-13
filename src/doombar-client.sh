@@ -18,11 +18,11 @@
 # redirections, [[ ]], (( )) and parameter expansion. Nothing but the chosen frame reaches the
 # bar, because all of its stderr is discarded.
 #
-# Files, in the bar's runtime directory (the rule of runtimeDir in src/fold.js, in builtins):
+# Files, in the bar's runtime directory (the rule of runtimeDir in src/platform/runtime.js, in builtins):
 #   mugshot_payload_<hash>_<key>.json   written here, read by the daemon
 #   mugshot_frame_<hash>_<key>.json     written by the daemon, read here
 # <hash> comes from the statusLine command (the client never computes it). <key> is the session
-# id made file-safe exactly like sidKey in src/fold.js. On Linux and macOS the client only uses
+# id made file-safe exactly like sidKey in src/platform/runtime.js. On Linux and macOS the client only uses
 # a runtime directory that is a real directory owned by this user (the hooks create it with mode
 # 0700); anything else prints the offline line and touches nothing.
 #
@@ -126,7 +126,7 @@ __doombar_client() {
     return
   fi
 
-  # The runtime directory: the same rule as runtimeDir in src/fold.js. A missing XDG runtime
+  # The runtime directory: the same rule as runtimeDir in src/platform/runtime.js. A missing XDG runtime
   # directory keeps its path, so the bar goes offline instead of moving mid-session.
   local dir windows=
   [[ $OSTYPE == msys* || $OSTYPE == cygwin* ]] && windows=1

@@ -12,7 +12,7 @@
 // is the looping script in chat.js.
 
 import { RESET, BOLD, sgrFg as f, sgrBg as b, pyround } from "../../kit/ansi.js";
-import { vlen } from "../../render.js";
+import { vlen } from "../../kit/text.js";
 import { chatLog, chatScript } from "./chat.js";
 
 // The reaction the DOOM sprite name encodes ("STFOUCH2" -> "ouch", "STFGOD0" -> "god").

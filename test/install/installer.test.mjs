@@ -8,7 +8,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { rootHash, procStartTicks } from "../../src/fold.js";
+import { rootHash, procStartTicks } from "../../src/platform/runtime.js";
 import { sandboxEnv } from "../_sandbox-env.mjs";
 
 // Pin the DOOM theme so a theme saved on this machine (`theme minecraft`) can't change

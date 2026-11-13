@@ -42,7 +42,7 @@ mkdirSync(TMPDIR, { recursive: true });
 Object.assign(process.env, { ...sandboxEnv(TMPDIR), PATH: "", DOOMBAR_MSYS_REAP: "0",
   DOOMBAR_THEME: "doom", DOOMBAR_RATELIMITS_SHARE: "0", DOOMBAR_PRESET: path.join(PRESETS, "minimal.toml") });
 for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "DOOMBAR_GLYPHS"]) delete process.env[k];
-const { renderSession } = await import("../../src/statusline.js");
+const { renderSession } = await import("../../src/render.js");
 
 const NOW_MS = 1793500000123;
 const NOW = NOW_MS / 1000;

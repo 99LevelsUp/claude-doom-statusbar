@@ -1,747 +1,112 @@
-// Render a status-bar preset to the terminal — the engine.
-// Faithful port of tools/render_preset.py. Reads metric values from VALUES
-// (statusline.js swaps in real data via setValues); renders bars, sparks, lists,
-// the mugshot column, threshold colours, responsive widths, and centering.
+// Render one session's bar: load the preset, collect the metric values, pick the mugshot and
+// build the lines. Used by the one-shot status line (statusline.js) and the render daemon.
 
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { parse as parseToml } from "smol-toml";
-import { RESET, BOLD, TERM_RGB, sgrFg, sgrBg, pyround } from "./kit/ansi.js";
-import { loadFace, faceCell } from "./games/doom/face.js";
+import { buildBar } from "./games/doom/layout.js";
+import { setValues } from "./kit/values.js";
+import { resolvePreset } from "./kit/planner.js";
+import { rgbOf } from "./kit/meters.js";
+import { setFaceOptions } from "./games/doom/face.js";
+import { effectiveStep } from "./kit/raster/glyph-level.js";
+import { currentTheme, themePreset } from "./theme.js";
+import { buildHotbar } from "./games/minecraft/layout.js";
 import { PACKAGE_ROOT } from "./package-root.js";
+import { collectValues } from "./metrics/index.js";
 
-// SGR + OSC 8 hyperlinks — stripped for width measurement.
-const ANSI_RE = /\x1b\[[0-9;]*m|\x1b\]8;[^\x07\x1b]*(?:\x1b\\|\x07)/g;
+const DECAY = 1.5; // seconds a reaction holds before relaxing to idle
+const IDLE_CYCLE = 2; // seconds per idle glance
 
-const TITLE = [222, 202, 128];
-export const TEXT = [182, 186, 200];
-export const OK = [96, 200, 104];
-const WARN = [224, 184, 64];
-export const CRIT = [224, 84, 64];
-const SPARK = [120, 184, 232];
-
-const EIGHTHS = [..." ▏▎▍▌▋▊▉"];
-const HP_THRESHOLDS = [20, 40, 60, 80];
-
-// Simulated metric values + availability (no live Claude Code data here).
-export const SAMPLE = {
-  "model.name": "Opus 4.8", "model.effort": "🌔", "advisor.model": "Opus 4.8",
-  "model.window": "1M", "model.mode": "💭 on  🚀 off", "model.permission": "⏩ auto", "model.style": "default",
-  "usage.reset5h": "2h13m", "usage.reset7d": "3d4h", "sys.session": "5h55m", "loc.churn": "+185 / -62",
-  "context.hp": 78, "ratelimit.5h": 64, "ratelimit.7d": 31, "cost.total": "$1.83",
-  "git.branch": "main", "git.behind": "↓2", "git.ahead": "↑3", "git.status": "3",
-  "git.work": "✎ 3  ⇅ ↓2 ↑3", "session.name": "doom-hud-demo",
-  "pr.state": "#1234", "loc.cwd": "claude-doom-statusbar",
-  "act.subagents": [["hook events", "2m13s"], ["find configs", "12s"]], "act.agents": "2",
-  "act.tasklist": [
-    { mark:"✅", markRgb: OK, text:"scaffold project" },
-    { mark:"✅", markRgb: OK, text:"render engine" },
-    { mark:"❌", markRgb: CRIT, text:"port PIL alpha" },
-    { mark:"⏩", markRgb: null, text:"statusline values" },
-    { mark:"🎯", markRgb: null, text:"hook bus" },
-    { mark:"🎯", markRgb: null, text:"installer" },
-  ],
-  "act.geiger": [0, .25, .5, 1, .75, 1, .5, .6, .3, .1, .4, 1, .8, .4],
-  "act.tasks": "2/5", "act.errors": "0", "sys.ram": 47, "sys.cpu": "12%",
-  "sys.disk": 63, "sys.clock": "14:23", "sys.zombies": "3",
-  "sys.cores": [0.12, 0.30, 0.08, 0.95, 0.45, 0.18, 0.62, 0.22],
-
-  "save.leanctx": "8.3k 63%", "save.lingua": "1.2k 1.3x",
-};
-
-let VALUES = SAMPLE;
-export function setValues(v) { VALUES = v; }
-
-const has = (k) => Object.prototype.hasOwnProperty.call(VALUES, k);
-const f = sgrFg;
-
-export function vlen(s) {
-  let n = 0;
-  for (const ch of String(s).replace(ANSI_RE, "")) {
-    const cp = ch.codePointAt(0);
-    n += (cp >= 0x1f300 && cp <= 0x1faff) || (cp >= 0x23e9 && cp <= 0x23ec)
-      || cp === 0x2705 || cp === 0x274c ? 2 : 1; // ✅ ❌ are emoji-presentation (2 cols)
-  }
-  return n;
+function _pick(bucket) {
+  let x = Math.imul(bucket, 0x9e3779b1) >>> 0;
+  x = (x ^ (x >>> 15)) >>> 0;
+  x = Math.imul(x, 0x85ebca77) >>> 0;
+  x = (x ^ (x >>> 13)) >>> 0;
+  return x % 3;
 }
 
-// OSC8 hyperlink helpers — long hyperlinked labels (cwd, branch) can't be column-sliced
-// as-is (slicing corrupts the escape), so we operate on the visible text and re-wrap it
-// with the same URL. Matches the format emitted by statusline's _link().
-const OSC8_RE = /^\x1b\]8;;([^\x1b\x07]*)(?:\x1b\\|\x07)([\s\S]*?)\x1b\]8;;(?:\x1b\\|\x07)$/;
-function splitLink(s) {
-  const m = String(s).match(OSC8_RE);
-  return m ? { url: m[1], inner: m[2] } : null;
-}
-function wrapLink(text, url) {
-  return `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\`;
-}
-// First `width` visible columns of `text`, no padding, never splitting a 2-col glyph.
-function headCols(text, width) {
-  let col = 0, out = "";
-  for (const ch of [...String(text)]) {
-    const cw = vlen(ch);
-    if (col + cw > width) break;
-    out += ch; col += cw;
-  }
-  return out;
+// Parsed presets by file path, re-parsed when the file's mtime or size changes. The builders
+// never modify a preset, so one parse serves every render.
+const presetCache = new Map();
+function loadPreset(file) {
+  let st;
+  try { st = statSync(file); } catch { return parseToml(readFileSync(file, "utf8")); }
+  const key = `${st.mtimeMs}:${st.size}`;
+  const hit = presetCache.get(file);
+  if (hit && hit.key === key) return hit.cfg;
+  const cfg = parseToml(readFileSync(file, "utf8"));
+  presetCache.set(file, { key, cfg });
+  return cfg;
 }
 
-// Default heat gradient: green (0) -> yellow (50) -> red (100). Higher = hotter,
-// the orientation every caller wants (context usage, rate limits, CPU, disk, RAM).
-const DEFAULT_STOPS = [[0, OK], [50, WARN], [100, CRIT]];
+// Returns the bar's lines, without trailing newlines. Sessions must render one at a time:
+// kit/values.js keeps the values in one module-level slot (setValues).
+export function renderSession({ data, env = process.env, now = Date.now() / 1000 }) {
+  // A shallow copy: the rate-limit merge in collectValues rewrites data.rate_limits, and a caller
+  // that keeps the payload between renders must not see it change.
+  if (data && typeof data === "object" && !Array.isArray(data)) data = { ...data };
 
-const lerp1 = (a, b, t) => Math.round(a + (b - a) * t);
+  // A non-DOOM theme (see theme.js) swaps in its own preset; doom keeps DOOMBAR_PRESET.
+  const preset = themePreset(currentTheme(env))
+    || env.DOOMBAR_PRESET || path.join(PACKAGE_ROOT, "presets", "standard.toml");
+  const cfg = loadPreset(preset);
 
-// Interpolate an RGB colour at `pct` (0..100) across sorted [value, rgb] stops.
-// Below the first stop / above the last it clamps to that stop. A single stop is a
-// solid colour; adjacent stops (e.g. 50 then 51) make a near-hard transition.
-function interpStops(stops, pct) {
-  if (pct <= stops[0][0]) return stops[0][1];
-  const last = stops[stops.length - 1];
-  if (pct >= last[0]) return last[1];
-  for (let i = 1; i < stops.length; i++) {
-    const [v0, c0] = stops[i - 1], [v1, c1] = stops[i];
-    if (pct <= v1) {
-      const t = v1 === v0 ? 0 : (pct - v0) / (v1 - v0);
-      return [0, 1, 2].map((j) => lerp1(c0[j], c1[j], t));
-    }
-  }
-  return last[1];
-}
-
-// Resolve a metric's `color` spec to an RGB at `pct` (0..100):
-//   "threshold"        -> the default green->yellow->red gradient
-//   [[v, "#hex"], ...] -> a custom gradient (a single pair = a solid colour)
-//   "#rrggbb"          -> a solid colour
-//   unset / unknown    -> null, so the caller can pick its own default
-function colorFor(spec, pct) {
-  if (spec === "threshold") return interpStops(DEFAULT_STOPS, pct);
-  if (Array.isArray(spec) && spec.length) {
-    const stops = spec.map(([v, c]) => [v, rgbOf(c)]).sort((a, b) => a[0] - b[0]);
-    return interpStops(stops, pct);
-  }
-  if (typeof spec === "string" && spec.startsWith("#")) return rgbOf(spec);
-  return null;
-}
-
-export function rgbOf(spec) {
-  if (typeof spec === "string" && spec.startsWith("#")) {
-    return [1, 3, 5].map((i) => parseInt(spec.slice(i, i + 2), 16));
-  }
-  return TERM_RGB; // term-bg / term-fg approximated for blends
-}
-
-const isTerm = (rgb) => rgb[0] === 0 && rgb[1] === 0 && rgb[2] === 0;
-
-function bgsgrBox(boxRgb) {
-  return isTerm(boxRgb) ? "\x1b[49m" : sgrBg(boxRgb);
-}
-
-function borderFg(spec) {
-  if (typeof spec === "string" && spec.startsWith("#")) return f(rgbOf(spec));
-  if (spec === "term-fg") return "\x1b[39m";
-  return "\x1b[38;2;0;0;0m"; // term-bg -> black-ish line
-}
-
-// --- render styles ----------------------------------------------------------
-
-function rBar(pct, cells, boxRgb, colorSpec, showPct = true) {
-  const empty = [0, 1, 2].map((i) => Math.floor((boxRgb[i] + TERM_RGB[i]) / 2));
-  const eighths = pyround((pct / 100) * cells * 8);
-  const full = Math.min(cells, Math.floor(eighths / 8));
-  const rem = full < cells ? eighths % 8 : 0;
-  const c = colorFor(colorSpec, pct) ?? TEXT;
-  let s = sgrBg(empty) + f(c) + "█".repeat(full);
-  if (rem) s += EIGHTHS[rem];
-  s += " ".repeat(Math.max(0, cells - full - (rem ? 1 : 0)));
-  s += bgsgrBox(boxRgb);
-  if (showPct) s += f(c) + " " + String(pct).padStart(3) + "%";
-  return s;
-}
-
-function rAmmo(pct, colorSpec, segs = 5) {
-  const c = colorFor(colorSpec, pct) ?? WARN;
-  const filled = pyround((pct / 100) * segs);
-  return f(c) + "▮".repeat(filled) + f([90, 95, 120]) + "▯".repeat(segs - filled) +
-    f(c) + " " + String(pct).padStart(3) + "%";
-}
-
-// A row of glyphs, filled by value: Minecraft-style hearts / food, a power gauge, etc.
-// `invert` fills by what is LEFT (100 - pct), so a "used %" metric reads as health.
-function rIcons(entry, pct) {
-  const count = entry.count ?? 10;
-  const v = entry.invert ? 100 - pct : pct;
-  const filled = Math.max(0, Math.min(count, pyround((v / 100) * count)));
-  const on = colorFor(entry.color || "threshold", v) ?? TEXT;
-  const off = colorFor(entry.empty_color, v) ?? [90, 95, 120];
-  const glyph = entry.glyph || "■", empty = entry.empty_glyph || glyph;
-  const sp = " ".repeat(entry.gap ?? 0); // spaces between glyphs ("♥ ♥ ♥" with gap = 1)
-  const cells = Array.from({ length: count }, (_, i) => (i < filled ? f(on) + glyph : f(off) + empty));
-  let s = cells.join(sp);
-  if (entry.show_pct) s += f(on) + " " + String(v).padStart(3) + "%";
-  return s;
-}
-
-function iconsWidth(entry) {
-  const count = entry.count ?? 10;
-  let w = count * Math.max(vlen(entry.glyph || "■"), vlen(entry.empty_glyph || entry.glyph || "■"))
-    + Math.max(0, count - 1) * (entry.gap ?? 0);
-  if (entry.show_pct) w += 5;
-  if (entry.suffix && entry.suffix in VALUES) w += 1 + vlen(String(VALUES[entry.suffix]));
-  return w;
-}
-
-// Sparkline glyph tables: rows = left sub-bar height 0..4, cols = right height 0..4.
-// Stored as arrays of code points (octants are astral — string[i] would split them).
-const SPARK_OCTANT = [
-  " ▗▗\u{1cd96}▐",
-  "▖▂\u{1cdcb}\u{1cdd3}\u{1cdd5}",
-  "▖\u{1cdbb}▄\u{1cde1}▟",
-  "\u{1cd48}\u{1cdbf}\u{1cdde}▆\u{1cde5}",
-  "▌\u{1cdc0}▙\u{1cde4}█",
-].map((r) => [...r]);
-const SPARK_BRAILLE = [
-  "⠀⢀⢠⢰⢸", "⡀⣀⣠⣰⣸", "⡄⣄⣤⣴⣼", "⡆⣆⣦⣶⣾", "⡇⣇⣧⣷⣿",
-].map((r) => [...r]);
-const BLOCK_RAMP = [..."▁▂▃▄▅▆▇"];
-// The equalizer's OWN 9-level height ramp (empty 0/8 .. full 8/8), so an idle
-// channel reads as empty and a maxed one as a full block -- deliberately wider at
-// both ends than spark's BLOCK_RAMP, which never shows empty or full. Index via
-// pyround(clamp(v,0,1) * 8).
-const EQ_RAMP = [..." ▁▂▃▄▅▆▇█"];
-const EQ_MAX = 16; // column cap: more channels than this densify by averaging
-
-function rSpark(values, style = "block", boxRgb = TERM_RGB, vmax = null) {
-  const empty = [0, 1, 2].map((i) => Math.floor((boxRgb[i] + TERM_RGB[i]) / 2));
-  const bg = sgrBg(empty);
-  if (!values || values.length === 0) return f(SPARK);
-  let nrm;
-  if (vmax) {
-    nrm = (v) => Math.max(0, Math.min(1, v / vmax));
-  } else {
-    const lo = Math.min(...values);
-    const span = Math.max(...values) - lo;
-    nrm = (v) => (span === 0 ? 0 : (v - lo) / span);
-  }
-  let body = "";
-  if (style === "octant" || style === "braille") {
-    const tbl = style === "octant" ? SPARK_OCTANT : SPARK_BRAILLE;
-    const h = (v) => pyround(nrm(v) * 4);
-    for (let i = 0; i < values.length; i += 2) {
-      const r = h(values[i]);
-      const c = i + 1 < values.length ? h(values[i + 1]) : 0;
-      body += tbl[r][c];
-    }
-  } else {
-    for (let i = 0; i < values.length; i += 2) {
-      const v = Math.max(...values.slice(i, i + 2));
-      body += BLOCK_RAMP[pyround(nrm(v) * 6)];
-    }
-  }
-  return bg + f(SPARK) + body + bgsgrBox(boxRgb);
-}
-
-// Densify N channel values into exactly K = min(N, EQ_MAX) columns by averaging
-// each column's contiguous slice. K columns by construction, so the rendered width
-// always equals metricFixedWidth's min(N, EQ_MAX) -- the box-layout invariant.
-function eqColumns(values) {
-  const n = values.length;
-  const k = Math.min(n, EQ_MAX);
-  const cols = [];
-  for (let i = 0; i < k; i++) {
-    const lo = Math.floor((i * n) / k), hi = Math.floor(((i + 1) * n) / k);
-    let sum = 0;
-    for (let j = lo; j < hi; j++) sum += values[j];
-    cols.push(sum / (hi - lo));
-  }
-  return cols;
-}
-
-// One-row VU-meter: one block column per channel (densified past EQ_MAX), each
-// column coloured by its OWN value via the metric's colour spec (default gradient).
-// Absolute 0..1 scale (no span-normalize), 9-level EQ_RAMP. Fixed-width: no `cells`.
-function rEqualizer(values, boxRgb, colorSpec) {
-  if (!values || values.length === 0) return f(SPARK);
-  const empty = [0, 1, 2].map((i) => Math.floor((boxRgb[i] + TERM_RGB[i]) / 2));
-  let body = sgrBg(empty);
-  for (const raw of eqColumns(values)) {
-    const v = Math.max(0, Math.min(1, raw));
-    body += f(colorFor(colorSpec, v * 100) ?? OK) + EQ_RAMP[pyround(v * 8)];
-  }
-  return body + bgsgrBox(boxRgb);
-}
-
-export function renderValue(entry, cells, boxRgb) {
-  const icon = entry.icon || "";
-  const label = icon ? icon + " " : "";
-  const render = entry.render || "text";
-  const color = entry.color;
-
-  if ("group" in entry) {
-    const sep = entry.sep ?? " ";
-    const parts = entry.group.filter((i) => i in VALUES).map((i) => String(VALUES[i]));
-    return label + f(TEXT) + parts.join(sep);
-  }
-  const val = entry.id in VALUES ? VALUES[entry.id] : "?";
-  if (render === "bar") {
-    let s = label + rBar(val, cells, boxRgb, color || "threshold", entry.show_pct !== false);
-    const sid = entry.suffix;
-    if (sid && sid in VALUES) s += f(TEXT) + " " + String(VALUES[sid]);
-    return s;
-  }
-  if (render === "ammo") return label + rAmmo(val, color || "threshold");
-  if (render === "icons") {
-    let s = label + rIcons(entry, val);
-    const sid = entry.suffix;
-    if (sid && sid in VALUES) s += f(TEXT) + " " + String(VALUES[sid]);
-    return s;
-  }
-  if (render === "spark") return label + rSpark(val, entry.spark_style || "block", boxRgb, entry.spark_max);
-  if (render === "equalizer") return label + rEqualizer(val, boxRgb, color || "threshold");
-  if (render === "list") {
-    const items = VALUES[entry.id] || [];
-    return label + f(TEXT) + items.map((x) => (Array.isArray(x) ? `${x[0]} ${x[1]}` : String(x))).join("  ");
-  }
-  // number / text
-  const col = colorFor(color, parseInt(String(val).replace(/\D/g, "") || "0", 10)) ?? TEXT;
-  return label + f(col) + String(val);
-}
-
-function barMeta(entry) {
-  const icon = entry.icon || "";
-  const lw = vlen(icon ? icon + " " : "");
-  const r = entry.render;
-  if (r === "bar" || r === "ammo") {
-    let sw = entry.show_pct === false ? 0 : 5;
-    const sid = entry.suffix;
-    if (sid && sid in VALUES) sw += 1 + vlen(String(VALUES[sid]));
-    return [lw, sw, r];
-  }
-  if (r === "icons") { // only reached for stretch icons: the glyph row takes the bar's cells
-    let sw = entry.show_pct ? 5 : 0;
-    if (entry.suffix && entry.suffix in VALUES) sw += 1 + vlen(String(VALUES[entry.suffix]));
-    return [lw, sw, r];
-  }
-  return [lw, 0, entry.render || "text"];
-}
-
-// Display width of a plain text run, capped at `textCap` columns — but only when
-// it is marquee-safe. Values carrying ANSI/OSC escapes (coloured text, hyperlinks)
-// can't be column-sliced without corrupting the escape, so they keep full width
-// (a hard floor): their box shrinks less, which is what trips the preset fallback.
-const TEXTCAP_MAX = 24; // upper bound — matches statusline's clip(…, 24)
-const TEXTCAP_MIN = 10; // lower bound — the readable floor before falling back
-const ESC_RE = /\x1b/;
-function capLen(s, textCap) {
-  const str = String(s);
-  const w = vlen(str);
-  // plain text and OSC8 hyperlinks are column-sliceable (marquee/clip operate on the
-  // visible text), so cap them to textCap. Other escapes (raw SGR we can't safely slice)
-  // keep their full width as a hard floor.
-  const sliceable = !ESC_RE.test(str) || OSC8_RE.test(str);
-  return sliceable ? Math.min(w, textCap) : w;
-}
-
-export function metricFixedWidth(entry, textCap = TEXTCAP_MAX) {
-  const icon = entry.icon || "";
-  const lw = vlen(icon ? icon + " " : "");
-  const r = entry.render || "text";
-  const rid = entry.right;
-  const rextra = rid && rid in VALUES ? 1 + vlen(String(VALUES[rid])) : 0;
-  if ("group" in entry) {
-    const sep = entry.sep ?? " ";
-    return lw + capLen(entry.group.filter((i) => i in VALUES).map((i) => String(VALUES[i])).join(sep), textCap) + rextra;
-  }
-  if (r === "spark") return lw + Math.floor(((VALUES[entry.id] || []).length + 1) / 2);
-  if (r === "equalizer") return lw + Math.min((VALUES[entry.id] || []).length, EQ_MAX) + rextra;
-  if (r === "icons") return entry.stretch ? null : lw + iconsWidth(entry) + rextra; // stretch: sized like a bar
-  if (r === "ammo") return lw + 5 + vlen(" " + (entry.id in VALUES ? VALUES[entry.id] : 0) + "%");
-  if (r === "list") {
-    const items = VALUES[entry.id] || [];
-    if (items.length === 0) return lw;
-    return Math.max(...items.map((it) =>
-      Array.isArray(it) && it.length === 2
-        ? lw + capLen(it[0], textCap) + 1 + vlen(String(it[1]))
-        : lw + capLen(it, textCap)));
-  }
-  if (r === "scroll") {
-    const items = VALUES[entry.id] || [];
-    if (items.length === 0) return lw;
-    return Math.max(...items.map((it) => {
-      if (Array.isArray(it) && it.length === 2)
-        return lw + capLen(it[0], textCap) + 1 + vlen(String(it[1]));
-      // object {mark, text}
-      return lw + vlen(String(it.mark || "")) + 1 + capLen(it.text || "", textCap);
-    }));
-  }
-  if (r === "bar") return null;
-  return lw + capLen(entry.id in VALUES ? VALUES[entry.id] : "?", textCap) + rextra;
-}
-
-// The coupled text cap for a given bar-cell count: cells 14 -> cap 24, cells 4 ->
-// cap 10, linearly in between. One scale drives bars and text together (approach A).
-export function textCapFor(cells) {
-  return Math.round(TEXTCAP_MIN + (cells - 4) / (14 - 4) * (TEXTCAP_MAX - TEXTCAP_MIN));
-}
-
-export function scrollWindow(n, h, anchor, boundary) {
-  if (n <= h) return { start: 0, up: 0, down: 0 };       // all fit: top-aligned
-  let start;
-  if (anchor === "boundary") start = boundary - Math.floor(h / 2);
-  else start = 0;                                         // top anchor
-  start = Math.max(0, Math.min(start, n - h));            // clamp: never blank rows
-  return { start, up: start, down: n - start - h };
-}
-
-// --- horizontal marquee (the "car radio" scroll) ----------------------------
-// Long text that won't fit its column budget glides left until its tail shows,
-// pauses, then glides back to the start and pauses again — ping-pong, driven by
-// the same per-refresh `tick` as the mugshot/geiger. Pure function of `tick`
-// (no Date in here) so renders stay deterministic and testable.
-const MARQUEE_STEP = 1;   // display columns advanced per tick
-const MARQUEE_DWELL = 3;  // ticks held at each end before reversing
-
-// Triangular offset wave 0..span..0 with a dwell at both extremes.
-function marqueeOffset(span, tick) {
-  if (span <= 0) return 0;
-  const sweep = Math.ceil(span / MARQUEE_STEP);
-  const cycle = 2 * (MARQUEE_DWELL + sweep);
-  let t = ((tick % cycle) + cycle) % cycle;
-  if (t < MARQUEE_DWELL) return 0;                            // hold at start
-  t -= MARQUEE_DWELL;
-  if (t < sweep) return Math.min(span, t * MARQUEE_STEP);     // glide forward 0->span
-  t -= sweep;
-  if (t < MARQUEE_DWELL) return span;                         // hold at end
-  t -= MARQUEE_DWELL;
-  return Math.max(0, span - t * MARQUEE_STEP);                // glide back span->0
-}
-
-// Take a `width`-wide display window starting `off` columns in, never splitting a
-// 2-col glyph; the result is always exactly `width` columns (padded with spaces).
-function sliceCols(text, off, width) {
-  let col = 0, taken = 0, out = "";
-  for (const ch of [...String(text)]) {
-    const cw = vlen(ch);
-    if (col < off) { col += cw; continue; }          // still left of the window
-    if (taken + cw > width) break;                   // glyph would overflow the window
-    out += ch; taken += cw; col += cw;
-  }
-  if (taken < width) out += " ".repeat(width - taken);
-  return out;
-}
-
-// Fit `text` into exactly `width` display columns. Fits -> left-aligned + padded.
-// Overflows -> ping-pong marquee window for the current `tick`.
-export function marquee(text, width, tick = 0, mode = "scroll") {
-  text = String(text);
-  if (width <= 0) return "";
-  const link = splitLink(text);                              // hyperlink: fit the visible text, re-wrap
-  if (link) return wrapLink(marquee(link.inner, width, tick, mode), link.url);
-  const tw = vlen(text);
-  if (tw <= width) return text + " ".repeat(width - tw);
-  if (mode === "clip") {                                     // static truncation with an ellipsis
-    if (width === 1) return "…";
-    const h = headCols(text, width - 1);
-    return h + "…" + " ".repeat(Math.max(0, width - vlen(h) - 1));
-  }
-  return sliceCols(text, marqueeOffset(tw - width, tick), width);
-}
-
-function available(entry) {
-  if ("group" in entry) return entry.group.some((i) => i in VALUES);
-  if (entry.render === "list") return true;
-  return entry.id in VALUES;
-}
-
-function boxWidth(box, cells, textCap = TEXTCAP_MAX) {
-  const widths = [vlen(box.title || "")];
-  for (const m of box.metric) {
-    let fw = metricFixedWidth(m, textCap);
-    if (fw === null) {
-      const [lw, sw] = barMeta(m);
-      fw = lw + cells + sw;
-    }
-    widths.push(fw);
-  }
-  let w = Math.max(...widths);
-  if ("min_width" in box) w = Math.max(w, box.min_width);
-  if ("max_width" in box) w = Math.min(w, box.max_width);
-  return w;
-}
-
-function hpRow(thresholds = HP_THRESHOLDS) {
-  let headroom;
-  if ("health.headroom" in VALUES) {
-    // Rate-limit health (statusline.js): distance to the first wall in 5h-budget units, where
-    // the binding window is weighted by the learned cap ratio (k = how much faster 5h% climbs
-    // than 7d%). Declines with consumption, flat when idle. Already in 0..100.
-    headroom = VALUES["health.headroom"];
-  } else if ("ratelimit.5h" in VALUES || "ratelimit.7d" in VALUES) {
-    // Defensive fallback (only if health.headroom is somehow absent): tightest remaining budget.
-    const rem5 = 100 - (VALUES["ratelimit.5h"] ?? 0);
-    const rem7 = "ratelimit.7d" in VALUES ? 100 - VALUES["ratelimit.7d"] : 100;
-    headroom = Math.min(rem5, rem7);
-  } else {
-    headroom = 100 - (VALUES["context.hp"] ?? 0);
-  }
-  return thresholds.filter((t) => headroom < t).length;
-}
-
-// Width-relevant layout context shared by buildBar (render) and planLayout (fit
-// test). Filters unavailable metrics, computes the row count, and loads the mugshot
-// art so its width counts toward the layout. spriteFor defaults to the idle face;
-// the exact sprite never changes the mugshot's column width.
-function layoutContext(cfg, spriteFor) {
-  if (!spriteFor) spriteFor = (hp) => `STFST${hp}1`;
-  const bar = cfg.bar || {};
-  const style = bar.border_style ?? "vertical";
-  const headers = (bar.headers ?? true) && style !== "frame";
-  const segs = [];
-  for (const s of cfg.segment) {
-    if (s.type === "mugshot") { segs.push(s); continue; }
-    const mets = s.metric.filter(available);
-    if (mets.length) segs.push({ ...s, metric: mets });
-  }
-  const boxes = segs.filter((s) => s.type === "box");
-  const rowcount = (b) => b.metric.reduce((n, m) =>
-    n + (m.render === "list" ? (VALUES[m.id] || []).length : (m.render === "scroll" ? 0 : 1)), 0);
-  const dataRows = boxes.length ? Math.max(...boxes.map(rowcount)) : 0;
-  const totalRows = Math.max(dataRows + (headers ? 1 : 0), 4); // 4 = mugshot floor
-  const hp = hpRow();
-  const face = loadFace(spriteFor(hp), totalRows);
-  const faceW = Math.max(...face.map((r) => r.length));
-  return { bar, style, headers, segs, totalRows, hp, face, faceW };
-}
-
-function colWidthsOf(segs, faceW, cells, textCap) {
-  const ws = [];
-  let mug = null;
-  segs.forEach((s, i) => {
-    if (s.type === "mugshot") { ws.push(faceW + 2); mug = i; }
-    else ws.push(boxWidth(s, cells, textCap) + 2);
+  const { values, st, god_until } = collectValues(data, env, now);
+  // Right before the builders, which read these values: no other session's render may come
+  // between this call and the bar it feeds. The face options are the same kind of slot: the glyph
+  // step this session's terminal allows for the mugshot, and the background it is fitted against.
+  setValues(values);
+  const mugshot = cfg.mugshot || {};
+  setFaceOptions({
+    step: effectiveStep(env, mugshot.glyphs),
+    background: rgbOf(mugshot.background ?? "#000000"),
   });
-  return [ws, mug];
-}
 
-function balancedWidthOf(segs, faceW, cells, textCap) {
-  const [ws, mug] = colWidthsOf(segs, faceW, cells, textCap);
-  if (mug === null) return ws.reduce((a, b) => a + b, 0) + (ws.length - 1);
-  const left = ws.slice(0, mug).reduce((a, b) => a + b, 0) + mug;
-  const right = ws.slice(mug + 1).reduce((a, b) => a + b, 0) + (ws.length - 1 - mug);
-  return 2 * Math.max(left, right) + ws[mug];
-}
-
-// Largest lockstep scale (bars 14->4, text 24->10) whose balanced layout fits
-// `target`. Returns the minimum scale with fits=false when nothing fits — the
-// caller (statusline) reads `fits` to decide whether to fall back to a smaller
-// preset. Pure: no filesystem, deterministic for a given cfg + VALUES.
-export function planLayout(cfg, target, spriteFor) {
-  const { segs, faceW } = layoutContext(cfg, spriteFor);
-  for (let c = 14; c >= 4; c--) {
-    const textCap = textCapFor(c);
-    const width = balancedWidthOf(segs, faceW, c, textCap);
-    if (width <= target) return { cells: c, textCap, width, fits: true };
-  }
-  const textCap = textCapFor(4);
-  return { cells: 4, textCap, width: balancedWidthOf(segs, faceW, 4, textCap), fits: false };
-}
-
-// Walk the per-preset fallback chain from `chosenCfg` (the ceiling) downward and
-// return the first preset whose layout fits `target`; if none fit, return the last
-// (smallest) one reached. `loadByName(name) -> cfg | null` loads a sibling preset;
-// returning null (missing/unreadable) ends the chain. Stateless: ceiling + recovery
-// fall out of re-deriving from `target` each call. Guards against fallback cycles.
-export function resolvePreset(chosenCfg, target, loadByName, spriteFor) {
-  let cfg = chosenCfg, last = chosenCfg;
-  const seen = new Set();
-  while (cfg) {
-    last = cfg;
-    // Fit-test with the SAME sprite buildBar will render, so the mugshot column
-    // width matches: plan.fits then implies the rendered layout actually fits.
-    if (planLayout(cfg, target, spriteFor).fits) return cfg;
-    const next = cfg.bar && cfg.bar.fallback;
-    if (!next || seen.has(next)) break;   // terminus or cycle
-    seen.add(next);
-    const loaded = loadByName(next);
-    if (!loaded) break;                    // missing/unreadable fallback
-    cfg = loaded;
-  }
-  return last;                             // nothing fit -> smallest reached
-}
-
-export function buildBar(cfg, target, spriteFor, tick = 0, overflow) {
-  if (!spriteFor) spriteFor = (hp) => `STFST${hp}1`;
-  // How overflowing text fits its box: "scroll" (ping-pong marquee) or "clip" (static …).
-  const ovf = overflow || cfg.text_overflow || "scroll";
-
-  const { style, headers, segs, totalRows, hp, face, faceW } = layoutContext(cfg, spriteFor);
-  const bar = cfg.bar || {};
-  const boxRgb = rgbOf(bar.box_background ?? "term-bg");
-  const bcol = bar.border_color ?? "term-fg";
-  const mugRgb = rgbOf((cfg.mugshot || {}).background ?? "#000000");
-  const titleFg = f(bar.title_color ? rgbOf(bar.title_color) : TITLE); // themes recolour box titles
-
-  const { cells, textCap } = planLayout(cfg, target, spriteFor);
-
-  const columns = [];
-  let mugIdx = null;
-  for (const s of segs) {
-    if (s.type === "mugshot") {
-      mugIdx = columns.length;
-      columns.push(Array.from({ length: totalRows }, (_, r) => faceCell(face[r], faceW, mugRgb)));
-      continue;
-    }
-    const w = boxWidth(s, cells, textCap);
-    const col = [];
-    if (headers) {
-      const t = s.title || "";
-      const pad = w - vlen(t);
-      const left = Math.floor(pad / 2);
-      col.push(bgsgrBox(boxRgb) + BOLD + titleFg + " " + " ".repeat(left) + t + " ".repeat(pad - left) + " " + RESET);
-    }
-    for (const m of s.metric) {
-      if (m.render === "list") {
-        const icon = m.icon || "";
-        const lbl = icon ? icon + " " : "";
-        for (const item of VALUES[m.id] || []) {
-          let body;
-          if (Array.isArray(item) && item.length === 2) {
-            const right = f(TEXT) + String(item[1]);
-            const budget = Math.max(0, w - vlen(lbl) - vlen(String(item[1])) - 1); // 1 = min gap
-            const left = lbl + f(TEXT) + marquee(String(item[0]), budget, tick, ovf);
-            body = left + " ".repeat(Math.max(0, w - vlen(left) - vlen(String(item[1])))) + right;
-          } else {
-            body = lbl + f(TEXT) + marquee(String(item), Math.max(0, w - vlen(lbl)), tick, ovf);
-          }
-          col.push(bgsgrBox(boxRgb) + " " + body + " " + RESET);
-        }
-        continue;
-      }
-      if (m.render === "scroll") {
-        const icon = m.icon || "";
-        const lbl = icon ? icon + " " : "";
-        const items = VALUES[m.id] || [];
-        const H = totalRows - (headers ? 1 : 0);
-        const boundary = items.filter((it) => !Array.isArray(it) &&
-          (it.mark === "✅" || it.mark === "❌")).length; // settled count (ignored for top anchor)
-        const win = scrollWindow(items.length, H, m.anchor || "top", boundary);
-        const shown = items.slice(win.start, win.start + H);
-        shown.forEach((item, k) => {
-          const first = k === 0, last = k === shown.length - 1;
-          const marker = first && win.up > 0 ? `↑${win.up}` : last && win.down > 0 ? `↓${win.down}` : "";
-          const tail = marker ? " " + marker : "";         // right-aligned scroll marker (gap + ↑k/↓k)
-          const tailW = vlen(tail);
-          let body;
-          if (Array.isArray(item)) {                       // [left, right] (agents)
-            const right = f(TEXT) + String(item[1]) + (marker ? titleFg + tail : "");
-            const rightW = vlen(String(item[1])) + tailW;
-            const labelMax = Math.max(0, w - vlen(lbl) - rightW - 1); // 1 = min gap
-            const left = lbl + f(TEXT) + marquee(String(item[0]), labelMax, tick, ovf);
-            const room = Math.max(0, w - vlen(left) - rightW);
-            body = left + " ".repeat(room) + right;
-          } else {                                         // {mark, markRgb, text} (tasks)
-            const markCol = item.markRgb ? f(item.markRgb) : f(TEXT);
-            const m = String(item.mark);
-            const mPad = m + (vlen(m) < 2 ? " " : "");      // normalize mark to 2 cols so text aligns
-            const head = markCol + mPad + " " + f(TEXT);
-            const max = Math.max(0, w - vlen(mPad) - 1 - tailW); // reserve gap + marker on the right
-            body = head + marquee(String(item.text), max, tick, ovf);
-            body += " ".repeat(Math.max(0, w - tailW - vlen(body)));
-            if (tail) body += titleFg + tail;
-          }
-          col.push(bgsgrBox(boxRgb) + " " + body + " " + RESET);
-        });
-        continue;
-      }
-      const rid = m.right;
-      const rhs = rid && rid in VALUES ? f(TEXT) + String(VALUES[rid]) : "";
-      let body;
-      if (m.render === "icons" && m.stretch) {
-        // Stretch icons fill the whole box row (hearts end where the box ends), however wide the
-        // box came out, rather than a fixed count. A bar's cells is the minimum.
-        const [lw, sw] = barMeta(m);
-        // With a gap, n glyphs take n + (n-1)*gap columns, so fit as many as the row allows.
-        const room = Math.max(cells, w - lw - sw - vlen(rhs));
-        const gap = m.gap ?? 0;
-        body = renderValue({ ...m, count: Math.max(1, Math.floor((room + gap) / (1 + gap))) }, 0, boxRgb);
-      } else {
-        body = renderValue(m, m.render === "bar" ? cells : 0, boxRgb);
-      }
-      // Plain text/number that overflows its column budget -> marquee. Skipped when
-      // the value carries ANSI/OSC escapes (colours, hyperlinks): those can't be
-      // sliced by column without corrupting the escape sequence.
-      const r = m.render || "text";
-      if ((r === "text" || r === "number") && !("group" in m) && m.id in VALUES) {
-        const raw = String(VALUES[m.id]);
-        const lbl = m.icon ? m.icon + " " : "";
-        const budget = w - vlen(lbl) - vlen(rhs);
-        const sliceable = !ESC_RE.test(raw) || OSC8_RE.test(raw); // plain or hyperlink
-        if (sliceable && budget > 0 && vlen(raw) > budget) {
-          const col = colorFor(m.color, parseInt(raw.replace(/\D/g, "") || "0", 10)) ?? TEXT;
-          body = lbl + f(col) + marquee(raw, budget, tick, ovf);
-        }
-      }
-      body += " ".repeat(Math.max(0, w - vlen(body) - vlen(rhs))) + rhs;
-      col.push(bgsgrBox(boxRgb) + " " + body + " " + RESET);
-    }
-    while (col.length < totalRows) col.push(bgsgrBox(boxRgb) + " ".repeat(w + 2) + RESET);
-    columns.push(col);
-  }
-
-  let sepstr;
-  if (style === "none") sepstr = isTerm(boxRgb) ? RESET + " " : bgsgrBox(boxRgb) + " ";
-  else if (bcol === "term-bg") sepstr = RESET + " ";
-  else sepstr = bgsgrBox(boxRgb) + borderFg(bcol) + "│";
-
-  const lines = [];
-  for (let r = 0; r < totalRows; r++) {
-    if (mugIdx === null) {
-      const body = columns.map((c) => c[r]).join(sepstr);
-      const outer = Math.max(0, Math.floor((target - columns.reduce((a, c) => a + vlen(c[r]), 0) - (columns.length - 1)) / 2));
-      lines.push(RESET + " ".repeat(outer) + body + RESET);
-      continue;
-    }
-    let leftSeg = "";
-    for (let i = 0; i < mugIdx; i++) leftSeg += (i ? sepstr : "") + columns[i][r];
-    if (mugIdx) leftSeg += sepstr;
-    let rightSeg = "";
-    for (let j = mugIdx + 1; j < columns.length; j++) rightSeg += sepstr + columns[j][r];
-    const lw = vlen(leftSeg), rw = vlen(rightSeg), mw = vlen(columns[mugIdx][r]);
-    const side = Math.max(lw, rw);
-    let outer;
-    if (2 * side + mw <= target) {
-      leftSeg = " ".repeat(side - lw) + leftSeg;
-      rightSeg = rightSeg + " ".repeat(side - rw);
-      outer = Math.floor((target - (2 * side + mw)) / 2);
-    } else {
-      outer = Math.max(0, Math.floor((target - (lw + mw + rw)) / 2));
-    }
-    lines.push(RESET + " ".repeat(outer) + leftSeg + columns[mugIdx][r] + rightSeg + RESET);
-  }
-  return { lines, style, headers, cells, hp };
-}
-
-// Preview CLI: node src/render.js [PRESET.toml] [width]
-function main() {
-  const arg = process.argv[2];
-  let p;
-  if (arg) {
-    p = path.isAbsolute(arg) ? arg : path.join(process.cwd(), arg);
-    try { readFileSync(p); } catch { p = path.join(PACKAGE_ROOT, "presets", path.basename(arg)); }
+  let exhausted;
+  if ("ratelimit.5h" in values || "ratelimit.7d" in values) {
+    const rem = Math.min(
+      100 - (values["ratelimit.5h"] || 0),
+      "ratelimit.7d" in values ? 100 - values["ratelimit.7d"] : 100,
+    );
+    exhausted = rem <= 0;
   } else {
-    p = path.join(PACKAGE_ROOT, "presets", "standard.toml");
+    exhausted = (values["context.hp"] || 0) >= 99;
   }
-  const target = process.argv[3] ? parseInt(process.argv[3], 10) : 100;
-  const tick = process.argv[4] ? parseInt(process.argv[4], 10) : 0; // marquee phase for previews
-  const cfg = parseToml(readFileSync(p, "utf8"));
-  const res = buildBar(cfg, target, undefined, tick);
-  const out = ["", `  preset: ${path.basename(p)}   style=${res.style}  headers=${res.headers}  bar=${res.cells}`, ""];
-  out.push(...res.lines, "");
-  process.stdout.write(out.join("\n") + "\n");
-}
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
-  main();
+  const spriteFor = (hp) => {
+    if (exhausted) return "STFDEAD0";
+    if (now < god_until) return "STFGOD0";
+    if (st.expr && now - (st.ts || 0) < DECAY) {
+      const map = {
+        ouch: `STFOUCH${hp}`, kill: `STFKILL${hp}`, evl: `STFEVL${hp}`,
+        tl: `STFTL${hp}0`, tr: `STFTR${hp}0`,
+      };
+      return map[st.expr] || `STFST${hp}1`;
+    }
+    return `STFST${hp}${_pick(Math.floor(now / IDLE_CYCLE))}`;
+  };
+
+  const target = parseInt(env.COLUMNS || "100", 10);
+  // The in-game HUD layout (minecraft theme) draws its own screen instead of boxes.
+  if ((cfg.bar || {}).layout === "hotbar") {
+    const { lines } = buildHotbar(cfg, target, values, {
+      sprite: spriteFor(0), exhausted, now, expr: st.expr, exprAge: now - (st.ts || 0),
+      indent: Number(env.DOOMBAR_INDENT ?? 2), // Claude Code draws the status line 2 cols in
+    });
+    return lines;
+  }
+  const tick = Math.floor(now); // one marquee step per refresh (~1s); pure fn of time
+  // Pick the preset that fits the terminal: the chosen preset is the ceiling; if it
+  // (at its minimum scale) overflows COLUMNS, fall back down its [bar].fallback chain.
+  // Sibling presets resolve relative to the chosen preset's directory.
+  const presetDir = path.dirname(preset);
+  const loadByName = (name) => {
+    try { return loadPreset(path.join(presetDir, `${name}.toml`)); }
+    catch { return null; }
+  };
+  const selected = resolvePreset(cfg, target, loadByName, spriteFor);
+  // Text overflow behavior: env wins, then the preset's text_overflow, default "scroll".
+  const overflow = env.DOOMBAR_TEXT_OVERFLOW || selected.text_overflow || cfg.text_overflow || "scroll";
+  return buildBar(selected, target, spriteFor, tick, overflow).lines;
 }

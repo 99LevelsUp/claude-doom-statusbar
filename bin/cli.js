@@ -17,16 +17,14 @@
 // It merges into your existing settings (other hooks / statusline are preserved or
 // backed up), is safe to re-run, and prints what to do next.
 
-import {
-  readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync, readdirSync, unlinkSync, lstatSync, rmdirSync,
-} from "node:fs";
-import { spawnSync } from "node:child_process";
-import os from "node:os";
+import { readFileSync, existsSync, readdirSync, unlinkSync, lstatSync, rmdirSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { PACKAGE_ROOT } from "../src/package-root.js";
 import { THEMES, THEME_NAMES, currentTheme, saveTheme, nextTheme, resolveTheme } from "../src/theme.js";
-import { rootHash, daemonPrefix, payloadPrefix, framePrefix, runtimeDir } from "../src/fold.js";
-import { confirmedDaemonPid } from "../src/hook.js";
+import { rootHash, daemonPrefix, payloadPrefix, framePrefix, runtimeDir } from "../src/platform/runtime.js";
+import { confirmedDaemonPid } from "../src/platform/supervise.js";
+import { HOOK_EVENTS, die, settingsFile, load, save, install, uninstall } from "../src/install/settings.js";
+import { STATUSLINE, CLIENT, NODE_CMD, clientCommand } from "../src/install/shell.js";
 import { STEPS, testCardLines } from "../src/kit/raster/glyphs.js";
 import { convertImage } from "../src/kit/raster/glyph-render.js";
 import { terminalStep } from "../src/kit/raster/glyph-level.js";
@@ -34,84 +32,7 @@ import { decodePng } from "../src/kit/raster/png.js";
 import { sgrFg, sgrBg } from "../src/kit/ansi.js";
 import { ensureEmojiFont } from "../src/install/emoji-font.js";
 
-const HERE = path.dirname(fileURLToPath(import.meta.url)); // bin/
-const ROOT = path.dirname(HERE); // package root
-const HASH = rootHash(ROOT); // this installation's daemon and its files
-
-// Normalise to forward slashes, like install.py's `.replace("\\", "/")`. The marker we
-// DETECT below must match the command we WRITE byte-for-byte, including slash direction —
-// otherwise a second install double-adds. So everything goes through this one funnel.
-const slash = (p) => p.replace(/\\/g, "/");
-
-const STATUSLINE = slash(path.join(ROOT, "src", "statusline.js"));
-const CLIENT = slash(path.join(ROOT, "src", "doombar-client.sh"));
-const HOOK = slash(path.join(ROOT, "src", "hook.js"));
-const NODE_CMD = `node "${STATUSLINE}"`;
-
-// The statusLine command that runs the bash client, which prints the frame the render daemon
-// prepared (see src/doombar-client.sh, src/daemon.js). The client lives in the package, so an
-// upgrade in the same place reaches it without touching settings.json; the guard keeps a removed
-// package from printing shell errors into the bar. `if` rather than `[ ] && . || echo`: the
-// client may end with a non-zero status after printing a frame, and `||` would then add the
-// offline line under it.
-//
-// Windows with Git Bash: Claude Code runs the statusLine through Git Bash, and the command sources
-// the client into that very bash: no second bash, no node, no process at all.
-//
-// Linux and macOS: Claude Code runs it through /bin/sh, which is dash on Debian and does not
-// replace itself with the last command, so the command execs the bash 5 found at install (by the
-// path it was found at, so a Homebrew upgrade keeps it valid), with the hash as an argument.
-// BASH_ENV is cleared because bash would source it even with --norc. When that bash is gone the
-// bar prints the offline line. Without a bash 5 (macOS ships 3.2; Windows without Git Bash runs
-// PowerShell) the one-shot renderer stays. The paths are single-quoted: a `$`, backtick or `"` in
-// a home directory name stays text instead of running in /bin/sh on every tick.
-const WIN_CLIENT_CMD = `DOOMBAR_ROOT_HASH=${HASH}; f="${CLIENT}"; ` +
-  `if [ -r "$f" ]; then . "$f"; else echo 'doombar: offline'; fi`;
-const shQuote = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
-const posixClientCmd = (bash) => `b=${shQuote(bash)}; f=${shQuote(CLIENT)}; ` +
-  `if [ -r "$f" ] && [ -x "$b" ]; then unset BASH_ENV; exec "$b" --norc --noprofile "$f" ${HASH}; ` +
-  `else echo 'doombar: offline'; fi`;
-
-// Linux and macOS: a bash of major version 5 or newer for the client, by the path it was found
-// at, or null. DOOMBAR_BASH, when set, is the only candidate. One short spawn per candidate, at
-// install only.
-function posixBash(env = process.env) {
-  const cands = env.DOOMBAR_BASH ? [env.DOOMBAR_BASH]
-    : ["/bin/bash", "/usr/bin/bash", "/usr/local/bin/bash", "/opt/homebrew/bin/bash",
-      ...String(env.PATH || "").split(":").filter((d) => d.startsWith("/")).map((d) => path.posix.join(d, "bash"))];
-  for (const bash of new Set(cands)) {
-    if (!bash.startsWith("/") || !existsSync(bash)) continue;
-    const r = spawnSync(bash, ["--norc", "--noprofile", "-c", 'echo "${BASH_VERSINFO[0]}"'], { encoding: "utf8", timeout: 5000 });
-    if (r.status === 0 && Number(String(r.stdout).trim()) >= 5) return bash;
-  }
-  return null;
-}
-
-// The bash Claude Code would run the statusLine with. It finds Git Bash on its own, not through
-// PATH (whose bash.exe may well be WSL's): an explicit CLAUDE_CODE_GIT_BASH_PATH, the standard
-// Git for Windows locations, then the install around a git.exe on PATH. Existence checks only.
-function gitBash(env = process.env) {
-  if (process.platform !== "win32") return null;
-  const bin = (root) => path.join(root, "bin", "bash.exe");
-  const cands = [env.CLAUDE_CODE_GIT_BASH_PATH];
-  for (const pf of [env.ProgramFiles, env["ProgramFiles(x86)"]]) if (pf) cands.push(bin(path.join(pf, "Git")));
-  if (env.LOCALAPPDATA) cands.push(bin(path.join(env.LOCALAPPDATA, "Programs", "Git")));
-  for (const dir of String(env.PATH || "").split(path.delimiter)) {
-    if (!dir) continue;
-    const git = path.join(dir.replace(/^"|"$/g, ""), "git.exe");
-    if (!existsSync(git)) continue;
-    // <git>\cmd\git.exe or <git>\bin\git.exe, and <git>\mingw64\bin\git.exe one level deeper.
-    // No early stop: a git.exe that is not Git for Windows (a scoop shim) must not hide a later one.
-    cands.push(bin(path.dirname(path.dirname(git))), bin(path.dirname(path.dirname(path.dirname(git)))));
-  }
-  return cands.find((p) => p && existsSync(p)) ?? null;
-}
-
-function clientCommand() {
-  if (process.platform === "win32") return gitBash() !== null ? WIN_CLIENT_CMD : null;
-  const bash = posixBash();
-  return bash ? posixClientCmd(bash) : null;
-}
+const HASH = rootHash(PACKAGE_ROOT); // this installation's daemon and its files
 
 // refreshInterval re-runs the render command every N seconds ON TOP of the event-driven updates.
 // 1 s is the documented minimum and the default here on every platform: a live clock and a
@@ -127,136 +48,11 @@ function clientCommand() {
 // the danger is that ONE hung init poisons the shared MSYS section ("add_item errno 1"), after
 // which every render hangs ~15 s and the pile-up sustains itself forever.
 //
-// The cure is the reaper (see reapStaleShells in src/hook.js, driven from both the hook and the
+// The cure is the reaper (see reapStaleShells in src/platform/reap.js, driven from both the hook and the
 // render), which kills hung wrappers and lets the section heal within seconds. That keeps 1 Hz
 // survivable. `--refresh=N` still overrides, and `--refresh=0` drops the timer for anyone who
 // wants a strictly event-driven HUD.
 const DEFAULT_REFRESH = 1;
-
-// Lifecycle events the mugshot hook understands (face reactions, geiger, subagents,
-// tasks, permission mode, git snapshots). PreToolUse has no matcher -> fires for every tool.
-// SessionStart resets the journal and primes git so the HUD is populated from the first
-// render. All entries are installed async (see install()) so they never block a tool.
-const HOOK_EVENTS = [
-  "SessionStart",
-  "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied",
-  "Stop", "SubagentStart", "SubagentStop", "TaskCreated", "TaskCompleted", "SessionEnd",
-];
-
-// How we recognise our own entries — current JS scripts plus legacy Python ones, so a
-// user who ran install.py earlier still gets cleaned up by `uninstall`.
-const HOOK_MARKS = ["src/hook.js", "mugshot_hook.py"];
-const SL_MARKS = ["src/doombar-client.sh", "src/statusline.js", "statusline.py"];
-const hasMark = (s, marks) => marks.some((m) => slash(String(s || "")).includes(m));
-
-function die(msg) {
-  process.stderr.write(msg + "\n");
-  process.exit(1);
-}
-
-// --local targets the project's settings.local.json, which overrides settings.json (a
-// checkout wired to itself for development, for instance).
-function settingsFile(project, local) {
-  if (local) return path.join(process.cwd(), ".claude", "settings.local.json");
-  const base = project ? path.join(process.cwd(), ".claude") : path.join(os.homedir(), ".claude");
-  return path.join(base, "settings.json");
-}
-
-function load(p) {
-  let text;
-  try {
-    text = readFileSync(p, "utf-8");
-  } catch (e) {
-    if (e.code === "ENOENT") return {};
-    throw e;
-  }
-  try {
-    return JSON.parse(text);
-  } catch (e) {
-    die(`! ${p} is not valid JSON (${e.message}); fix or move it, then re-run.`);
-  }
-}
-
-function save(p, data) {
-  mkdirSync(path.dirname(p), { recursive: true });
-  if (existsSync(p)) copyFileSync(p, p + ".bak"); // one-level backup before writing
-  writeFileSync(p, JSON.stringify(data, null, 2) + "\n", "utf-8");
-}
-
-// Match our entry in either form: shell form keeps the script path in `command`, exec form
-// (current) keeps it in `args`. Joining both lets `uninstall` and the idempotency guard find
-// installs written by any version.
-const ours = (entry) => (entry.hooks || [])
-  .some((h) => hasMark([h.command, ...(h.args || [])].join(" "), HOOK_MARKS));
-
-function install(cfg, preset, refresh, command) {
-  const notes = [];
-  const existing = cfg.statusLine;
-  if (existing && !hasMark(JSON.stringify(existing), SL_MARKS)) {
-    notes.push("replaced your existing statusLine (the old one is in settings.json.bak)");
-  }
-  // Assigning a fresh object (rather than patching) also drops a refreshInterval left behind by
-  // an older install — which is the whole point of this change on Windows.
-  cfg.statusLine = { type: "command", command };
-  if (refresh > 0) cfg.statusLine.refreshInterval = refresh;
-  else if (existing?.refreshInterval) {
-    notes.push("dropped refreshInterval — the HUD now renders on events only (see --refresh)");
-  }
-
-  const env = (cfg.env ??= {});
-  const presetFile = preset.endsWith(".toml") ? preset : preset + ".toml";
-  env.DOOMBAR_PRESET = slash(path.join(ROOT, "presets", presetFile));
-  env.FORCE_HYPERLINK ??= "1"; // clickable links (Windows Terminal needs this)
-
-  const hooks = (cfg.hooks ??= {});
-  let repointed = 0;
-  for (const ev of HOOK_EVENTS) {
-    const lst = (hooks[ev] ??= []);
-    // async:true keeps the hook off the blocking path — it only appends one journal line and
-    // returns; statusline folds it at render time.
-    // EXEC FORM (command + args): Claude Code spawns node directly, with no shell wrapper.
-    // On Windows this avoids the `bash -c "node ..."` launcher, so wiring the hook into many
-    // events no longer floods Git Bash's shared MSYS section (the "add_item errno 1" crash).
-    // statusLine has no exec form and cannot be moved off the shell, so the flood from ABOVE
-    // is handled by the hook's reaper instead (see reapStaleShells in src/hook.js).
-    // SessionEnd is the exception: it deletes the session's scratch files as Claude Code exits,
-    // and an async hook can be cut off by that exit. It only unlinks a few files, so running
-    // it synchronously costs nothing noticeable.
-    const entry = { type: "command", command: "node", args: [HOOK] };
-    if (ev !== "SessionEnd") entry.async = true;
-    const desired = { hooks: [entry] };
-    const at = lst.findIndex(ours);
-    if (at === -1) { lst.push(desired); continue; }
-    // Idempotent, but NOT blindly: an entry of ours that points at a different path is stale —
-    // an upgrade that moved the package (a fresh npx cache dir, npx -> global install) or an
-    // install written in the old shell form. Skipping it used to leave the statusLine upgraded
-    // (it is replaced unconditionally) while the hook still ran the previous version's code, so
-    // a fix shipped in the hook silently never took effect. Re-point it instead.
-    if (!lst[at].hooks?.some((h) => h.command === "node" && (h.args || []).includes(HOOK))) {
-      lst[at] = desired;
-      repointed++;
-    }
-  }
-  if (repointed) {
-    notes.push(`re-pointed ${repointed} hook event(s) from a previous install's path`);
-  }
-  return notes;
-}
-
-function uninstall(cfg) {
-  if (hasMark(cfg.statusLine?.command, SL_MARKS)) delete cfg.statusLine;
-
-  const env = cfg.env || {};
-  for (const k of ["DOOMBAR_PRESET", "FORCE_HYPERLINK"]) delete env[k];
-  if (Object.keys(env).length === 0) delete cfg.env;
-
-  const hooks = cfg.hooks || {};
-  for (const ev of Object.keys(hooks)) {
-    hooks[ev] = hooks[ev].filter((e) => !ours(e));
-    if (hooks[ev].length === 0) delete hooks[ev];
-  }
-  if (Object.keys(hooks).length === 0) delete cfg.hooks;
-}
 
 // Stop this installation's render daemon and delete its temp files: heartbeat, claim (and the
 // claim's lock and temp copies), and every session's payload and frame. Only this install's hash,
@@ -390,7 +186,7 @@ function testCard() {
   console.log("Glyph test card: each step below should show clean block shapes, no boxes, question");
   console.log("marks or gaps. The last step that looks right is the richest one this terminal can draw.\n");
   for (const line of testCardLines()) console.log(line);
-  const img = decodePng(readFileSync(path.join(ROOT, "assets", "images", "mugshot", "alpha", "STFST01.png")));
+  const img = decodePng(readFileSync(path.join(PACKAGE_ROOT, "assets", "images", "mugshot", "alpha", "STFST01.png")));
   const ROWS = 8;
   const faces = STEPS.map((step) => convertImage(img, ROWS, step));
   const width = Math.max(...faces.flatMap((f) => f.map((r) => r.length)));

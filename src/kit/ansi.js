@@ -5,6 +5,13 @@ export const RESET = "\x1b[0m";
 export const BOLD = "\x1b[1m";
 export const TERM_RGB = [0, 0, 0]; // assumed terminal background (for blends/look)
 
+// Shared text and status colours. They live here, in a module with no imports, because
+// the sample values (values.js) need OK and CRIT while the meters that read those values
+// need the same colours.
+export const TEXT = [182, 186, 200];
+export const OK = [96, 200, 104];
+export const CRIT = [224, 84, 64];
+
 // Truecolor foreground / background SGR from an [r,g,b] array.
 export const sgrFg = (c) => `\x1b[38;2;${c[0]};${c[1]};${c[2]}m`;
 export const sgrBg = (c) => `\x1b[48;2;${c[0]};${c[1]};${c[2]}m`;
