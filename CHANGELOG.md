@@ -7,14 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-13
+
 ### Added
 - **The render daemon and its fast client on Linux, and on macOS with bash 5.** A status line
   tick no longer starts Node there: `install` writes a command that hands the tick from
   `/bin/sh` to bash, which prints the frame the daemon already drew. A tick costs about as much
-  as starting bash (3 ms on a GitHub Linux runner, against 40 ms for the one-shot renderer; on a
-  Raspberry Pi 5 the one-shot takes about 250 ms). Without a bash 5, as on a stock Mac, the
-  one-shot renderer stays. Run `claude-doom-statusbar install` once after upgrading to switch.
-  macOS with bash 5 is not tested on a real Mac yet.
+  as starting bash: about 4 ms on a Raspberry Pi 5, against 255 ms for the one-shot renderer,
+  and 3 ms against 40 ms on a GitHub Linux runner. Without a bash 5, as on a stock Mac, the
+  one-shot renderer stays. Run `claude-doom-statusbar install` once after upgrading to switch;
+  running sessions pick it up at their next tick. macOS with bash 5 is not tested on a real Mac
+  yet.
 - **`install --local`** writes the project's `.claude/settings.local.json`, which overrides
   `settings.json`, for a checkout wired to itself.
 
@@ -28,6 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   left in `/tmp` are not moved; a reboot clears them. `DOOMBAR_RUNTIME_DIR` sets the place.
 - **Each session's glyphs follow its own terminal on Linux too:** `TERM` and `VTE_VERSION` now
   travel with the session to the daemon.
+- **`uninstall` stops the render daemon on Linux and macOS too** and removes its files from every
+  place the runtime directory can be. It asks the daemon to stop, kills it after 3 s if it has
+  not, and kills only a process it has confirmed as this installation's daemon.
+
+### Known issues
+- `install --local` in a checkout that is also installed globally registers the hooks a second
+  time (backlog D-16). Wire a development checkout with one or the other.
 
 ## [0.14.0] - 2026-11-11
 
@@ -470,7 +480,8 @@ Note: no changes to the published package contents (`src`, `bin`, `presets`,
 - Mugshot tracking session health, plus usage, model, project, and system stats.
 - Live subagent list with always-visible AGENTS and TASKS boxes.
 
-[Unreleased]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.12.1...v0.13.0
