@@ -18,6 +18,7 @@
 import "../_temp-sandbox.mjs"; // before the modules that name temp paths
 import { resolvePreset, planLayout } from "../../src/kit/planner.js";
 import { setValues, SAMPLE } from "../../src/kit/values.js";
+import { mugshotFace } from "../../src/games/doom/layout.js";
 import { parse as parseToml } from "smol-toml";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -33,11 +34,11 @@ const presets = { full: parse("full"), standard: parse("standard"), minimal: par
 // resolver pick can be matched by identity.
 const load = (n) => presets[n] || null;
 
-// Widest face, matching the conservative sprite the resolver fit-tests with. The
-// mugshot column is identical across presets, so it cancels in the comparisons.
-const sprite = () => "STFTL00";
+// Widest face (look-around), matching the conservative face the resolver fit-tests with.
+// The mugshot column is identical across presets, so it cancels in the comparisons.
+const face = mugshotFace({ flash: "tl", hp: 0 });
 // Min-fit width = balanced layout at the smallest scale (target 0 forces it).
-const minFit = (cfg, vals) => { setValues(vals); return planLayout(cfg, 0, sprite).width; };
+const minFit = (cfg, vals) => { setValues(vals); return planLayout(cfg, 0, face).width; };
 
 // Two regimes that flip the binding side. SAMPLE is an ACTIVE session (subagents +
 // tasklist + savings populated). Stripping the scroll metrics empties AGENTS/TASKS
@@ -55,7 +56,7 @@ for (const k of ["act.subagents", "act.tasklist", "save.leanctx", "save.lingua"]
   ok(m <= s, `active: minimal (${m}) is no wider than standard (${s})`);
   // End-to-end: with full as ceiling, the resolver actually lands on standard just
   // below full's floor -- the band is reachable, not merely arithmetic.
-  ok(resolvePreset(presets.full, f - 1, load, sprite) === presets.standard,
+  ok(resolvePreset(presets.full, f - 1, load, face) === presets.standard,
      `active: resolver lands on standard just below full's floor`);
 }
 

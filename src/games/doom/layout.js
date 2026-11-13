@@ -8,50 +8,45 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseToml } from "smol-toml";
 import { RESET, BOLD, TEXT, sgrFg } from "../../kit/ansi.js";
-import { faceCell } from "./face.js";
+import { faceCell, loadFace } from "./face.js";
+import { portrait } from "./portrait.js";
 import { PACKAGE_ROOT } from "../../package-root.js";
 import { VALUES } from "../../kit/values.js";
 import { vlen, marquee, scrollWindow, ESC_RE, OSC8_RE } from "../../kit/text.js";
 import { rgbOf, colorFor, isTerm, bgsgrBox, borderFg, barMeta, renderValue } from "../../kit/meters.js";
 import { boxWidth, layoutContext, planLayout } from "../../kit/planner.js";
+import { hpRow } from "../../metrics/reaction.js";
 
 const TITLE = [222, 202, 128];
 
-const HP_THRESHOLDS = [20, 40, 60, 80];
-
 const f = sgrFg;
 
-export function hpRow(thresholds = HP_THRESHOLDS) {
-  let headroom;
-  if ("health.headroom" in VALUES) {
-    // Rate-limit health (src/metrics/ratelimits.js): distance to the first wall in 5h-budget units, where
-    // the binding window is weighted by the learned cap ratio (k = how much faster 5h% climbs
-    // than 7d%). Declines with consumption, flat when idle. Already in 0..100.
-    headroom = VALUES["health.headroom"];
-  } else if ("ratelimit.5h" in VALUES || "ratelimit.7d" in VALUES) {
-    // Defensive fallback (only if health.headroom is somehow absent): tightest remaining budget.
-    const rem5 = 100 - (VALUES["ratelimit.5h"] ?? 0);
-    const rem7 = "ratelimit.7d" in VALUES ? 100 - VALUES["ratelimit.7d"] : 100;
-    headroom = Math.min(rem5, rem7);
-  } else {
-    headroom = 100 - (VALUES["context.hp"] ?? 0);
-  }
-  return thresholds.filter((t) => headroom < t).length;
+// No reaction at all (the preview, tests): nothing happened, health from the current values.
+const calmReaction = () => ({ expr: null, exprAge: Infinity, flash: null, hp: hpRow(VALUES), god: false, dead: false });
+
+// The mugshot art for a reaction, as the planner asks for it: rows -> rows of cells. The
+// planner's fit test and buildBar draw through this, so both measure the same face.
+export function mugshotFace(reaction, now) {
+  return (rows) => loadFace(portrait(reaction ?? calmReaction(), now), rows);
 }
 
-export function buildBar(cfg, target, spriteFor, tick = 0, overflow) {
-  if (!spriteFor) spriteFor = (hp) => `STFST${hp}1`;
+// `reaction` is the session's reaction (src/metrics/reaction.js) and `now` the clock in
+// seconds that picks the idle glance; without them the face is the calm, still one.
+export function buildBar(cfg, target, reaction, tick = 0, overflow, now) {
+  if (!reaction) reaction = calmReaction();
+  const faceFor = mugshotFace(reaction, now);
   // How overflowing text fits its box: "scroll" (ping-pong marquee) or "clip" (static …).
   const ovf = overflow || cfg.text_overflow || "scroll";
 
-  const { style, headers, segs, totalRows, hp, face, faceW } = layoutContext(cfg, spriteFor);
+  const { style, headers, segs, totalRows, face, faceW } = layoutContext(cfg, faceFor);
+  const { hp } = reaction;
   const bar = cfg.bar || {};
   const boxRgb = rgbOf(bar.box_background ?? "term-bg");
   const bcol = bar.border_color ?? "term-fg";
   const mugRgb = rgbOf((cfg.mugshot || {}).background ?? "#000000");
   const titleFg = f(bar.title_color ? rgbOf(bar.title_color) : TITLE); // themes recolour box titles
 
-  const { cells, textCap } = planLayout(cfg, target, spriteFor);
+  const { cells, textCap } = planLayout(cfg, target, faceFor);
 
   const columns = [];
   let mugIdx = null;

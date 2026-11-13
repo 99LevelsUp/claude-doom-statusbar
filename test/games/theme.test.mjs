@@ -55,12 +55,12 @@ ok(hearts === "♥♥♥♡♡♡♡♡♡♡", `icons: 70% used -> 3 of 10 hear
   ok(/ 31 /.test(plain[1]), "hotbar: XP level shows the 7-day percent");
   ok(/┃ \$1\.83 ┃/.test(plain[4]) && /┃  2\/5  ┃/.test(plain[4]), "hotbar: odd-length values sit centred in their slot");
   ok(/^ *┏━+┳/.test(plain[2].slice(plain[2].indexOf("┏"))), "hotbar: slots drawn with heavy lines");
-  const dead = buildHotbar(cfg, 100, vals, { exhausted: true, now: 1005 }).lines.map(strip);
+  const dead = buildHotbar(cfg, 100, vals, { reaction: { dead: true }, now: 1005 }).lines.map(strip);
   ok(dead[0].includes("You died!") && !dead[0].includes("♥"), "hotbar: out of usage -> You died!, no hearts");
   ok(buildHotbar(cfg, 100, vals, calm).lines.length === 6, "hotbar: six rows (no wave row)");
 
   // Selected slot: reacts to what just happened, otherwise wanders over time.
-  const react = buildHotbar(cfg, 100, vals, { now: 1005, expr: "ouch", exprAge: 1 }).selected;
+  const react = buildHotbar(cfg, 100, vals, { now: 1005, reaction: { expr: "ouch", exprAge: 1 } }).selected;
   ok(cfg.slot[react].id === "act.errors", "hotbar: an error selects the 💥 slot");
   const picks = new Set();
   for (let t = 0; t < 200; t += 7) picks.add(buildHotbar(cfg, 100, vals, { now: t }).selected);

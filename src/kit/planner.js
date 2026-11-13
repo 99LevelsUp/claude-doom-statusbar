@@ -2,8 +2,6 @@
 // the largest bar scale whose balanced layout fits the terminal, walking the preset
 // fallback chain when none does.
 
-import { loadFace } from "../games/doom/face.js";
-import { hpRow } from "../games/doom/layout.js";
 import { VALUES } from "./values.js";
 import { vlen, capLen, textCapFor, TEXTCAP_MAX } from "./text.js";
 import { EQ_MAX, iconsWidth, barMeta } from "./meters.js";
@@ -66,12 +64,14 @@ export function boxWidth(box, cells, textCap = TEXTCAP_MAX) {
   return w;
 }
 
+// The mugshot art when the game passes none: an empty column of the asked height.
+const noFace = (rows) => Array.from({ length: rows }, () => []);
+
 // Width-relevant layout context shared by buildBar (render) and planLayout (fit
-// test). Filters unavailable metrics, computes the row count, and loads the mugshot
-// art so its width counts toward the layout. spriteFor defaults to the idle face;
-// the exact sprite never changes the mugshot's column width.
-export function layoutContext(cfg, spriteFor) {
-  if (!spriteFor) spriteFor = (hp) => `STFST${hp}1`;
+// test). Filters unavailable metrics, computes the row count, and asks the game for the
+// mugshot art at that height (faceFor(rows) -> rows of cells) so its width counts toward
+// the layout.
+export function layoutContext(cfg, faceFor = noFace) {
   const bar = cfg.bar || {};
   const style = bar.border_style ?? "vertical";
   const headers = (bar.headers ?? true) && style !== "frame";
@@ -86,10 +86,9 @@ export function layoutContext(cfg, spriteFor) {
     n + (m.render === "list" ? (VALUES[m.id] || []).length : (m.render === "scroll" ? 0 : 1)), 0);
   const dataRows = boxes.length ? Math.max(...boxes.map(rowcount)) : 0;
   const totalRows = Math.max(dataRows + (headers ? 1 : 0), 4); // 4 = mugshot floor
-  const hp = hpRow();
-  const face = loadFace(spriteFor(hp), totalRows);
-  const faceW = Math.max(...face.map((r) => r.length));
-  return { bar, style, headers, segs, totalRows, hp, face, faceW };
+  const face = faceFor(totalRows);
+  const faceW = Math.max(0, ...face.map((r) => r.length));
+  return { bar, style, headers, segs, totalRows, face, faceW };
 }
 
 function colWidthsOf(segs, faceW, cells, textCap) {
@@ -114,8 +113,8 @@ function balancedWidthOf(segs, faceW, cells, textCap) {
 // `target`. Returns the minimum scale with fits=false when nothing fits — the
 // caller (statusline) reads `fits` to decide whether to fall back to a smaller
 // preset. Pure: no filesystem, deterministic for a given cfg + VALUES.
-export function planLayout(cfg, target, spriteFor) {
-  const { segs, faceW } = layoutContext(cfg, spriteFor);
+export function planLayout(cfg, target, faceFor) {
+  const { segs, faceW } = layoutContext(cfg, faceFor);
   for (let c = 14; c >= 4; c--) {
     const textCap = textCapFor(c);
     const width = balancedWidthOf(segs, faceW, c, textCap);
@@ -130,14 +129,14 @@ export function planLayout(cfg, target, spriteFor) {
 // (smallest) one reached. `loadByName(name) -> cfg | null` loads a sibling preset;
 // returning null (missing/unreadable) ends the chain. Stateless: ceiling + recovery
 // fall out of re-deriving from `target` each call. Guards against fallback cycles.
-export function resolvePreset(chosenCfg, target, loadByName, spriteFor) {
+export function resolvePreset(chosenCfg, target, loadByName, faceFor) {
   let cfg = chosenCfg, last = chosenCfg;
   const seen = new Set();
   while (cfg) {
     last = cfg;
-    // Fit-test with the SAME sprite buildBar will render, so the mugshot column
+    // Fit-test with the SAME face buildBar will draw, so the mugshot column
     // width matches: plan.fits then implies the rendered layout actually fits.
-    if (planLayout(cfg, target, spriteFor).fits) return cfg;
+    if (planLayout(cfg, target, faceFor).fits) return cfg;
     const next = cfg.bar && cfg.bar.fallback;
     if (!next || seen.has(next)) break;   // terminus or cycle
     seen.add(next);

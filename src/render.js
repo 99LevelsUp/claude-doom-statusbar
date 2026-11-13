@@ -1,10 +1,10 @@
-// Render one session's bar: load the preset, collect the metric values, pick the mugshot and
-// build the lines. Used by the one-shot status line (statusline.js) and the render daemon.
+// Render one session's bar: load the preset, collect the metric values, build the session's
+// reaction and the lines. Used by the one-shot status line (statusline.js) and the render daemon.
 
 import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { parse as parseToml } from "smol-toml";
-import { buildBar } from "./games/doom/layout.js";
+import { buildBar, mugshotFace } from "./games/doom/layout.js";
 import { setValues } from "./kit/values.js";
 import { resolvePreset } from "./kit/planner.js";
 import { rgbOf } from "./kit/meters.js";
@@ -14,17 +14,7 @@ import { currentTheme, themePreset } from "./theme.js";
 import { buildHotbar } from "./games/minecraft/layout.js";
 import { PACKAGE_ROOT } from "./package-root.js";
 import { collectValues } from "./metrics/index.js";
-
-const DECAY = 1.5; // seconds a reaction holds before relaxing to idle
-const IDLE_CYCLE = 2; // seconds per idle glance
-
-function _pick(bucket) {
-  let x = Math.imul(bucket, 0x9e3779b1) >>> 0;
-  x = (x ^ (x >>> 15)) >>> 0;
-  x = Math.imul(x, 0x85ebca77) >>> 0;
-  x = (x ^ (x >>> 13)) >>> 0;
-  return x % 3;
-}
+import { buildReaction } from "./metrics/reaction.js";
 
 // Parsed presets by file path, re-parsed when the file's mtime or size changes. The builders
 // never modify a preset, so one parse serves every render.
@@ -74,24 +64,13 @@ export function renderSession({ data, env = process.env, now = Date.now() / 1000
     exhausted = (values["context.hp"] || 0) >= 99;
   }
 
-  const spriteFor = (hp) => {
-    if (exhausted) return "STFDEAD0";
-    if (now < god_until) return "STFGOD0";
-    if (st.expr && now - (st.ts || 0) < DECAY) {
-      const map = {
-        ouch: `STFOUCH${hp}`, kill: `STFKILL${hp}`, evl: `STFEVL${hp}`,
-        tl: `STFTL${hp}0`, tr: `STFTR${hp}0`,
-      };
-      return map[st.expr] || `STFST${hp}1`;
-    }
-    return `STFST${hp}${_pick(Math.floor(now / IDLE_CYCLE))}`;
-  };
+  const reaction = buildReaction({ st, values, godUntil: god_until, exhausted, now });
 
   const target = parseInt(env.COLUMNS || "100", 10);
   // The in-game HUD layout (minecraft theme) draws its own screen instead of boxes.
   if ((cfg.bar || {}).layout === "hotbar") {
     const { lines } = buildHotbar(cfg, target, values, {
-      sprite: spriteFor(0), exhausted, now, expr: st.expr, exprAge: now - (st.ts || 0),
+      reaction, now,
       indent: Number(env.DOOMBAR_INDENT ?? 2), // Claude Code draws the status line 2 cols in
     });
     return lines;
@@ -105,8 +84,8 @@ export function renderSession({ data, env = process.env, now = Date.now() / 1000
     try { return loadPreset(path.join(presetDir, `${name}.toml`)); }
     catch { return null; }
   };
-  const selected = resolvePreset(cfg, target, loadByName, spriteFor);
+  const selected = resolvePreset(cfg, target, loadByName, mugshotFace(reaction, now));
   // Text overflow behavior: env wins, then the preset's text_overflow, default "scroll".
   const overflow = env.DOOMBAR_TEXT_OVERFLOW || selected.text_overflow || cfg.text_overflow || "scroll";
-  return buildBar(selected, target, spriteFor, tick, overflow).lines;
+  return buildBar(selected, target, reaction, tick, overflow, now).lines;
 }

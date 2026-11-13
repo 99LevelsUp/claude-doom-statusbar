@@ -2,6 +2,7 @@
 import "../_temp-sandbox.mjs"; // before the modules that name temp paths
 import { resolvePreset, planLayout } from "../../src/kit/planner.js";
 import { setValues, SAMPLE } from "../../src/kit/values.js";
+import { mugshotFace } from "../../src/games/doom/layout.js";
 import { parse as parseToml } from "smol-toml";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -53,12 +54,12 @@ ok(
   ok(resolvePreset(orphan, 10, () => null) === orphan, "missing fallback -> ends at chosen");
 }
 
-// resolvePreset must fit-test with the SAME sprite buildBar will render. The "turn"
-// sprites (STFTL/STFTR) are 1 col wider than idle, so an idle-only fit test would
+// resolvePreset must fit-test with the SAME face buildBar will draw. The "turn"
+// faces (tl/tr) are 1 col wider than idle, so an idle-only fit test would
 // under-measure the mugshot column: at the boundary width it keeps `full` even
-// though `full` does not fit that sprite. The invariant: any selected preset that
-// is not the last resort must itself pass planLayout with the SAME sprite. Without
-// the spriteFor thread-through this fails at full's idle-vs-wide boundary width.
+// though `full` does not fit that face. The invariant: any selected preset that
+// is not the last resort must itself pass planLayout with the SAME face. Without
+// the face thread-through this fails at full's idle-vs-wide boundary width.
 {
   const root = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "..", "presets");
   const presets = {
@@ -67,7 +68,7 @@ ok(
     minimal: parseToml(readFileSync(path.join(root, "minimal.toml"), "utf8")),
   };
   const loadByName = (n) => presets[n] || null;
-  const wide = () => "STFTL00"; // widest face (look-around), 1 col wider than idle
+  const wide = mugshotFace({ flash: "tl", hp: 0 }); // widest face (look-around), 1 col wider than idle
   setValues(SAMPLE);
   let consistent = true, degrades = false, prevName = null;
   for (let target = 220; target >= 40; target -= 1) {
