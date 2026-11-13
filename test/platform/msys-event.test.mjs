@@ -13,7 +13,8 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadState, activityValues } from "../../src/statusline.js";
+import { loadState } from "../../src/metrics/tasks.js";
+import { activityValues } from "../../src/metrics/activity.js";
 import { stalePids, parseBashShells } from "../../src/platform/reap.js";
 import { sandboxEnv } from "../_sandbox-env.mjs";
 

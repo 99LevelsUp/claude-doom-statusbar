@@ -90,7 +90,7 @@ export function foldActivity(st, name, ev, now) {
   st.spans = st.spans.filter((s) => (s[1] === null ? s[0] >= now - MAX_RUN : s[1] >= win));
   st.squad = Object.fromEntries(Object.entries(st.squad).filter(([, v]) => now - v.start < MAX_RUN));
   // Tasks are never pruned here: the count (open/done/total) covers the whole session. Only the
-  // task LIST hides once everything has settled; see TASK_LINGER in statusline's activityValues.
+  // task LIST hides once everything has settled; see TASK_LINGER in activityValues (src/metrics/activity.js).
 }
 
 // One full event fold: activity + face expression + permission mode + git snapshot.

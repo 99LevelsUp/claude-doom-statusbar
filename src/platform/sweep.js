@@ -10,7 +10,7 @@
 //   * only names matching our own `mugshot_` / `savings_` prefixes, in the checkpoint's
 //     directory, non-recursively;
 //   * never SHARED state: the rate-health accumulator, the rate-limit pool and the CPU sample
-//     are cross-session by design (see statusline.js) and the reap throttle is process-wide, so
+//     are cross-session by design (see src/metrics/ratelimits.js and src/metrics/system.js) and the reap throttle is process-wide, so
 //     they are keyed by a fixed name with no session id and are excluded by name; the render
 //     daemon's heartbeat and claim (one pair per install hash) are excluded by pattern;
 //   * never this session's own files;

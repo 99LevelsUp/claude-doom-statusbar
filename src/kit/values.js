@@ -1,4 +1,4 @@
-// The metric values the current render reads. One shared slot: statusline.js swaps
+// The metric values the current render reads. One shared slot: render.js swaps
 // in real data via setValues; until then it holds SAMPLE, the preview data.
 
 import { OK, CRIT } from "./ansi.js";

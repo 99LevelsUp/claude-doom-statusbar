@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import "../_temp-sandbox.mjs"; // before the modules that name temp paths
-import { statsValues } from "../../src/statusline.js";
+import { statsValues } from "../../src/metrics/savings.js";
 import { setValues, SAMPLE } from "../../src/kit/values.js";
 import { buildBar } from "../../src/games/doom/layout.js";
 import { vlen } from "../../src/kit/text.js";

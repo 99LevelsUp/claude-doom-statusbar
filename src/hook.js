@@ -4,7 +4,7 @@
 // Old design did read-modify-write on a shared state file per event; under async hooks that
 // races (lost subagents/tasks). Now each invocation just APPENDS one slim line to a
 // per-session journal — append is atomic, so concurrent async hooks never clobber each
-// other. statusline.js folds the journal into a checkpoint at render time (see src/platform/journal.js).
+// other. loadState in src/metrics/tasks.js folds the journal into a checkpoint at render time (see src/platform/journal.js).
 //
 // Because the heavy work (folding, git) is off the blocking path, install these hooks with
 // "async": true (see src/install/settings.js). This hook never reads the journal and always exits 0.

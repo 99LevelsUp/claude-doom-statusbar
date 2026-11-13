@@ -1,6 +1,6 @@
 // The DOOM box layout: a row of metric boxes around the mugshot column, with
 // threshold colours, responsive widths and centering. Faithful port of
-// tools/render_preset.py. Reads metric values from VALUES (statusline.js swaps in
+// tools/render_preset.py. Reads metric values from VALUES (render.js swaps in
 // real data via setValues). Run directly, it previews a preset in the terminal.
 
 import { readFileSync } from "node:fs";
@@ -24,7 +24,7 @@ const f = sgrFg;
 export function hpRow(thresholds = HP_THRESHOLDS) {
   let headroom;
   if ("health.headroom" in VALUES) {
-    // Rate-limit health (statusline.js): distance to the first wall in 5h-budget units, where
+    // Rate-limit health (src/metrics/ratelimits.js): distance to the first wall in 5h-budget units, where
     // the binding window is weighted by the learned cap ratio (k = how much faster 5h% climbs
     // than 7d%). Declines with consumption, flat when idle. Already in 0..100.
     headroom = VALUES["health.headroom"];

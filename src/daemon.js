@@ -20,7 +20,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { renderSession } from "./statusline.js";
+import { renderSession } from "./render.js";
 import { writeFrame } from "./platform/frame.js";
 import { PACKAGE_ROOT, SRC_DIR } from "./package-root.js";
 import {

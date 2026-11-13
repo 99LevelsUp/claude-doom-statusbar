@@ -17,7 +17,7 @@ export function vlen(s) {
 
 // OSC8 hyperlink helpers — long hyperlinked labels (cwd, branch) can't be column-sliced
 // as-is (slicing corrupts the escape), so we operate on the visible text and re-wrap it
-// with the same URL. Matches the format emitted by statusline's _link().
+// with the same URL. Matches the format emitted by _link() in src/metrics/session.js.
 export const OSC8_RE = /^\x1b\]8;;([^\x1b\x07]*)(?:\x1b\\|\x07)([\s\S]*?)\x1b\]8;;(?:\x1b\\|\x07)$/;
 function splitLink(s) {
   const m = String(s).match(OSC8_RE);

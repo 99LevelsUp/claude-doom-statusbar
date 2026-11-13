@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // The append-only journal + fold-at-render pipeline:
 //   hook.js  APPENDS one slim line per event (never read-modify-write)
-//   loadState() in statusline.js FOLDS journal[offset..EOF] into the checkpoint
+//   loadState() in src/metrics/tasks.js FOLDS journal[offset..EOF] into the checkpoint
 // Verifies fast incremental reads (offset skip), partial-line tolerance, async event
 // reordering (no ghost agents), and corruption recovery (no double-count).
 
@@ -10,7 +10,7 @@ import { mkdtempSync, writeFileSync, appendFileSync, readFileSync, rmSync } from
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadState } from "../../src/statusline.js";
+import { loadState } from "../../src/metrics/tasks.js";
 import { foldBatch } from "../../src/platform/journal.js";
 
 // Pin the DOOM theme so a theme saved on this machine (`theme minecraft`) can't change
