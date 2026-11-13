@@ -41,7 +41,7 @@ function headCols(text, width) {
 // it is marquee-safe. Values carrying ANSI/OSC escapes (coloured text, hyperlinks)
 // can't be column-sliced without corrupting the escape, so they keep full width
 // (a hard floor): their box shrinks less, which is what trips the preset fallback.
-export const TEXTCAP_MAX = 24; // upper bound — matches statusline's clip(…, 24)
+export const TEXTCAP_MAX = 24; // upper bound for a text box's cap
 const TEXTCAP_MIN = 10; // lower bound — the readable floor before falling back
 export const ESC_RE = /\x1b/;
 export function capLen(s, textCap) {
