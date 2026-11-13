@@ -9,7 +9,7 @@ when the owner decides against something (move it to *Won't do*, with the reason
 Status: `next` = agreed, do soon · `open` = agreed direction, not scheduled · `idea` = not decided ·
 `blocked` = waiting on something outside the project.
 
-Last reviewed: 11.11.2026 (0.14.0).
+Last reviewed: 13.11.2026 (0.15.0).
 
 ## Render daemon, glyph renderer, minimap
 Source: [ideation/2026-11-09-render-daemon-and-minimap.md](ideation/2026-11-09-render-daemon-and-minimap.md)
@@ -41,16 +41,22 @@ Source: [ideation/2026-10-31-temp-file-leaks-and-hook-cost.md](ideation/2026-10-
 | L-I | An async Stop hook still running at session end can recreate a journal line or git marker after SessionEnd cleanup; the 1-hour sweep collects them. Revisit with L-A | idea |
 | L-J | Add a `windows-latest` job to the Test workflow; Windows runs only locally today | idea |
 
-## Rename to `claude-game-bar`
-Source: [ideation/2026-10-31-shared-game-layout-engine.md](ideation/2026-10-31-shared-game-layout-engine.md), section *Rename*
+## Rename to `claude-game-bar` and restructure (1.0.0)
+Source: [ideation/2026-10-31-shared-game-layout-engine.md](ideation/2026-10-31-shared-game-layout-engine.md), section *Rename*; structure audit and phasing: [ideation/2026-11-13-repo-structure-audit.md](ideation/2026-11-13-repo-structure-audit.md)
+
+Owner, 2026-11-13: rename on GitHub and npm together with 1.0.0; the bar becomes a platform with one general rendering part and game parts (DOOM, Minecraft, Warcraft III next).
 
 | ID | Item | Status |
 |---|---|---|
-| R-0 | Agree the rename and the refactor with the contributor | next |
-| R-1 | Rename package, bin (old bin as alias), repo, env vars `DOOMBAR_*` → `GAMEBAR_*` (with fallback), theme file, temp prefix; DOOM-specific code keeps `doom` | open |
-| R-2 | Neutral reaction state `{expr, hp, god, dead}` instead of DOOM sprite names between engine and layouts | open |
-| R-3 | npm: set up trusted publishing for the new package, last `claude-doom-statusbar` release with a notice, `npm deprecate` | open |
-| R-4 | `install` migrates settings in place (paths, env names, theme file) | open |
+| R-0 | Agree the rename and the refactor with the contributor | done (2026-11-13) |
+| R-5 | Test runner that runs every file and summarises (audit step 1) | next |
+| R-6 | Move files into `platform/` · `metrics/` · `kit/` · `games/<game>/`, entry paths kept; split `statusline.js`, `render.js`, `hook.js`, `fold.js` (audit steps 2–3) | next |
+| R-2 | Neutral reaction state `{expr, hp, god, dead}` instead of DOOM sprite names between engine and layouts (audit step 4) | next |
+| R-7 | Render context instead of module-level `VALUES` / face options (audit step 5) | next |
+| R-8 | Game registry `games/index.js` replaces `THEMES`; presets and assets under their game (audit step 6) | next |
+| R-1 | Rename package, bin (old bin as alias), repo, env vars `DOOMBAR_*` → `GAMEBAR_*` (with fallback), theme file, file prefixes, client name; DOOM-specific code keeps `doom` (audit step 7) | next |
+| R-4 | `install` migrates settings in place (paths, env names, theme file) | next |
+| R-3 | npm: set up trusted publishing for the new package, last `claude-doom-statusbar` release with a notice, `npm deprecate` (audit step 8) | next |
 
 ## Shared game layout engine
 Source: [ideation/2026-10-31-shared-game-layout-engine.md](ideation/2026-10-31-shared-game-layout-engine.md)
