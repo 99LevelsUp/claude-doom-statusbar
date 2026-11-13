@@ -10,12 +10,16 @@
 // BLOCK_RAMP. When channels exceed the column cap (EQ_MAX=16) it densifies by
 // averaging into exactly min(N, cap) columns, so the visible width always equals
 // metricFixedWidth -- the invariant box layout depends on.
-import { renderValue, metricFixedWidth, setValues, vlen, TEXT, OK, CRIT } from "../../src/render.js";
+import { renderValue } from "../../src/kit/meters.js";
+import { metricFixedWidth } from "../../src/kit/planner.js";
+import { setValues } from "../../src/kit/values.js";
+import { vlen } from "../../src/kit/text.js";
+import { TEXT, OK, CRIT } from "../../src/kit/ansi.js";
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 
-const EQ_MAX = 16;                // column cap, mirrors render.js
+const EQ_MAX = 16;                // column cap, mirrors src/kit/meters.js
 const BOX = [28, 32, 54];         // a non-term box bg, like the standard preset
 // Strip ANSI/OSC to count the visible glyph run.
 const ANSI = /\x1b\[[0-9;]*m|\x1b\]8;[^\x07\x1b]*(?:\x1b\\|\x07)/g;

@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 import "../_temp-sandbox.mjs"; // before the modules that name temp paths
-import { setValues, metricFixedWidth, scrollWindow, buildBar, vlen, SAMPLE } from "../../src/render.js";
+import { setValues, SAMPLE } from "../../src/kit/values.js";
+import { metricFixedWidth } from "../../src/kit/planner.js";
+import { scrollWindow, vlen } from "../../src/kit/text.js";
+import { buildBar } from "../../src/games/doom/layout.js";
 import { parse as parseToml } from "smol-toml";
 import { readFileSync } from "node:fs";
 import path2 from "node:path";

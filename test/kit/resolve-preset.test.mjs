@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import "../_temp-sandbox.mjs"; // before the modules that name temp paths
-import { resolvePreset, planLayout, setValues, SAMPLE } from "../../src/render.js";
+import { resolvePreset, planLayout } from "../../src/kit/planner.js";
+import { setValues, SAMPLE } from "../../src/kit/values.js";
 import { parse as parseToml } from "smol-toml";
 import { readFileSync } from "node:fs";
 import path from "node:path";

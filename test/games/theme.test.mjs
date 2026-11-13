@@ -7,7 +7,10 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseToml } from "smol-toml";
-import { buildBar, setValues, renderValue, vlen } from "../../src/render.js";
+import { buildBar } from "../../src/games/doom/layout.js";
+import { setValues } from "../../src/kit/values.js";
+import { renderValue } from "../../src/kit/meters.js";
+import { vlen } from "../../src/kit/text.js";
 import { buildHotbar, wrapMessage } from "../../src/games/minecraft/layout.js";
 import { sandboxEnv } from "../_sandbox-env.mjs";
 
@@ -93,7 +96,7 @@ ok(hearts === "♥♥♥♡♡♡♡♡♡♡", `icons: 70% used -> 3 of 10 hear
 // session still makes a coherent chat (no unfilled {placeholders}, no unanswered questions).
 {
   const { chatScript } = await import("../../src/games/minecraft/chat.js");
-  const { SAMPLE } = await import("../../src/render.js");
+  const { SAMPLE } = await import("../../src/kit/values.js");
   const full = chatScript({ ...SAMPLE, "model.name": "Opus 5.5", "model.effort_level": "high",
     "session.title": "status bar themes", "loc.added": "185" }).map((m) => m.map((p) => p.text).join(""));
   const all = full.join("\n");

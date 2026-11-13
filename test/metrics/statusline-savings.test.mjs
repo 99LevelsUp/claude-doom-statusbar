@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import "../_temp-sandbox.mjs"; // before the modules that name temp paths
 import { statsValues } from "../../src/statusline.js";
-import { setValues, buildBar, vlen, SAMPLE } from "../../src/render.js";
+import { setValues, SAMPLE } from "../../src/kit/values.js";
+import { buildBar } from "../../src/games/doom/layout.js";
+import { vlen } from "../../src/kit/text.js";
 import { parse as parseToml } from "smol-toml";
 import { mkdtempSync, writeFileSync, appendFileSync, rmSync, readFileSync } from "node:fs";
 import os from "node:os";
@@ -142,7 +144,7 @@ try {
   process.env.DOOMBAR_LLMLINGUA = writeJson("ling-raw.json", { sessions: { "abc.def:99": { tokens_saved: 1500, last_ratio: 2.0 } } });
   ok(statsValues(dotted, CWD)["save.lingua"] === "1.5k 2.0x", `raw session id used for lingua key (got ${JSON.stringify(statsValues(dotted, CWD)["save.lingua"])})`);
 
-  // === presentation (render.js) ===
+  // === presentation (src/kit/meters.js) ===
   ok(vlen("🪶") === 2, "lean icon 🪶 vlen 2");
   ok(vlen("📜") === 2, "lingua icon 📜 vlen 2");
 

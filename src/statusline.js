@@ -18,8 +18,11 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parse as parseToml } from "smol-toml";
-import { pyround, sgrFg } from "./kit/ansi.js";
-import { buildBar, setValues, resolvePreset, rgbOf, OK, TEXT, CRIT } from "./render.js";
+import { pyround, sgrFg, OK, TEXT, CRIT } from "./kit/ansi.js";
+import { buildBar } from "./games/doom/layout.js";
+import { setValues } from "./kit/values.js";
+import { resolvePreset } from "./kit/planner.js";
+import { rgbOf } from "./kit/meters.js";
 import { setFaceOptions } from "./games/doom/face.js";
 import { effectiveStep } from "./kit/raster/glyph-level.js";
 import { foldBatch, TASK_LINGER } from "./platform/journal.js";
@@ -505,8 +508,8 @@ export function statsValues(data, cwd, env = process.env) {
 }
 
 const PERM = { plan: "📋 plan", auto: "⏩ auto", acceptEdits: "⏩ auto", bypassPermissions: "⏩ bypass" };
-const OK_RGB = [96, 200, 104];   // matches render.js OK (done, green)
-const CRIT_RGB = [224, 84, 64];  // matches render.js CRIT (deleted, red)
+const OK_RGB = [96, 200, 104];   // matches kit/ansi.js OK (done, green)
+const CRIT_RGB = [224, 84, 64];  // matches kit/ansi.js CRIT (deleted, red)
 const TASK_MARK = { completed: ["✅", OK_RGB], deleted: ["❌", CRIT_RGB], in_progress: ["⏩", null], pending: ["🎯", null] };
 const TASK_ORDER = { completed: 0, deleted: 0, in_progress: 1, pending: 2 }; // settled (done+deleted, by time) first, then open
 
@@ -750,7 +753,7 @@ function loadPreset(file) {
 }
 
 // Returns the bar's lines, without trailing newlines. Sessions must render one at a time:
-// render.js keeps the values in one module-level slot (setValues).
+// kit/values.js keeps the values in one module-level slot (setValues).
 export function renderSession({ data, env = process.env, now = Date.now() / 1000 }) {
   // A shallow copy: the rate-limit merge below rewrites data.rate_limits, and a caller that
   // keeps the payload between renders must not see it change.
