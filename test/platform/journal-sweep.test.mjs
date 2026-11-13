@@ -12,11 +12,11 @@ import { mkdtempSync, writeFileSync, readdirSync, rmSync, utimesSync, existsSync
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { staleStateFiles } from "../src/hook.js";
-import { sessionPaths, daemonPaths, rootHash, runtimeDir } from "../src/fold.js";
-import { sandboxEnv } from "./_sandbox-env.mjs";
+import { staleStateFiles } from "../../src/hook.js";
+import { sessionPaths, daemonPaths, rootHash, runtimeDir } from "../../src/fold.js";
+import { sandboxEnv } from "../_sandbox-env.mjs";
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
+const HERE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const HOOK = path.join(HERE, "..", "src", "hook.js");
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };

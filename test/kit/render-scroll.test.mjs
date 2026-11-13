@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import "./_temp-sandbox.mjs"; // before the modules that name temp paths
-import { setValues, metricFixedWidth, scrollWindow, buildBar, vlen, SAMPLE } from "../src/render.js";
+import "../_temp-sandbox.mjs"; // before the modules that name temp paths
+import { setValues, metricFixedWidth, scrollWindow, buildBar, vlen, SAMPLE } from "../../src/render.js";
 import { parse as parseToml } from "smol-toml";
 import { readFileSync } from "node:fs";
 import path2 from "node:path";
@@ -44,7 +44,7 @@ ok(r.start === 0 && r.up === 0 && r.down === 0, "boundary all-fit -> top aligned
       { mark: "🎯", markRgb: null, text: "y" },
     ],
   });
-  const cfgRoot = path2.dirname(f2u(import.meta.url));
+  const cfgRoot = path2.dirname(path2.dirname(f2u(import.meta.url)));
   const cfg = parseToml(readFileSync(path2.join(cfgRoot, "..", "presets", "full.toml"), "utf8"));
   const res = buildBar(cfg, 160);
   const widths = res.lines.map((l) => vlen(l));
@@ -59,7 +59,7 @@ ok(r.start === 0 && r.up === 0 && r.down === 0, "boundary all-fit -> top aligned
     "act.subagents": [["a-really-long-agent-label-that-overflows-its-box", "1m2s"]],
     "act.tasklist": [{ mark: "⏩", markRgb: null, text: "port-PIL-alpha-compositing-into-JS-render" }],
   });
-  const cfgRoot = path2.dirname(f2u(import.meta.url));
+  const cfgRoot = path2.dirname(path2.dirname(f2u(import.meta.url)));
   const cfg = parseToml(readFileSync(path2.join(cfgRoot, "..", "presets", "full.toml"), "utf8"));
   let uniform = true;
   const frames = new Set();
@@ -76,7 +76,7 @@ ok(r.start === 0 && r.up === 0 && r.down === 0, "boundary all-fit -> top aligned
 // stays equal width across ticks, plain text marquees, and a hyperlink value (OSC8) now
 // marquees too — its visible text is windowed but the OSC8 structure + URL stay intact.
 {
-  const cfgRoot2 = path2.dirname(f2u(import.meta.url));
+  const cfgRoot2 = path2.dirname(path2.dirname(f2u(import.meta.url)));
   const full2 = parseToml(readFileSync(path2.join(cfgRoot2, "..", "presets", "full.toml"), "utf8"));
   const url = "https://example.com/a/very/long/path";
   const inner = "a-very-long-linked-cwd-name";

@@ -12,11 +12,11 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { serializeFrame, greyLines } from "../src/platform/frame.js";
-import { sidKey, sessionPaths, runtimeDir } from "../src/fold.js";
-import { sandboxEnv } from "./_sandbox-env.mjs";
+import { serializeFrame, greyLines } from "../../src/platform/frame.js";
+import { sidKey, sessionPaths, runtimeDir } from "../../src/fold.js";
+import { sandboxEnv } from "../_sandbox-env.mjs";
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
+const HERE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const CLIENT = path.join(HERE, "..", "src", "doombar-client.sh").replace(/\\/g, "/");
 const WIN = process.platform === "win32";
 // Claude Code runs the statusLine through Git Bash on Windows; elsewhere (CI) the system bash.

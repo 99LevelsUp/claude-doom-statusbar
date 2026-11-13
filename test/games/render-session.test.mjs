@@ -15,9 +15,9 @@ import os from "node:os";
 import path from "node:path";
 import { syncBuiltinESMExports } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { sandboxEnv } from "./_sandbox-env.mjs";
+import { sandboxEnv } from "../_sandbox-env.mjs";
 
-const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const ROOT = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "..");
 const STATUSLINE = path.join(ROOT, "src", "statusline.js");
 const PRESETS = path.join(ROOT, "presets");
 let fails = 0;
@@ -42,7 +42,7 @@ mkdirSync(TMPDIR, { recursive: true });
 Object.assign(process.env, { ...sandboxEnv(TMPDIR), PATH: "", DOOMBAR_MSYS_REAP: "0",
   DOOMBAR_THEME: "doom", DOOMBAR_RATELIMITS_SHARE: "0", DOOMBAR_PRESET: path.join(PRESETS, "minimal.toml") });
 for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "DOOMBAR_GLYPHS"]) delete process.env[k];
-const { renderSession } = await import("../src/statusline.js");
+const { renderSession } = await import("../../src/statusline.js");
 
 const NOW_MS = 1793500000123;
 const NOW = NOW_MS / 1000;

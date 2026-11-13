@@ -13,7 +13,7 @@
 // hook, is found by its command line and killed in `finally`.
 
 import { spawn, spawnSync } from "node:child_process";
-import { sandboxEnv } from "./_sandbox-env.mjs";
+import { sandboxEnv } from "../_sandbox-env.mjs";
 import {
   mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, cpSync, symlinkSync, utimesSync, readdirSync,
 } from "node:fs";
@@ -21,15 +21,15 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const ROOT = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "..");
 const VERSION = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8")).version;
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const SB = mkdtempSync(path.join(os.tmpdir(), "doombar-restart-"));
-const { sessionPaths, daemonPaths, rootHash } = await import("../src/fold.js");
-const { claimRestart, idlePercent, isOurLinuxDaemon, isOurPsDaemon } = await import("../src/hook.js");
+const { sessionPaths, daemonPaths, rootHash } = await import("../../src/fold.js");
+const { claimRestart, idlePercent, isOurLinuxDaemon, isOurPsDaemon } = await import("../../src/hook.js");
 
 const THROTTLE = 500;
 const GRACE = 1500;

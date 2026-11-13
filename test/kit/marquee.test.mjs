@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { marquee, vlen } from "../src/render.js";
+import { marquee, vlen } from "../../src/render.js";
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 

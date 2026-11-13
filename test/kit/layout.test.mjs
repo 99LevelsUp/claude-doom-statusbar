@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import "./_temp-sandbox.mjs"; // before the modules that name temp paths
-import { planLayout, textCapFor, setValues, SAMPLE } from "../src/render.js";
+import "../_temp-sandbox.mjs"; // before the modules that name temp paths
+import { planLayout, textCapFor, setValues, SAMPLE } from "../../src/render.js";
 import { parse as parseToml } from "smol-toml";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 
-const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const ROOT = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "..");
 const full = parseToml(readFileSync(path.join(ROOT, "presets", "full.toml"), "utf8"));
 setValues(SAMPLE);
 

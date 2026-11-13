@@ -10,7 +10,7 @@
 // BLOCK_RAMP. When channels exceed the column cap (EQ_MAX=16) it densifies by
 // averaging into exactly min(N, cap) columns, so the visible width always equals
 // metricFixedWidth -- the invariant box layout depends on.
-import { renderValue, metricFixedWidth, setValues, vlen, TEXT, OK, CRIT } from "../src/render.js";
+import { renderValue, metricFixedWidth, setValues, vlen, TEXT, OK, CRIT } from "../../src/render.js";
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import "./_temp-sandbox.mjs"; // before the modules that name temp paths
-import { statsValues } from "../src/statusline.js";
-import { setValues, buildBar, vlen, SAMPLE } from "../src/render.js";
+import "../_temp-sandbox.mjs"; // before the modules that name temp paths
+import { statsValues } from "../../src/statusline.js";
+import { setValues, buildBar, vlen, SAMPLE } from "../../src/render.js";
 import { parse as parseToml } from "smol-toml";
 import { mkdtempSync, writeFileSync, appendFileSync, rmSync, readFileSync } from "node:fs";
 import os from "node:os";
@@ -17,7 +17,7 @@ process.env.DOOMBAR_RATELIMITS_SHARE = "0";
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
+const HERE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const tmp = mkdtempSync(path.join(os.tmpdir(), "doombar-savings-"));
 const MISSING = path.join(tmp, "does-not-exist");
 

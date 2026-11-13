@@ -10,8 +10,8 @@ import { mkdtempSync, writeFileSync, appendFileSync, readFileSync, rmSync } from
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadState } from "../src/statusline.js";
-import { foldBatch } from "../src/fold.js";
+import { loadState } from "../../src/statusline.js";
+import { foldBatch } from "../../src/fold.js";
 
 // Pin the DOOM theme so a theme saved on this machine (`theme minecraft`) can't change
 // what the statusline renders under test. Child processes inherit it via process.env.
@@ -19,7 +19,7 @@ process.env.DOOMBAR_THEME = "doom";
 // Likewise keep the rate limits other live sessions shared on this machine out of the test.
 process.env.DOOMBAR_RATELIMITS_SHARE = "0";
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
+const HERE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const HOOK = path.join(HERE, "..", "src", "hook.js");
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };

@@ -3,11 +3,11 @@
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { decodePng } from "../src/kit/raster/png.js";
+import { decodePng } from "../../src/kit/raster/png.js";
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
-const ALPHA = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "assets", "images", "mugshot", "alpha");
+const ALPHA = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "..", "assets", "images", "mugshot", "alpha");
 
 {
   const img = decodePng(readFileSync(path.join(ALPHA, "STFST01.png")));

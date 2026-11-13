@@ -22,7 +22,7 @@
 // Windows and Linux. Not macOS: the process scan reads /proc.
 
 import { spawn, spawnSync } from "node:child_process";
-import { sandboxEnv } from "./_sandbox-env.mjs";
+import { sandboxEnv } from "../_sandbox-env.mjs";
 import {
   mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, cpSync, symlinkSync, renameSync, readdirSync,
 } from "node:fs";
@@ -37,7 +37,7 @@ if (!WIN && process.platform !== "linux") {
   process.exit(0);
 }
 
-const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const ROOT = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "..");
 // The shell Claude Code runs the statusLine with, and (Linux) the bash 5 the command execs.
 const SHELL = WIN ? (process.env.DOOMBAR_TEST_BASH || "C:/Program Files/Git/bin/bash.exe") : "/bin/sh";
 const POSIX_BASH = WIN ? null : (process.env.DOOMBAR_TEST_BASH || "/bin/bash");
@@ -47,8 +47,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const T_START = Date.now();
 const at = () => `${((Date.now() - T_START) / 1000).toFixed(1)}s`;
 
-const { sessionPaths, daemonPaths, rootHash, daemonSocket } = await import("../src/fold.js");
-const { OFFLINE_MARKER } = await import("../src/platform/frame.js");
+const { sessionPaths, daemonPaths, rootHash, daemonSocket } = await import("../../src/fold.js");
+const { OFFLINE_MARKER } = await import("../../src/platform/frame.js");
 
 const THROTTLE = 1000;
 const GRACE = 2000;

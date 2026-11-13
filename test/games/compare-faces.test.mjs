@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The face score used to compare the built-in converter with chafa.
-import { oklab, renderBack, scoreFace } from "../scripts/face-score.mjs";
+import { oklab, renderBack, scoreFace } from "../../scripts/face-score.mjs";
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };

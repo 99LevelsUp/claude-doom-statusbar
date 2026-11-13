@@ -10,18 +10,18 @@
 // The DOOM mugshot is drawn by the built-in converter at the glyph step the terminal allows; the
 // snapshots pin the richest step, so they do not depend on the terminal that runs the tests.
 
-import "./_temp-sandbox.mjs"; // before the modules that name temp paths
+import "../_temp-sandbox.mjs"; // before the modules that name temp paths
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseToml } from "smol-toml";
-import { SAMPLE, setValues, resolvePreset, buildBar } from "../src/render.js";
-import { buildHotbar } from "../src/games/minecraft/layout.js";
-import { setFaceOptions } from "../src/games/doom/face.js";
+import { SAMPLE, setValues, resolvePreset, buildBar } from "../../src/render.js";
+import { buildHotbar } from "../../src/games/minecraft/layout.js";
+import { setFaceOptions } from "../../src/games/doom/face.js";
 
 setFaceOptions({ step: "octant", background: [0, 0, 0] });
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
+const HERE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PRESETS = path.join(HERE, "..", "presets");
 const SNAP_DIR = path.join(HERE, "snapshots");
 const UPDATE = process.env.UPDATE_SNAPSHOTS === "1";

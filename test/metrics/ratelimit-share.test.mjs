@@ -6,10 +6,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { fresherWindow, mergeRateLimits } from "../src/statusline.js";
-import { sandboxEnv } from "./_sandbox-env.mjs";
+import { fresherWindow, mergeRateLimits } from "../../src/statusline.js";
+import { sandboxEnv } from "../_sandbox-env.mjs";
 
-const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const ROOT = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "..");
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 const strip = (s) => s.replace(/\x1b\[[0-9;]*m|\x1b\]8;[^\x07\x1b]*(?:\x1b\\|\x07)/g, "");

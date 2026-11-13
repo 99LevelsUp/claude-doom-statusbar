@@ -15,8 +15,8 @@
 // relation, and can make standard render WIDER than full in active sessions
 // (observed: 149 vs 147) -- precisely when standard is most distinct and most
 // wants to show. This test pins the invariant so that regression can't return.
-import "./_temp-sandbox.mjs"; // before the modules that name temp paths
-import { resolvePreset, planLayout, setValues, SAMPLE } from "../src/render.js";
+import "../_temp-sandbox.mjs"; // before the modules that name temp paths
+import { resolvePreset, planLayout, setValues, SAMPLE } from "../../src/render.js";
 import { parse as parseToml } from "smol-toml";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -25,7 +25,7 @@ import { fileURLToPath } from "node:url";
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 
-const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "presets");
+const root = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "..", "presets");
 const parse = (n) => parseToml(readFileSync(path.join(root, `${n}.toml`), "utf8"));
 const presets = { full: parse("full"), standard: parse("standard"), minimal: parse("minimal") };
 // Loader returns the SAME object references the assertions compare against, so a

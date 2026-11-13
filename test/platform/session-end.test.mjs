@@ -11,9 +11,9 @@ import { mkdtempSync, writeFileSync, readFileSync, readdirSync, rmSync, existsSy
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { sandboxEnv } from "./_sandbox-env.mjs";
+import { sandboxEnv } from "../_sandbox-env.mjs";
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
+const HERE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const HOOK = path.join(HERE, "..", "src", "hook.js");
 const STATUSLINE = path.join(HERE, "..", "src", "statusline.js");
 let fails = 0;

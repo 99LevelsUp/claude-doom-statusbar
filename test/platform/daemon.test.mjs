@@ -20,9 +20,9 @@ import os from "node:os";
 import path from "node:path";
 import { syncBuiltinESMExports } from "node:module";
 import { fileURLToPath } from "node:url";
-import { sandboxEnv } from "./_sandbox-env.mjs";
+import { sandboxEnv } from "../_sandbox-env.mjs";
 
-const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const ROOT = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "..");
 const PRESETS = path.join(ROOT, "presets");
 const VERSION = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8")).version;
 let fails = 0;
@@ -50,10 +50,10 @@ const SANDBOX_ENV = {
 Object.assign(process.env, SANDBOX_ENV);
 // The terminal that runs the tests must not pick the mugshot's glyphs for one side of a comparison.
 for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "DOOMBAR_GLYPHS"]) delete process.env[k];
-const { renderSession } = await import("../src/statusline.js");
-const { sessionPaths, daemonPaths, rootHash, daemonSocket, procStartTicks } = await import("../src/fold.js");
-const { parseFrame } = await import("../src/platform/frame.js");
-const { createState, runPass, pipePath, maybeStartReaper, FORWARDED_ENV } = await import("../src/daemon.js");
+const { renderSession } = await import("../../src/statusline.js");
+const { sessionPaths, daemonPaths, rootHash, daemonSocket, procStartTicks } = await import("../../src/fold.js");
+const { parseFrame } = await import("../../src/platform/frame.js");
+const { createState, runPass, pipePath, maybeStartReaper, FORWARDED_ENV } = await import("../../src/daemon.js");
 
 const HASH = rootHash();
 const OTHER = rootHash(path.join(SB, "elsewhere"));
@@ -444,7 +444,9 @@ try {
     // about an hour); set before the daemon starts, so its own view of src/ already includes them.
     const srcA = path.join(A.dir, "src");
     const longAgo = new Date(Date.now() - 2 * 3600e3);
-    for (const f of readdirSync(srcA)) utimesSync(path.join(srcA, f), longAgo, statSync(path.join(srcA, f)).mtime);
+    // Every file under src/, subfolders included: the daemon watches them all.
+    const srcFiles = readdirSync(srcA, { recursive: true }).map((f) => path.join(srcA, f)).filter((p) => statSync(p).isFile());
+    for (const p of srcFiles) utimesSync(p, longAgo, statSync(p).mtime);
     const shared = path.join(SB, "rt-shared");
     mkdirSync(shared);
 
@@ -487,7 +489,7 @@ try {
 
     // Reading src/ is not a change, even when it updates the files' last-access time: the daemon
     // keeps running past its next look at src/.
-    for (const f of readdirSync(srcA)) readFileSync(path.join(srcA, f));
+    for (const p of srcFiles) readFileSync(p);
     await sleep(3000);
     ok(a1.exitCode === null, "reading the files under src/ does not make the daemon exit");
 

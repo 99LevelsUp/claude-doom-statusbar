@@ -8,8 +8,8 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { rootHash, procStartTicks } from "../src/fold.js";
-import { sandboxEnv } from "./_sandbox-env.mjs";
+import { rootHash, procStartTicks } from "../../src/fold.js";
+import { sandboxEnv } from "../_sandbox-env.mjs";
 
 // Pin the DOOM theme so a theme saved on this machine (`theme minecraft`) can't change
 // what the statusline renders under test. Child processes inherit it via process.env.
@@ -17,7 +17,7 @@ process.env.DOOMBAR_THEME = "doom";
 // Likewise keep the rate limits other live sessions shared on this machine out of the test.
 process.env.DOOMBAR_RATELIMITS_SHARE = "0";
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
+const HERE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const CLI = path.join(HERE, "..", "bin", "cli.js");
 
 let failures = 0;

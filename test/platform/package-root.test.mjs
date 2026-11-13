@@ -5,13 +5,13 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { rootHash, packageVersion } from "../src/fold.js";
-import { isOurDaemon } from "../src/hook.js";
+import { rootHash, packageVersion } from "../../src/fold.js";
+import { isOurDaemon } from "../../src/hook.js";
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 
-const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const ROOT = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "..");
 
 ok(rootHash() === rootHash(ROOT), "the default install hash is the hash of the package root (what install bakes in)");
 ok(packageVersion() === JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8")).version,

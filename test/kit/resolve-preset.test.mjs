@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import "./_temp-sandbox.mjs"; // before the modules that name temp paths
-import { resolvePreset, planLayout, setValues, SAMPLE } from "../src/render.js";
+import "../_temp-sandbox.mjs"; // before the modules that name temp paths
+import { resolvePreset, planLayout, setValues, SAMPLE } from "../../src/render.js";
 import { parse as parseToml } from "smol-toml";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -59,7 +59,7 @@ ok(
 // is not the last resort must itself pass planLayout with the SAME sprite. Without
 // the spriteFor thread-through this fails at full's idle-vs-wide boundary width.
 {
-  const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "presets");
+  const root = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "..", "presets");
   const presets = {
     full: parseToml(readFileSync(path.join(root, "full.toml"), "utf8")),
     standard: parseToml(readFileSync(path.join(root, "standard.toml"), "utf8")),

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Glyph table: code points, masks and the ladder of steps.
-import { STEPS, GRID, classGlyphs, glyphsFor } from "../src/kit/raster/glyphs.js";
+import { STEPS, GRID, classGlyphs, glyphsFor } from "../../src/kit/raster/glyphs.js";
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };

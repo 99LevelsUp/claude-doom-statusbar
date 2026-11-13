@@ -4,7 +4,7 @@
 
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { ensureEmojiFont, fontDir, FONT_FILE, FONT_URL, FONT_SHA256, PROBE } from "../src/install/emoji-font.js";
+import { ensureEmojiFont, fontDir, FONT_FILE, FONT_URL, FONT_SHA256, PROBE } from "../../src/install/emoji-font.js";
 
 let failures = 0;
 const ok = (cond, msg) => {

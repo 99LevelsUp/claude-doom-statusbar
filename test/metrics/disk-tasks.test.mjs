@@ -4,7 +4,7 @@
 import { mkdtempSync, writeFileSync, rmSync, utimesSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { readDiskTasks, mergeDiskTasks, tasksDir, activityValues } from "../src/statusline.js";
+import { readDiskTasks, mergeDiskTasks, tasksDir, activityValues } from "../../src/statusline.js";
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };

@@ -5,7 +5,7 @@
 // into the aggregate sys.cpu (0..100) and the per-core sys.cores array (0..1 each),
 // without touching os.cpus() or the disk cache. The I/O wrapper cpuMetrics is left
 // to integration; the delta arithmetic and cold-start/mismatch handling live here.
-import { cpuDeltas, shouldSampleCpu } from "../src/statusline.js";
+import { cpuDeltas, shouldSampleCpu } from "../../src/statusline.js";
 
 // Pin the DOOM theme so a theme saved on this machine (`theme minecraft`) can't change
 // what the statusline renders under test. Child processes inherit it via process.env.
