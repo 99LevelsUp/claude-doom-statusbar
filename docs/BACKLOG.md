@@ -45,6 +45,8 @@ Source: [ideation/2026-10-31-temp-file-leaks-and-hook-cost.md](ideation/2026-10-
 ## Rename to `claude-game-bar` and restructure (1.0.0)
 Source: [ideation/2026-10-31-shared-game-layout-engine.md](ideation/2026-10-31-shared-game-layout-engine.md), section *Rename*; structure audit and phasing: [ideation/2026-11-13-repo-structure-audit.md](ideation/2026-11-13-repo-structure-audit.md)
 
+Requirements: [plans/2026-11-13-1359-refactor-claude-game-bar-1-0-plan.md](plans/2026-11-13-1359-refactor-claude-game-bar-1-0-plan.md).
+
 Owner, 2026-11-13: rename on GitHub and npm together with 1.0.0; the bar becomes a platform with one general rendering part and game parts (DOOM, Minecraft, Warcraft III next).
 
 | ID | Item | Status |
