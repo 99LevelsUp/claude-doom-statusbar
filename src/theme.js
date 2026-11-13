@@ -9,9 +9,7 @@
 import { readFileSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const REPO = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+import { PACKAGE_ROOT as REPO } from "./package-root.js";
 
 // theme -> preset file (null = follow DOOMBAR_PRESET), plus a one-line blurb for the CLI.
 export const THEMES = {

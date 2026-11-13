@@ -22,14 +22,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { renderSession } from "./statusline.js";
 import { writeFrame } from "./frame.js";
+import { PACKAGE_ROOT, SRC_DIR } from "./package-root.js";
 import {
-  rootHash, daemonPaths, payloadPrefix, framePrefix, writeAtomic, pipePath, PACKAGE_ROOT, envNum, packageVersion,
+  rootHash, daemonPaths, payloadPrefix, framePrefix, writeAtomic, pipePath, envNum, packageVersion,
   runtimeDir, ensureRuntimeDir, daemonSocket, procStartTicks, addressBound,
 } from "./fold.js";
 
 export { pipePath };
-
-const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 const DEFAULT_WINDOW_S = 3;
 const DEFAULT_IDLE_MS = 600000;
@@ -83,7 +82,7 @@ export function createState({ version, now = Date.now(), idleMs = DEFAULT_IDLE_M
 // reaper was started.
 const DEFAULT_REAP_TICK_MS = 15000;
 const REAPER_MAX_MS = 30000; // a healthy reaper takes about 1 s
-const HOOK_JS = path.join(HERE, "hook.js");
+const HOOK_JS = path.join(SRC_DIR, "hook.js");
 export function maybeStartReaper(state, { now = Date.now(), env = process.env, platform = process.platform,
   spawn = spawnChild } = {}) {
   if (platform !== "win32" || env.DOOMBAR_MSYS_REAP === "0") return false;
@@ -168,12 +167,19 @@ export function runPass(state, { dir = runtimeDir(), hash = rootHash(), now = Da
   return { idle: now - state.since >= state.idleMs, rendered };
 }
 
+// The size and modification time of every file under `dir`, subfolders included, as one string:
+// a change anywhere in the package's source makes the daemon exit, so the hooks start the new code.
 function srcSnapshot(dir) {
-  try {
-    return readdirSync(dir).sort().map((f) => {
-      try { const st = statSync(path.join(dir, f)); return `${f}:${st.size}:${st.mtimeMs}`; } catch { return `${f}:gone`; }
-    }).join("\n");
-  } catch { return "unreadable"; }
+  const walk = (d, rel) => readdirSync(d, { withFileTypes: true })
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+    .flatMap((e) => {
+      const name = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) {
+        try { return walk(path.join(d, e.name), name); } catch { return [`${name}:gone`]; }
+      }
+      try { const st = statSync(path.join(d, e.name)); return [`${name}:${st.size}:${st.mtimeMs}`]; } catch { return [`${name}:gone`]; }
+    });
+  try { return walk(dir, "").join("\n"); } catch { return "unreadable"; }
 }
 
 // Which daemon answers on addr: its pid, null when none does (the path is gone or refused), or

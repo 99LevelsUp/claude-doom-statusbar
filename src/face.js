@@ -6,15 +6,15 @@
 import { readFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { RESET, sgrBg } from "./ansi.js";
 import { decodePng } from "./png.js";
 import { convertImage } from "./glyph-render.js";
 import { writeAtomic, packageVersion, runtimeDir } from "./fold.js";
+import { PACKAGE_ROOT, SRC_DIR } from "./package-root.js";
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const REPO = path.dirname(HERE);
-const ALPHA_DIR = path.join(REPO, "assets", "images", "mugshot", "alpha"); // pre-baked transparent
+const ALPHA_DIR = path.join(PACKAGE_ROOT, "assets", "images", "mugshot", "alpha"); // pre-baked transparent
+// The converter's sources: a change to any of them invalidates the faces cached on disk.
+const CONVERTER_FILES = ["glyphs.js", "glyph-render.js", "png.js"].map((f) => path.join(SRC_DIR, f));
 const TERM_BG = "term-bg";
 
 const _cache = new Map();
@@ -44,8 +44,8 @@ function image(name) {
 // means converting again.
 function converterStamp() {
   const parts = [packageVersion()];
-  for (const f of ["glyphs.js", "glyph-render.js", "png.js"]) {
-    try { const st = statSync(path.join(HERE, f)); parts.push(st.size, Math.round(st.mtimeMs)); } catch { parts.push(f); }
+  for (const f of CONVERTER_FILES) {
+    try { const st = statSync(f); parts.push(st.size, Math.round(st.mtimeMs)); } catch { parts.push(path.basename(f)); }
   }
   return createHash("sha1").update(parts.join("|")).digest("hex").slice(0, 12);
 }

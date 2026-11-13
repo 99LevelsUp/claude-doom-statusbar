@@ -25,9 +25,7 @@ import { effectiveStep } from "./glyph-level.js";
 import { foldBatch, statePaths, sessionPaths, writeAtomic, TASK_LINGER, runtimeDir, ensureRuntimeDir } from "./fold.js";
 import { currentTheme, themePreset } from "./theme.js";
 import { buildHotbar } from "./hotbar.js";
-
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const REPO = path.dirname(HERE);
+import { PACKAGE_ROOT as REPO, SRC_DIR } from "./package-root.js";
 
 const DECAY = 1.5; // seconds a reaction holds before relaxing to idle
 const IDLE_CYCLE = 2; // seconds per idle glance
@@ -729,7 +727,7 @@ function maybeReap() {
   } catch { /* no marker yet -> reap now */ }
   try { writeFileSync(marker, JSON.stringify({ ts: Date.now() })); } catch { return; }
   try {
-    const hook = path.join(path.dirname(fileURLToPath(import.meta.url)), "hook.js");
+    const hook = path.join(SRC_DIR, "hook.js");
     const child = spawn(process.execPath, [hook, "--reap"],
       { detached: true, stdio: "ignore", windowsHide: true });
     child.unref();

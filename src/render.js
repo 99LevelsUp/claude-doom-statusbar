@@ -9,9 +9,7 @@ import { fileURLToPath } from "node:url";
 import { parse as parseToml } from "smol-toml";
 import { RESET, BOLD, TERM_RGB, sgrFg, sgrBg, pyround } from "./ansi.js";
 import { loadFace, faceCell } from "./face.js";
-
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const REPO = path.dirname(HERE);
+import { PACKAGE_ROOT as REPO } from "./package-root.js";
 
 // SGR + OSC 8 hyperlinks — stripped for width measurement.
 const ANSI_RE = /\x1b\[[0-9;]*m|\x1b\]8;[^\x07\x1b]*(?:\x1b\\|\x07)/g;
