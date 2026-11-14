@@ -135,6 +135,9 @@ try {
     ok(presetFile(newFull) === newFull, "a path that exists is used as is");
     const missing = path.join(SB, "missing.toml");
     ok(presetFile(missing) === missing, "a missing file no game registers stays as it is (and fails to load)");
+    const elsewhere = path.join(SB, "full.toml");
+    ok(!existsSync(elsewhere) && presetFile(elsewhere) === elsewhere,
+      "a missing full.toml outside the old presets folder stays as it is, not swapped for the bundled one");
     const s = session("old-path");
     for (const cols of ["250", "120", "90"]) {
       const viaOld = render(s, { DOOMBAR_THEME: "doom", DOOMBAR_PRESET: oldFull, COLUMNS: cols });

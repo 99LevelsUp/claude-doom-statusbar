@@ -54,9 +54,14 @@ export function defaultPreset(theme) {
   return g.presets[g.defaultPreset];
 }
 
+// Forget the saved choice, so the default game is the theme again.
+export function clearTheme() {
+  rmSync(themeFile(), { force: true });
+}
+
 export function saveTheme(theme) {
+  if (theme === defaultGame().name) { clearTheme(); return; } // default -> no file at all
   const p = themeFile();
-  if (theme === defaultGame().name) { rmSync(p, { force: true }); return; } // default -> no file at all
   mkdirSync(path.dirname(p), { recursive: true });
   writeFileSync(p, JSON.stringify({ theme }) + "\n");
 }

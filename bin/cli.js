@@ -20,7 +20,7 @@
 import { readFileSync, existsSync, readdirSync, unlinkSync, lstatSync, rmdirSync } from "node:fs";
 import path from "node:path";
 import { PACKAGE_ROOT } from "../src/package-root.js";
-import { THEMES, THEME_NAMES, currentTheme, saveTheme, nextTheme, resolveTheme } from "../src/theme.js";
+import { THEMES, THEME_NAMES, currentTheme, saveTheme, clearTheme, nextTheme, resolveTheme } from "../src/theme.js";
 import { rootHash, daemonPrefix, payloadPrefix, framePrefix, runtimeDir } from "../src/platform/runtime.js";
 import { confirmedDaemonPid } from "../src/platform/supervise.js";
 import { HOOK_EVENTS, die, settingsFile, load, save, install, uninstall } from "../src/install/settings.js";
@@ -216,7 +216,7 @@ async function main() {
   if (args.cmd === "uninstall") {
     uninstall(cfg);
     save(p, cfg);
-    if (!args.project && !args.local) saveTheme("doom"); // drop the saved theme choice too
+    if (!args.project && !args.local) clearTheme(); // drop the saved theme choice too
     const notes = stopDaemon();
     console.log(`✓ removed claude-doom-statusbar from ${p}`);
     for (const n of notes) console.log(`  note       : ${n}`);

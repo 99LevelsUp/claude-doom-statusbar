@@ -23,7 +23,7 @@
 
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { SRC_DIR } from "../package-root.js";
+import { PACKAGE_ROOT, SRC_DIR } from "../package-root.js";
 import { doomLayout } from "./doom/layout.js";
 import { ALPHA_DIR } from "./doom/face.js";
 import { minecraftLayout } from "./minecraft/layout.js";
@@ -77,12 +77,20 @@ export function registeredPreset(fileName) {
   return g ? g.presets[m[1]] : null;
 }
 
-// The file to load for a preset path. A path that exists is used as is. One that does not, but whose
-// file name is a registered preset, loads the registered file: installations made before the presets
-// moved into their games still point at <root>/presets/<name>.toml. Anything else stays as it is, so
-// loading it fails as it always did.
+// Where the presets lived before they moved into their games. Installations made before the move
+// still point there, at <root>/presets/<name>.toml.
+const LEGACY_PRESETS = path.join(PACKAGE_ROOT, "presets");
+const sameDir = (a, b) => process.platform === "win32"
+  ? path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase()
+  : path.resolve(a) === path.resolve(b);
+
+// The file to load for a preset path. A path that exists is used as is. A missing one in the old
+// presets folder whose file name is a registered preset loads the registered file. Anything else
+// stays as it is, so a moved or deleted preset of the user's own fails to load as it always did
+// instead of quietly drawing a bundled one.
 export function presetFile(file) {
   if (existsSync(file)) return file;
+  if (!sameDir(path.dirname(file), LEGACY_PRESETS)) return file;
   return registeredPreset(path.basename(file)) || file;
 }
 

@@ -41,7 +41,7 @@ ok(hearts === "♥♥♥♡♡♡♡♡♡♡", `icons: 70% used -> 3 of 10 hear
 // Hotbar layout: every row the same width, hearts/hunger track the values, death screen.
 {
   const cfg = parseToml(readFileSync(MINECRAFT_PRESET, "utf8"));
-  const vals ={ "context.hp": 30, "ratelimit.5h": 80, "ratelimit.7d": 31, "model.name": "Opus 5.5",
+  const vals = { "context.hp": 30, "ratelimit.5h": 80, "ratelimit.7d": 31, "model.name": "Opus 5.5",
     "model.effort_level": "high", "cost.total": "$1.83", "act.tasks": "2/5", "sys.cpu": "17%" };
   const calm = { now: 1005 };
   const hud = (target, o) => buildHotbar(cfg, target, renderContext({ values: vals, ...o }));
@@ -131,7 +131,7 @@ ok(hearts === "♥♥♥♡♡♡♡♡♡♡", `icons: 70% used -> 3 of 10 hear
   const long = wrapMessage([{ text: "supercalifragilisticexpialidocious", role: "text" }], 10);
   ok(long.every((l) => vlen(text(l)) <= 10), "wrap: a word longer than the line is split");
   const cfg = parseToml(readFileSync(MINECRAFT_PRESET, "utf8"));
-  const v ={ "model.name": "Opus 5.5", "context.hp": 78, "model.window": "1M" };
+  const v = { "model.name": "Opus 5.5", "context.hp": 78, "model.window": "1M" };
   for (const target of [204, 150, 120]) {
     const lines = buildHotbar(cfg, target, renderContext({ values: v, now: 1005 })).lines.map(strip);
     ok(!lines.join("").includes("…"), `hotbar @${target}: chat wraps instead of cutting messages off`);
