@@ -23,14 +23,16 @@ import { buildHotbar } from "../../src/games/minecraft/layout.js";
 import { buildReaction } from "../../src/metrics/reaction.js";
 
 const HERE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const PRESETS = path.join(HERE, "..", "presets");
+const DOOM_PRESETS = path.join(HERE, "..", "src", "games", "doom", "presets");
+const MINECRAFT_PRESETS = path.join(HERE, "..", "src", "games", "minecraft", "presets");
 const SNAP_DIR = path.join(HERE, "snapshots");
 const UPDATE = process.env.UPDATE_SNAPSHOTS === "1";
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 
-const loadPreset = (name) => {
-  try { return parseToml(readFileSync(path.join(PRESETS, `${name}.toml`), "utf8")); }
+// A preset by name from a game's folder (DOOM's by default, where the fallback chain looks).
+const loadPreset = (name, dir = DOOM_PRESETS) => {
+  try { return parseToml(readFileSync(path.join(dir, `${name}.toml`), "utf8")); }
   catch { return null; }
 };
 
@@ -99,7 +101,7 @@ for (const preset of ["full", "standard", "minimal"]) {
 
 // --- Minecraft hotbar -------------------------------------------------------------------
 {
-  const cfg = loadPreset("minecraft");
+  const cfg = loadPreset("minecraft", MINECRAFT_PRESETS);
   const hud = (width, reaction = reactionTo()) =>
     buildHotbar(cfg, width, contextOf({ reaction, now: NOW }), { indent: 2 }).lines;
   for (const width of [60, 100, 160]) {

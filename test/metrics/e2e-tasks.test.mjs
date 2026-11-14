@@ -45,7 +45,7 @@ try {
     env: {
       ...process.env,
       MUGSHOT_STATE: stateFile,
-      DOOMBAR_PRESET: path.join(ROOT, "presets", "full.toml"),
+      DOOMBAR_PRESET: path.join(ROOT, "src", "games", "doom", "presets", "full.toml"),
       COLUMNS: "140",
       ...sandboxEnv(tmp), // shared state files stay in tmp, not the real runtime dir
       DOOMBAR_MSYS_REAP: "0",            // no detached shell reaper racing the cleanup below

@@ -16,6 +16,7 @@ import { sandboxEnv } from "../_sandbox-env.mjs";
 
 const HERE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const ROOT = path.join(HERE, "..");
+const MINECRAFT_PRESET = path.join(ROOT, "src", "games", "minecraft", "presets", "minecraft.toml");
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 const strip = (s) => s.replace(/\x1b\[[0-9;]*m/g, "");
@@ -39,8 +40,8 @@ ok(hearts === "♥♥♥♡♡♡♡♡♡♡", `icons: 70% used -> 3 of 10 hear
 
 // Hotbar layout: every row the same width, hearts/hunger track the values, death screen.
 {
-  const cfg = parseToml(readFileSync(path.join(ROOT, "presets", "minecraft.toml"), "utf8"));
-  const vals = { "context.hp": 30, "ratelimit.5h": 80, "ratelimit.7d": 31, "model.name": "Opus 5.5",
+  const cfg = parseToml(readFileSync(MINECRAFT_PRESET, "utf8"));
+  const vals ={ "context.hp": 30, "ratelimit.5h": 80, "ratelimit.7d": 31, "model.name": "Opus 5.5",
     "model.effort_level": "high", "cost.total": "$1.83", "act.tasks": "2/5", "sys.cpu": "17%" };
   const calm = { now: 1005 };
   const hud = (target, o) => buildHotbar(cfg, target, renderContext({ values: vals, ...o }));
@@ -129,8 +130,8 @@ ok(hearts === "♥♥♥♡♡♡♡♡♡♡", `icons: 70% used -> 3 of 10 hear
   ok(many[0].some((p) => p.role === "me" && p.text.includes("Opus")), "wrap: the model name keeps its colour role");
   const long = wrapMessage([{ text: "supercalifragilisticexpialidocious", role: "text" }], 10);
   ok(long.every((l) => vlen(text(l)) <= 10), "wrap: a word longer than the line is split");
-  const cfg = parseToml(readFileSync(path.join(ROOT, "presets", "minecraft.toml"), "utf8"));
-  const v = { "model.name": "Opus 5.5", "context.hp": 78, "model.window": "1M" };
+  const cfg = parseToml(readFileSync(MINECRAFT_PRESET, "utf8"));
+  const v ={ "model.name": "Opus 5.5", "context.hp": 78, "model.window": "1M" };
   for (const target of [204, 150, 120]) {
     const lines = buildHotbar(cfg, target, renderContext({ values: v, now: 1005 })).lines.map(strip);
     ok(!lines.join("").includes("…"), `hotbar @${target}: chat wraps instead of cutting messages off`);

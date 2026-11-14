@@ -19,6 +19,52 @@ approval is required. This holds for everyone, including the repository owner.
 Run the tests locally before pushing: `npm test`, and `npm run test:e2e` on its own (it starts
 real daemons and must not run alongside anything else).
 
+## Adding a game
+
+This interface is internal. It may change between releases, without a major version bump.
+
+A game is one folder under `src/games/` plus one entry in the registry, `src/games/index.js`.
+The data collection, the metric engine, the drawing kit, the render daemon, the hooks and the
+installer reach a game's code and files only through the registry, so adding a game changes
+nothing outside its folder and its entry.
+
+```
+src/games/<name>/
+  layout.js          the layout function (and any game-specific drawing it needs)
+  presets/*.toml     the game's presets
+  assets/            images or other files the game reads, if any
+```
+
+The registry entry describes the game. The comment at the top of `src/games/index.js` lists every
+field; these are the main ones:
+
+- `name` and `about`: the theme name and its one-line blurb in `theme`. `aliases` lists older
+  names that still choose the game.
+- `layout`: the drawing function. `layoutKey`: the preset `[bar] layout` value that selects it.
+  The preset decides the layout, not the theme, so a preset of one game named through
+  `DOOMBAR_PRESET` still draws with its own game's layout.
+- `presets` (name to absolute path) and `defaultPreset`: the preset the theme renders.
+- `sample`: an optional image the glyph test card draws at every glyph step.
+
+The list order is the order `theme next` cycles through.
+
+The layout is called as `layout(cfg, target, ctx)` and returns the bar's lines:
+
+- `cfg` is the parsed preset.
+- `target` is the terminal width in columns.
+- `ctx` is the render context from `src/kit/context.js`. It holds the metric values, the glyph
+  step, the clock, the marquee tick, the overflow and indent settings, and a loader for sibling
+  presets.
+- `ctx.reaction` is the session's game-neutral reaction from `src/metrics/reaction.js`: what just
+  happened (`expr`, `exprAge`), its decayed `flash`, the health level `hp`, and `god` and `dead`.
+  A game turns it into its own look, such as DOOM's face or the Minecraft heart colour.
+
+A layout reads everything from these three arguments and keeps no state about a session between
+calls. The render daemon draws many sessions in turn with the same modules.
+
+`test/games/registry.test.mjs` registers a small fixture game from `test/games/fixture-game/` and
+renders it. It is a working example of a folder plus an entry.
+
 ## Releasing
 
 A release is published by pushing a `vX.Y.Z` tag: `.github/workflows/publish.yml` runs the tests

@@ -23,7 +23,7 @@ import { fileURLToPath } from "node:url";
 import { sandboxEnv } from "../_sandbox-env.mjs";
 
 const ROOT = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "..");
-const PRESETS = path.join(ROOT, "presets");
+const PRESETS = path.join(ROOT, "src", "games", "doom", "presets");
 const VERSION = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8")).version;
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
@@ -399,15 +399,13 @@ try {
   // directory elsewhere (one per installation and runtime directory there).
   const WIN = process.platform === "win32";
   {
-    // A copy of the package: its own install hash, pipe and src/ to watch. assets and
-    // node_modules are linked, not copied.
+    // A copy of the package: its own install hash, pipe and src/ to watch (src/ carries the games'
+    // presets and assets). node_modules is linked, not copied.
     const copyPackage = (name) => {
       const dir = path.join(SB, name);
       mkdirSync(dir);
       cpSync(path.join(ROOT, "src"), path.join(dir, "src"), { recursive: true });
-      cpSync(path.join(ROOT, "presets"), path.join(dir, "presets"), { recursive: true });
       cpSync(path.join(ROOT, "package.json"), path.join(dir, "package.json"));
-      symlinkSync(path.join(ROOT, "assets"), path.join(dir, "assets"), "junction");
       symlinkSync(path.join(ROOT, "node_modules"), path.join(dir, "node_modules"), "junction");
       return { dir, hash: rootHash(dir) };
     };

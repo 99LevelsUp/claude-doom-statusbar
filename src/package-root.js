@@ -1,4 +1,5 @@
-// The package root: the directory that holds package.json, src/, presets/ and assets/.
+// The package root: the directory that holds package.json, bin/ and src/ (each game's presets and
+// assets live in its folder under src/games/).
 //
 // Everything that names a path inside the package, the install hash or the render daemon's path
 // takes the root from here, so moving a source file into a subfolder cannot change any of them.

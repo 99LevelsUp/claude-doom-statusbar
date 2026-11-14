@@ -91,9 +91,7 @@ function copyPackage({ fake = true } = {}) {
   const dir = path.join(SB, `pkg-${++copies}`);
   mkdirSync(dir);
   cpSync(path.join(ROOT, "src"), path.join(dir, "src"), { recursive: true });
-  cpSync(path.join(ROOT, "presets"), path.join(dir, "presets"), { recursive: true });
   cpSync(path.join(ROOT, "package.json"), path.join(dir, "package.json"));
-  symlinkSync(path.join(ROOT, "assets"), path.join(dir, "assets"), "junction");
   symlinkSync(path.join(ROOT, "node_modules"), path.join(dir, "node_modules"), "junction");
   if (fake) writeFileSync(path.join(dir, "src", "daemon.js"), FAKE_DAEMON);
   const tmp = path.join(SB, `tmp-${copies}`);

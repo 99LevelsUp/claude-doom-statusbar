@@ -48,7 +48,7 @@ ok(r.start === 0 && r.up === 0 && r.down === 0, "boundary all-fit -> top aligned
     ],
   } });
   const cfgRoot = path2.dirname(path2.dirname(f2u(import.meta.url)));
-  const cfg = parseToml(readFileSync(path2.join(cfgRoot, "..", "presets", "full.toml"), "utf8"));
+  const cfg = parseToml(readFileSync(path2.join(cfgRoot, "..", "src", "games", "doom", "presets", "full.toml"), "utf8"));
   const res = buildBar(cfg, 160, ctx);
   const widths = res.lines.map((l) => vlen(l));
   ok(new Set(widths).size === 1, `all HUD rows equal width with overflow marker (widths: ${[...new Set(widths)].join(",")})`);
@@ -63,7 +63,7 @@ ok(r.start === 0 && r.up === 0 && r.down === 0, "boundary all-fit -> top aligned
     "act.tasklist": [{ mark: "⏩", markRgb: null, text: "port-PIL-alpha-compositing-into-JS-render" }],
   };
   const cfgRoot = path2.dirname(path2.dirname(f2u(import.meta.url)));
-  const cfg = parseToml(readFileSync(path2.join(cfgRoot, "..", "presets", "full.toml"), "utf8"));
+  const cfg = parseToml(readFileSync(path2.join(cfgRoot, "..", "src", "games", "doom", "presets", "full.toml"), "utf8"));
   let uniform = true;
   const frames = new Set();
   for (let t = 0; t < 24; t++) {
@@ -80,7 +80,7 @@ ok(r.start === 0 && r.up === 0 && r.down === 0, "boundary all-fit -> top aligned
 // marquees too — its visible text is windowed but the OSC8 structure + URL stay intact.
 {
   const cfgRoot2 = path2.dirname(path2.dirname(f2u(import.meta.url)));
-  const full2 = parseToml(readFileSync(path2.join(cfgRoot2, "..", "presets", "full.toml"), "utf8"));
+  const full2 = parseToml(readFileSync(path2.join(cfgRoot2, "..", "src", "games", "doom", "presets", "full.toml"), "utf8"));
   const url = "https://example.com/a/very/long/path";
   const inner = "a-very-long-linked-cwd-name";
   const link = `\x1b]8;;${url}\x1b\\${inner}\x1b]8;;\x1b\\`;

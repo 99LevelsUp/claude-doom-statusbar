@@ -9,7 +9,6 @@
   "files": [
     "src",
     "bin",
-    "presets",
     "assets",
     "tools"
   ],

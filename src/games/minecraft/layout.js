@@ -223,3 +223,8 @@ export function buildHotbar(cfg, target, ctx, { indent = 2 } = {}) {
   });
   return { lines, width: W, selected: sel };
 }
+
+// The Minecraft game's layout (src/games/index.js): the hotbar HUD, centred for the context's indent.
+export function minecraftLayout(cfg, target, ctx) {
+  return buildHotbar(cfg, target, ctx, { indent: ctx.indent }).lines;
+}

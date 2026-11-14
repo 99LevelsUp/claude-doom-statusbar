@@ -111,7 +111,9 @@ const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { retu
   // 1 s on EVERY platform, Windows included. The Git Bash / MSYS cost of a 1 Hz tick on Windows
   // is paid by the reaper, not by slowing the HUD down — a live clock is the point of this thing.
   ok(cfg.statusLine?.refreshInterval === 1, "statusLine refreshInterval is 1 on all platforms");
-  ok(cfg.env?.DOOMBAR_PRESET?.includes("full.toml"), "DOOMBAR_PRESET -> full.toml");
+  ok(cfg.env?.DOOMBAR_PRESET === `${ROOT.replace(/\\/g, "/")}/src/games/doom/presets/full.toml`,
+    `DOOMBAR_PRESET -> src/games/doom/presets/full.toml (${cfg.env?.DOOMBAR_PRESET})`);
+  ok(existsSync(cfg.env.DOOMBAR_PRESET), "and that preset file exists");
   ok(cfg.env?.FORCE_HYPERLINK === "1", "FORCE_HYPERLINK = 1");
   const EVENTS = ["SessionStart", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied",
     "Stop", "SubagentStart", "SubagentStop", "TaskCreated", "TaskCompleted"];

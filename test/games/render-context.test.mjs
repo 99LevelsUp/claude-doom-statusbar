@@ -18,7 +18,7 @@ import { buildReaction } from "../../src/metrics/reaction.js";
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 
-const PRESETS = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "presets");
+const PRESETS = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "src", "games", "doom", "presets");
 const loadPreset = (name) => {
   try { return parseToml(readFileSync(path.join(PRESETS, `${name}.toml`), "utf8")); }
   catch { return null; }

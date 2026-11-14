@@ -9,7 +9,7 @@ import { STEPS, glyphByChar, covers } from "../../src/kit/raster/glyphs.js";
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
-const ALPHA = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "..", "assets", "images", "mugshot", "alpha");
+const ALPHA = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "..", "src", "games", "doom", "assets", "mugshot", "alpha");
 const sprite = (name) => decodePng(readFileSync(path.join(ALPHA, name + ".png")));
 const shape = (face) => {
   const drawn = face.filter((r) => r.length);

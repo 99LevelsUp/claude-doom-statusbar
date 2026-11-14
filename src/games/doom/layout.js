@@ -10,11 +10,10 @@ import { parse as parseToml } from "smol-toml";
 import { RESET, BOLD, TEXT, sgrFg } from "../../kit/ansi.js";
 import { faceCell, loadFace } from "./face.js";
 import { portrait } from "./portrait.js";
-import { PACKAGE_ROOT } from "../../package-root.js";
 import { renderContext } from "../../kit/context.js";
 import { vlen, marquee, scrollWindow, ESC_RE, OSC8_RE } from "../../kit/text.js";
 import { rgbOf, colorFor, isTerm, bgsgrBox, borderFg, barMeta, renderValue } from "../../kit/meters.js";
-import { boxWidth, layoutContext, planLayout } from "../../kit/planner.js";
+import { boxWidth, layoutContext, planLayout, resolvePreset } from "../../kit/planner.js";
 import { calmReaction } from "../../metrics/reaction.js";
 
 const TITLE = [222, 202, 128];
@@ -190,15 +189,31 @@ export function buildBar(cfg, target, ctx) {
   return { lines, style, headers, cells, hp };
 }
 
+// The DOOM game's layout (src/games/index.js). It picks the preset that fits the terminal, then
+// draws it: the chosen preset is the ceiling, and if it (at its minimum scale) overflows `target`,
+// the planner falls back down its [bar].fallback chain, loading each step through the context's
+// presetByName. Text overflow: the context's (the environment's), then the picked preset's, then the
+// chosen one's, default "scroll". It depends on the pick, so the build gets a copy of the context
+// that carries it; the context the planner used stays as it was.
+export function doomLayout(cfg, target, ctx) {
+  const selected = resolvePreset(ctx, cfg, target, ctx.presetByName, mugshotFace(ctx));
+  const overflow = ctx.overflow || selected.text_overflow || cfg.text_overflow || "scroll";
+  return buildBar(selected, target, { ...ctx, overflow }).lines;
+}
+
 // Preview CLI: node src/games/doom/layout.js [PRESET.toml] [width]
-function main() {
+// A preset path that does not exist falls back to the registered preset of that file name, so the
+// old <root>/presets/<name>.toml paths still work. The registry is loaded here, not at the top: it
+// imports this file.
+async function main() {
+  const { presetFile, findGame } = await import("../index.js");
   const arg = process.argv[2];
   let p;
   if (arg) {
-    p = path.isAbsolute(arg) ? arg : path.join(process.cwd(), arg);
-    try { readFileSync(p); } catch { p = path.join(PACKAGE_ROOT, "presets", path.basename(arg)); }
+    p = presetFile(path.isAbsolute(arg) ? arg : path.join(process.cwd(), arg));
   } else {
-    p = path.join(PACKAGE_ROOT, "presets", "standard.toml");
+    const doom = findGame("doom");
+    p = doom.presets[doom.defaultPreset];
   }
   const target = process.argv[3] ? parseInt(process.argv[3], 10) : 100;
   const tick = process.argv[4] ? parseInt(process.argv[4], 10) : 0; // marquee phase for previews

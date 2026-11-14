@@ -10,9 +10,9 @@ import { RESET, sgrBg } from "../../kit/ansi.js";
 import { decodePng } from "../../kit/raster/png.js";
 import { convertImage } from "../../kit/raster/glyph-render.js";
 import { writeAtomic, packageVersion, runtimeDir } from "../../platform/runtime.js";
-import { PACKAGE_ROOT, SRC_DIR } from "../../package-root.js";
+import { SRC_DIR } from "../../package-root.js";
 
-const ALPHA_DIR = path.join(PACKAGE_ROOT, "assets", "images", "mugshot", "alpha"); // pre-baked transparent
+export const ALPHA_DIR = path.join(SRC_DIR, "games", "doom", "assets", "mugshot", "alpha"); // pre-baked transparent
 // The converter's sources: a change to any of them invalidates the faces cached on disk.
 const CONVERTER_FILES = ["glyphs.js", "glyph-render.js", "png.js"].map((f) => path.join(SRC_DIR, "kit", "raster", f));
 const TERM_BG = "term-bg";

@@ -5,7 +5,8 @@
 import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { PACKAGE_ROOT, SRC_DIR } from "../package-root.js";
+import { SRC_DIR } from "../package-root.js";
+import { defaultGame, registeredPreset } from "../games/index.js";
 
 // Normalise to forward slashes, like install.py's `.replace("\\", "/")`. The marker we
 // DETECT below must match the command we WRITE byte-for-byte, including slash direction —
@@ -86,7 +87,10 @@ export function install(cfg, preset, refresh, command) {
 
   const env = (cfg.env ??= {});
   const presetFile = preset.endsWith(".toml") ? preset : preset + ".toml";
-  env.DOOMBAR_PRESET = slash(path.join(PACKAGE_ROOT, "presets", presetFile));
+  // The registered preset of that name, in its game's folder. A name no game registers keeps the
+  // shape it always had: a file of that name beside the default game's presets.
+  const fallbackDir = path.dirname(defaultGame().presets[defaultGame().defaultPreset]);
+  env.DOOMBAR_PRESET = slash(registeredPreset(presetFile) || path.join(fallbackDir, presetFile));
   env.FORCE_HYPERLINK ??= "1"; // clickable links (Windows Terminal needs this)
 
   const hooks = (cfg.hooks ??= {});
