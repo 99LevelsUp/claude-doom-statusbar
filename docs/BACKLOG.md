@@ -56,7 +56,7 @@ Owner, 2026-11-13: rename on GitHub and npm together with 1.0.0; the bar becomes
 | R-6 | Move files into `platform/` · `metrics/` · `kit/` · `games/<game>/`, entry paths kept; split `statusline.js`, `render.js`, `hook.js`, `fold.js` (audit steps 2–3) | done (PR #7, #8) |
 | R-2 | Neutral reaction state `{expr, hp, god, dead}` instead of DOOM sprite names between engine and layouts (audit step 4) | done (1.0 plan step 4) |
 | R-7 | Render context instead of module-level `VALUES` / face options (audit step 5) | done (1.0 plan step 4) |
-| R-8 | Game registry `games/index.js` replaces `THEMES`; presets and assets under their game (audit step 6) | next |
+| R-8 | Game registry `games/index.js` replaces `THEMES`; presets and assets under their game (audit step 6) | done (PR #10) |
 | R-1 | Rename package, bin (old bin as alias), repo, env vars `DOOMBAR_*` → `GAMEBAR_*` (with fallback), theme file, file prefixes, client name; DOOM-specific code keeps `doom` (audit step 7) | next |
 | R-4 | `install` migrates settings in place (paths, env names, theme file) | next |
 | R-3 | npm: set up trusted publishing for the new package, last `claude-doom-statusbar` release with a notice, `npm deprecate` (audit step 8) | next |
@@ -66,7 +66,7 @@ Source: [ideation/2026-10-31-shared-game-layout-engine.md](ideation/2026-10-31-s
 
 | ID | Item | Status |
 |---|---|---|
-| G-2 | Layout registry instead of `if (layout === …)` in `statusline.js` | open |
+| G-2 | Layout registry instead of `if (layout === …)` in `statusline.js` | done with R-8 (PR #10) |
 | G-3 | User-level preset overlay `~/.claude/<bar>/<theme>.toml` so slot choices survive npm updates | open |
 | G-4 | Extract the shared HUD kit: cell fit (escape-safe), gauge row (merge `rIcons` + `glyphCells`), meter bar, grid, selection, portrait | open |
 | G-5 | Hotbar uses the shared width planner, `[bar].fallback` and `text_overflow` | open |
@@ -116,6 +116,8 @@ Source: [ideation/2026-06-06-doom-statusbar-ideation.md](ideation/2026-06-06-doo
 | S-3 | Duplicate, outdated comment above `EFFORT_COLOR` in `hotbar.js` | open |
 | S-5 | The fine bars draw with octants (`SPARK_OCTANT` in `src/render.js`) whatever the terminal; in the Windows console host they show as boxes. Let the glyph level of the D-3 plan cap them too | idea |
 | S-4 | AGENTS box mislabels and miscounts subagents. Observed 2026-11-10: two running `general-purpose` agents ("Simplify review: test value", "Simplify review: comments") both showed as `iew: comments 3m`, while Claude Code's own list showed three running agents. Leads: `SubagentStart` takes the description from the first pending `Agent` launch of the same `agent_type` (FIFO in `src/fold.js`), so parallel launches of one type can get swapped or duplicated labels; an agent that stopped while its own background work still runs gets `SubagentStop`, so the bar drops it while Claude Code still lists it. Verify against the journal before fixing | open |
+| S-6 | A preset path that does not exist and is not a registered preset (`DOOMBAR_PRESET=…/nope.toml`) makes `src/statusline.js` print a raw `ENOENT` stack on stderr. Print one line naming the missing preset instead (found on the Pi, 2026-11-14) | open |
+| S-7 | When the daemon exits because its source changed (a `git pull` in a checkout), nothing starts its successor until the next hook. An idle machine shows the last frame until it expires, then a grey bar until the next tool call. Option: spawn the successor on that exit path only (the socket singleton prevents doubles), or document "resumes at the next hook" (found on the Pi, 2026-11-13) | owner decision |
 
 ## Done
 
