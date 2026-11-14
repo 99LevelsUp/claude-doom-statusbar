@@ -14,6 +14,7 @@
 import { RESET, BOLD, sgrFg as f, sgrBg as b, pyround } from "../../kit/ansi.js";
 import { vlen } from "../../kit/text.js";
 import { chatLog, chatScript } from "./chat.js";
+import { calmReaction } from "../../metrics/reaction.js";
 
 const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const C = {
@@ -142,9 +143,6 @@ function chatColumn(values, now, rows, w) {
   });
 }
 
-// No reaction passed: nothing happened.
-const CALM = { expr: null, exprAge: Infinity, flash: null, hp: 0, god: false, dead: false };
-
 // Render the hotbar HUD from the render context `ctx` (src/kit/context.js), which carries:
 //   values     the statusline metric values
 //   reaction   the session's reaction (src/metrics/reaction.js): its flash colours the
@@ -153,7 +151,7 @@ const CALM = { expr: null, exprAge: Infinity, flash: null, hp: 0, god: false, de
 // `indent` is the columns Claude Code shifts the status line right (default 2), so the
 // hotbar lands in the true centre of the terminal.
 export function buildHotbar(cfg, target, ctx, { indent = 2 } = {}) {
-  const { values, reaction = CALM, now = Date.now() / 1000 } = ctx;
+  const { values, reaction = calmReaction(values), now = Date.now() / 1000 } = ctx;
   const { flash, expr, exprAge, dead: exhausted } = reaction;
   const hb = cfg.hotbar || {};
   const all = (cfg.slot || []).slice(0, 9);

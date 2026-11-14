@@ -1,7 +1,7 @@
 // The game-neutral reaction a render hands to the layouts: what just happened in the session
 // and how hurt the player is. Games turn it into their own look (a face, heart colours).
 //
-//   expr     the last folded expression ("ouch", "kill", "evl", "tl", "tr") or null
+//   expr     the last folded expression (EXPRESSIONS in src/platform/journal.js) or null
 //   exprAge  seconds since that expression
 //   flash    the one reaction showing right now, with this precedence:
 //              "dead"   out of usage
@@ -12,10 +12,12 @@
 //   hp       the health row, 0 (healthy) .. 4 (nearly dead)
 //   god, dead  the god flash and exhaustion on their own
 
+import { EXPRESSIONS } from "../platform/journal.js";
+
 export const DECAY = 1.5; // seconds a reaction holds before relaxing to idle
 
-// The expressions the hook fold produces (expression() in src/platform/journal.js).
-const EXPRESSIONS = new Set(["ouch", "kill", "evl", "tl", "tr"]);
+// The expressions the hook fold produces.
+const KNOWN = new Set(EXPRESSIONS);
 
 const HP_THRESHOLDS = [20, 40, 60, 80];
 
@@ -48,6 +50,12 @@ export function buildReaction({ st = {}, values, godUntil, exhausted, now }) {
   let flash = null;
   if (dead) flash = "dead";
   else if (god) flash = "god";
-  else if (expr && exprAge < DECAY) flash = EXPRESSIONS.has(expr) ? expr : "other";
+  else if (expr && exprAge < DECAY) flash = KNOWN.has(expr) ? expr : "other";
   return { expr, exprAge, flash, hp: hpRow(values), god, dead };
+}
+
+// The reaction when nothing happened: no expression, no flash, the health row of `values`.
+// Layouts fall back to it when a caller (the preview, a test) passes no reaction.
+export function calmReaction(values = {}) {
+  return { expr: null, exprAge: Infinity, flash: null, hp: hpRow(values), god: false, dead: false };
 }

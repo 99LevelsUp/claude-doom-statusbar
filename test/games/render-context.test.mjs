@@ -40,12 +40,9 @@ const contextA = (o = {}) => renderContext({ values: VALUES_A, step: "octant",
 const contextB = () => renderContext({ values: VALUES_B, step: "half", reaction: reactionTo(VALUES_B), now: NOW, tick: 7 });
 
 // The steps renderSession takes, split so the test can put another session between them.
-const plan = (ctx) => {
-  const selected = resolvePreset(ctx, CFG, WIDTH, loadPreset, mugshotFace(ctx));
-  ctx.overflow = selected.text_overflow || CFG.text_overflow || "scroll";
-  return selected;
-};
-const build = (selected, ctx) => buildBar(selected, WIDTH, ctx).lines.join("\n");
+const plan = (ctx) => resolvePreset(ctx, CFG, WIDTH, loadPreset, mugshotFace(ctx));
+const build = (selected, ctx) => buildBar(selected, WIDTH,
+  { ...ctx, overflow: selected.text_overflow || CFG.text_overflow || "scroll" }).lines.join("\n");
 const render = (ctx) => build(plan(ctx), ctx);
 
 // Each session alone, A first.

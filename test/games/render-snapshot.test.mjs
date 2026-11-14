@@ -75,8 +75,8 @@ for (const preset of ["full", "standard", "minimal"]) {
     const ctx = contextOf();
     const cfg = loadPreset(preset);
     const selected = resolvePreset(ctx, cfg, width, loadPreset, mugshotFace(ctx));
-    ctx.overflow = selected.text_overflow || cfg.text_overflow || "scroll";
-    check(`doom-${preset}-${width}`, buildBar(selected, width, ctx).lines);
+    const overflow = selected.text_overflow || cfg.text_overflow || "scroll";
+    check(`doom-${preset}-${width}`, buildBar(selected, width, { ...ctx, overflow }).lines);
   }
 }
 
@@ -92,8 +92,8 @@ for (const preset of ["full", "standard", "minimal"]) {
     const ctx = contextOf({ reaction, now: NOW });
     const cfg = loadPreset("full");
     const selected = resolvePreset(ctx, cfg, 120, loadPreset, mugshotFace(ctx));
-    ctx.overflow = selected.text_overflow || cfg.text_overflow || "scroll";
-    check(`doom-full-120-${name}`, buildBar(selected, 120, ctx).lines);
+    const overflow = selected.text_overflow || cfg.text_overflow || "scroll";
+    check(`doom-full-120-${name}`, buildBar(selected, 120, { ...ctx, overflow }).lines);
   }
 }
 

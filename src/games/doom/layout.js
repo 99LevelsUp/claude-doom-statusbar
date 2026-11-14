@@ -15,7 +15,7 @@ import { renderContext } from "../../kit/context.js";
 import { vlen, marquee, scrollWindow, ESC_RE, OSC8_RE } from "../../kit/text.js";
 import { rgbOf, colorFor, isTerm, bgsgrBox, borderFg, barMeta, renderValue } from "../../kit/meters.js";
 import { boxWidth, layoutContext, planLayout } from "../../kit/planner.js";
-import { hpRow } from "../../metrics/reaction.js";
+import { calmReaction } from "../../metrics/reaction.js";
 
 const TITLE = [222, 202, 128];
 
@@ -23,8 +23,7 @@ const f = sgrFg;
 
 // The context's reaction, or with none (the preview, tests) a calm one: nothing happened,
 // health from the context's values.
-const reactionOf = (ctx) => ctx.reaction
-  || { expr: null, exprAge: Infinity, flash: null, hp: hpRow(ctx.values), god: false, dead: false };
+const reactionOf = (ctx) => ctx.reaction || calmReaction(ctx.values);
 
 // The mugshot art for a render context, as the planner asks for it: rows -> rows of cells. The
 // planner's fit test and buildBar draw through this, so both measure the same face.

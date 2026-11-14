@@ -85,8 +85,8 @@ export function renderSession({ data, env = process.env, now = Date.now() / 1000
   };
   const selected = resolvePreset(ctx, cfg, target, loadByName, mugshotFace(ctx));
   // Text overflow behavior: env wins, then the picked preset's text_overflow, then the chosen
-  // one's, default "scroll". It depends on the pick, so it joins the context once that is known;
-  // the planner above never reads it.
-  ctx.overflow = env.DOOMBAR_TEXT_OVERFLOW || selected.text_overflow || cfg.text_overflow || "scroll";
-  return buildBar(selected, target, ctx).lines;
+  // one's, default "scroll". It depends on the pick, so the build gets a copy of the context
+  // that carries it; the context the planner used stays as it was.
+  const overflow = env.DOOMBAR_TEXT_OVERFLOW || selected.text_overflow || cfg.text_overflow || "scroll";
+  return buildBar(selected, target, { ...ctx, overflow }).lines;
 }
