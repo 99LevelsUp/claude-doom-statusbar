@@ -121,7 +121,7 @@ const near = (a, b, eps = 0.5) => Math.abs(a - b) <= eps;
   const healthFile = path.join(tmp, "mugshot_ratehealth_global.json");
   const env = {
     ...process.env,
-    DOOMBAR_PRESET: path.join(HERE, "..", "presets", "standard.toml"),
+    DOOMBAR_PRESET: path.join(HERE, "..", "src", "games", "doom", "presets", "standard.toml"),
     MUGSHOT_STATE: path.join(tmp, "state.json"),
     ...sandboxEnv(tmp), // the global accumulator lands here
     COLUMNS: "100",

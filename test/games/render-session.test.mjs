@@ -19,7 +19,7 @@ import { sandboxEnv } from "../_sandbox-env.mjs";
 
 const ROOT = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "..");
 const STATUSLINE = path.join(ROOT, "src", "statusline.js");
-const PRESETS = path.join(ROOT, "presets");
+const PRESETS = path.join(ROOT, "src", "games", "doom", "presets");
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 const strip = (s) => s.replace(/\x1b\[[0-9;]*m|\x1b\]8;[^\x07\x1b]*(?:\x1b\\|\x07)/g, "");

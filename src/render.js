@@ -1,17 +1,15 @@
 // Render one session's bar: load the preset, collect the metric values, build the session's
-// reaction and the lines. Used by the one-shot status line (statusline.js) and the render daemon.
+// reaction and the lines, drawn by the layout the game registry (src/games/index.js) names for the
+// preset. Used by the one-shot status line (statusline.js) and the render daemon.
 
 import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { parse as parseToml } from "smol-toml";
-import { buildBar, mugshotFace } from "./games/doom/layout.js";
 import { renderContext } from "./kit/context.js";
-import { resolvePreset } from "./kit/planner.js";
 import { rgbOf } from "./kit/meters.js";
 import { effectiveStep } from "./kit/raster/glyph-level.js";
-import { currentTheme, themePreset } from "./theme.js";
-import { buildHotbar } from "./games/minecraft/layout.js";
-import { PACKAGE_ROOT } from "./package-root.js";
+import { currentTheme, themePreset, defaultPreset } from "./theme.js";
+import { layoutFor, presetFile } from "./games/index.js";
 import { collectValues } from "./metrics/index.js";
 import { buildReaction } from "./metrics/reaction.js";
 
@@ -37,9 +35,11 @@ export function renderSession({ data, env = process.env, now = Date.now() / 1000
   // that keeps the payload between renders must not see it change.
   if (data && typeof data === "object" && !Array.isArray(data)) data = { ...data };
 
-  // A non-DOOM theme (see theme.js) swaps in its own preset; doom keeps DOOMBAR_PRESET.
-  const preset = themePreset(currentTheme(env))
-    || env.DOOMBAR_PRESET || path.join(PACKAGE_ROOT, "presets", "standard.toml");
+  // A theme with a preset of its own (see theme.js) swaps it in; the others follow DOOMBAR_PRESET,
+  // then their default preset. A path that no longer exists but names a registered preset (an
+  // installation from before the presets moved into their games) loads the registered file.
+  const theme = currentTheme(env);
+  const preset = presetFile(themePreset(theme) || env.DOOMBAR_PRESET || defaultPreset(theme));
   const cfg = loadPreset(preset);
 
   const { values, st, god_until } = collectValues(data, env, now);
@@ -60,33 +60,23 @@ export function renderSession({ data, env = process.env, now = Date.now() / 1000
   // The face settings come from the chosen preset's [mugshot]: the glyph step this session's
   // terminal allows, and the background transparent face areas are fitted against.
   const mugshot = cfg.mugshot || {};
+  // Sibling presets (the narrow-width fallback chain) resolve in the folder of the file actually
+  // loaded, so an old path redirected above finds them beside the registered one.
+  const presetDir = path.dirname(preset);
   const ctx = renderContext({
     values, reaction, now,
     tick: Math.floor(now), // one marquee step per refresh (~1s); pure fn of time
     step: effectiveStep(env, mugshot.glyphs),
     background: rgbOf(mugshot.background ?? "#000000"),
+    overflow: env.DOOMBAR_TEXT_OVERFLOW || undefined, // set: wins over the presets' text_overflow
+    indent: Number(env.DOOMBAR_INDENT ?? 2), // Claude Code draws the status line 2 cols in
+    presetByName: (name) => {
+      try { return loadPreset(path.join(presetDir, `${name}.toml`)); }
+      catch { return null; }
+    },
   });
 
   const target = parseInt(env.COLUMNS || "100", 10);
-  // The in-game HUD layout (minecraft theme) draws its own screen instead of boxes.
-  if ((cfg.bar || {}).layout === "hotbar") {
-    const { lines } = buildHotbar(cfg, target, ctx, {
-      indent: Number(env.DOOMBAR_INDENT ?? 2), // Claude Code draws the status line 2 cols in
-    });
-    return lines;
-  }
-  // Pick the preset that fits the terminal: the chosen preset is the ceiling; if it
-  // (at its minimum scale) overflows COLUMNS, fall back down its [bar].fallback chain.
-  // Sibling presets resolve relative to the chosen preset's directory.
-  const presetDir = path.dirname(preset);
-  const loadByName = (name) => {
-    try { return loadPreset(path.join(presetDir, `${name}.toml`)); }
-    catch { return null; }
-  };
-  const selected = resolvePreset(ctx, cfg, target, loadByName, mugshotFace(ctx));
-  // Text overflow behavior: env wins, then the picked preset's text_overflow, then the chosen
-  // one's, default "scroll". It depends on the pick, so the build gets a copy of the context
-  // that carries it; the context the planner used stays as it was.
-  const overflow = env.DOOMBAR_TEXT_OVERFLOW || selected.text_overflow || cfg.text_overflow || "scroll";
-  return buildBar(selected, target, { ...ctx, overflow }).lines;
+  // The preset's [bar] layout picks the drawing function through the game registry.
+  return layoutFor(cfg)(cfg, target, ctx);
 }

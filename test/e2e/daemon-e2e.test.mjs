@@ -184,9 +184,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
 mkdirSync(PKG);
 mkdirSync(TMP);
 cpSync(path.join(ROOT, "src"), path.join(PKG, "src"), { recursive: true });
-cpSync(path.join(ROOT, "presets"), path.join(PKG, "presets"), { recursive: true });
 cpSync(path.join(ROOT, "package.json"), path.join(PKG, "package.json"));
-symlinkSync(path.join(ROOT, "assets"), path.join(PKG, "assets"), "junction");
 symlinkSync(path.join(ROOT, "node_modules"), path.join(PKG, "node_modules"), "junction");
 renameSync(path.join(PKG, "src", "daemon.js"), path.join(PKG, "src", "daemon-real.js"));
 writeFileSync(path.join(PKG, "src", "daemon.js"), SHIM);

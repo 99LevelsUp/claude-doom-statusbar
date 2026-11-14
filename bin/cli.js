@@ -20,7 +20,7 @@
 import { readFileSync, existsSync, readdirSync, unlinkSync, lstatSync, rmdirSync } from "node:fs";
 import path from "node:path";
 import { PACKAGE_ROOT } from "../src/package-root.js";
-import { THEMES, THEME_NAMES, currentTheme, saveTheme, nextTheme, resolveTheme } from "../src/theme.js";
+import { THEMES, THEME_NAMES, currentTheme, saveTheme, clearTheme, nextTheme, resolveTheme } from "../src/theme.js";
 import { rootHash, daemonPrefix, payloadPrefix, framePrefix, runtimeDir } from "../src/platform/runtime.js";
 import { confirmedDaemonPid } from "../src/platform/supervise.js";
 import { HOOK_EVENTS, die, settingsFile, load, save, install, uninstall } from "../src/install/settings.js";
@@ -31,6 +31,7 @@ import { terminalStep } from "../src/kit/raster/glyph-level.js";
 import { decodePng } from "../src/kit/raster/png.js";
 import { sgrFg, sgrBg } from "../src/kit/ansi.js";
 import { ensureEmojiFont } from "../src/install/emoji-font.js";
+import { sampleImage } from "../src/games/index.js";
 
 const HASH = rootHash(PACKAGE_ROOT); // this installation's daemon and its files
 
@@ -180,22 +181,26 @@ function theme(name) {
   }
 }
 
-// The glyph test card, then one mugshot drawn at every step side by side, so the steps this
-// terminal draws correctly can be judged by eye.
+// The glyph test card, then one face drawn at every step side by side, so the steps this terminal
+// draws correctly can be judged by eye. The face is the sample image of the first registered game
+// that has one (src/games/index.js).
 function testCard() {
   console.log("Glyph test card: each step below should show clean block shapes, no boxes, question");
   console.log("marks or gaps. The last step that looks right is the richest one this terminal can draw.\n");
   for (const line of testCardLines()) console.log(line);
-  const img = decodePng(readFileSync(path.join(PACKAGE_ROOT, "assets", "images", "mugshot", "alpha", "STFST01.png")));
-  const ROWS = 8;
-  const faces = STEPS.map((step) => convertImage(img, ROWS, step));
-  const width = Math.max(...faces.flatMap((f) => f.map((r) => r.length)));
-  const cell = ([ch, fg, bg]) => sgrFg(fg || [0, 0, 0]) + sgrBg(bg || [0, 0, 0]) + ch;
-  console.log("\nThe mugshot at each step:");
-  console.log("  " + STEPS.map((s) => s.padEnd(width + 2)).join(""));
-  for (let r = 0; r < ROWS; r++) {
-    const parts = faces.map((f) => (f[r] || []).map(cell).join("") + "\x1b[0m" + " ".repeat(width + 2 - (f[r] || []).length));
-    console.log("  " + parts.join(""));
+  const sample = sampleImage();
+  if (sample) {
+    const img = decodePng(readFileSync(sample));
+    const ROWS = 8;
+    const faces = STEPS.map((step) => convertImage(img, ROWS, step));
+    const width = Math.max(...faces.flatMap((f) => f.map((r) => r.length)));
+    const cell = ([ch, fg, bg]) => sgrFg(fg || [0, 0, 0]) + sgrBg(bg || [0, 0, 0]) + ch;
+    console.log("\nThe mugshot at each step:");
+    console.log("  " + STEPS.map((s) => s.padEnd(width + 2)).join(""));
+    for (let r = 0; r < ROWS; r++) {
+      const parts = faces.map((f) => (f[r] || []).map(cell).join("") + "\x1b[0m" + " ".repeat(width + 2 - (f[r] || []).length));
+      console.log("  " + parts.join(""));
+    }
   }
   console.log(`\nThis terminal gets the "${terminalStep(process.env)}" step.`);
   console.log(`To choose another, set DOOMBAR_GLYPHS to one of: ${STEPS.join(", ")} (in the env block of settings.json).`);
@@ -211,7 +216,7 @@ async function main() {
   if (args.cmd === "uninstall") {
     uninstall(cfg);
     save(p, cfg);
-    if (!args.project && !args.local) saveTheme("doom"); // drop the saved theme choice too
+    if (!args.project && !args.local) clearTheme(); // drop the saved theme choice too
     const notes = stopDaemon();
     console.log(`✓ removed claude-doom-statusbar from ${p}`);
     for (const n of notes) console.log(`  note       : ${n}`);

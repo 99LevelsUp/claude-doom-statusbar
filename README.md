@@ -143,7 +143,7 @@ From inside Claude Code, put `!` in front to run it without leaving the chat: `!
 
 The colour of your model's name in the Minecraft chat follows Claude Code's reasoning effort, so `/effort` changes it: low is red, medium orange, high green, xhigh aqua and max a rainbow.
 
-The choice is saved in `~/.claude/doombar-theme.json`; set `DOOMBAR_THEME` to override it for one shell. To change what's in the hotbar, edit the `[[slot]]` entries in `presets/minecraft.toml`; to change the chat, edit the `SCRIPT` in `src/chat.js`.
+The choice is saved in `~/.claude/doombar-theme.json`; set `DOOMBAR_THEME` to override it for one shell. To change what's in the hotbar, edit the `[[slot]]` entries in `src/games/minecraft/presets/minecraft.toml`; to change the chat, edit the `SCRIPT` in `src/games/minecraft/chat.js`.
 
 ### Glyph test card
 
@@ -168,7 +168,7 @@ Set `DOOMBAR_GLYPHS` to one of the step names to override the pick, for example 
 
 ## Presets
 
-`DOOMBAR_PRESET` picks the layout (defaults to `presets/standard.toml`):
+`DOOMBAR_PRESET` picks the layout (defaults to `src/games/doom/presets/standard.toml`; a path into the old top-level `presets/` folder still works):
 
 - **`minimal`** — a couple of bars, blends into the terminal.
 - **`standard`** — balanced HUD.

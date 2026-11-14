@@ -6,7 +6,7 @@
 // settings.json:
 //   "statusLine": { "type": "command",
 //       "command": "node /abs/path/src/statusline.js", "refreshInterval": 1 }
-// Config: $DOOMBAR_PRESET (default presets/standard.toml), or the theme picked with
+// Config: $DOOMBAR_PRESET (default src/games/doom/presets/standard.toml), or the theme picked with
 // `claude-doom-statusbar theme` (see theme.js)  State: $MUGSHOT_STATE
 
 import { readFileSync, writeFileSync } from "node:fs";

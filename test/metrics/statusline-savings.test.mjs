@@ -150,7 +150,7 @@ try {
   ok(vlen("📜") === 2, "lingua icon 📜 vlen 2");
 
   // full is the preset that carries the SAVE box (standard/minimal drop it).
-  const cfg = parseToml(readFileSync(path.join(HERE, "..", "presets", "full.toml"), "utf8"));
+  const cfg = parseToml(readFileSync(path.join(HERE, "..", "src", "games", "doom", "presets", "full.toml"), "utf8"));
   const noSave = { ...SAMPLE };
   delete noSave["save.leanctx"];
   delete noSave["save.lingua"];

@@ -1,0 +1,6 @@
+# The fixture game's only preset. [bar] layout names the fixture game's layout in the registry.
+[bar]
+layout = "fixture-strip"
+
+[fixture]
+title = "FIXTURE"

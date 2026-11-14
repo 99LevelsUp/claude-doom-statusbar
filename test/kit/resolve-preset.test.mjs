@@ -61,7 +61,7 @@ ok(
 // is not the last resort must itself pass planLayout with the SAME face. Without
 // the face thread-through this fails at full's idle-vs-wide boundary width.
 {
-  const root = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "..", "presets");
+  const root = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "..", "src", "games", "doom", "presets");
   const presets = {
     full: parseToml(readFileSync(path.join(root, "full.toml"), "utf8")),
     standard: parseToml(readFileSync(path.join(root, "standard.toml"), "utf8")),

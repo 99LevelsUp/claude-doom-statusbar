@@ -25,7 +25,7 @@ const payload = JSON.stringify({
 
 const env = {
   ...process.env, ...sandboxEnv(sandbox), COLUMNS: "200",
-  DOOMBAR_GLYPHS: "octant", DOOMBAR_PRESET: path.join(ROOT, "presets", "full.toml"),
+  DOOMBAR_GLYPHS: "octant", DOOMBAR_PRESET: path.join(ROOT, "src", "games", "doom", "presets", "full.toml"),
   DOOMBAR_THEME: "doom", DOOMBAR_RATELIMITS_SHARE: "0", DOOMBAR_MSYS_REAP: "0",
 };
 

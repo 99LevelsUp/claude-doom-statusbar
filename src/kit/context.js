@@ -9,10 +9,18 @@
 //   now         the clock in seconds; unset means no clock (the preview's still face)
 //   tick        the marquee phase
 //   overflow    how overflowing text fits its box ("scroll" or "clip"); unset defers to the preset
+//   indent      the columns Claude Code shifts the status line right, for a layout that centres
+//               itself on the terminal
+//   presetByName  name -> another parsed preset from the chosen preset's folder, or null; the
+//               narrow-width fallback chain loads through it
+//
+// A game's layout (src/games/index.js) is called as layout(cfg, target, ctx) and returns the lines.
 
 import { SAMPLE } from "./values.js";
 
+const noPreset = () => null;
+
 export function renderContext({ values = SAMPLE, step = "octant", background = [0, 0, 0], reaction, now,
-  tick = 0, overflow } = {}) {
-  return { values, step, background, reaction, now, tick, overflow };
+  tick = 0, overflow, indent = 2, presetByName = noPreset } = {}) {
+  return { values, step, background, reaction, now, tick, overflow, indent, presetByName };
 }

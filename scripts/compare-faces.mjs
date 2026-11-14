@@ -20,7 +20,7 @@ import { sgrFg, sgrBg } from "../src/kit/ansi.js";
 import { scoreFace } from "./face-score.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const ALPHA = path.join(ROOT, "assets", "images", "mugshot", "alpha");
+const ALPHA = path.join(ROOT, "src", "games", "doom", "assets", "mugshot", "alpha");
 const CHAFA_SYMBOLS = {
   half: "space+solid+half", quadrant: "space+solid+half+quad", sextant: "space+solid+half+quad+sextant",
   wedge: "space+solid+half+quad+sextant+wedge", octant: "space+solid+half+quad+sextant+wedge+octant",

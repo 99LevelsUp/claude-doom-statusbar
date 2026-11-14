@@ -12,7 +12,7 @@ let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 
 const ROOT = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "..");
-const full = parseToml(readFileSync(path.join(ROOT, "presets", "full.toml"), "utf8"));
+const full = parseToml(readFileSync(path.join(ROOT, "src", "games", "doom", "presets", "full.toml"), "utf8"));
 const ctx = renderContext(); // the preview data
 const face = mugshotFace(ctx); // the calm DOOM face the full preset draws
 

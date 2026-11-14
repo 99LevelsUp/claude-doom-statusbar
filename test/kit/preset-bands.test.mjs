@@ -28,7 +28,7 @@ import { fileURLToPath } from "node:url";
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 
-const root = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "..", "presets");
+const root = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "..", "src", "games", "doom", "presets");
 const parse = (n) => parseToml(readFileSync(path.join(root, `${n}.toml`), "utf8"));
 const presets = { full: parse("full"), standard: parse("standard"), minimal: parse("minimal") };
 // Loader returns the SAME object references the assertions compare against, so a

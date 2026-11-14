@@ -86,7 +86,7 @@ ok(react().expr === null && react().flash === null, "no expression: expr null, n
 // Minecraft hotbar: hearts flash with the reaction, the reacting slot holds for 6 s.
 {
   const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-  const cfg = parseToml(readFileSync(path.join(ROOT, "presets", "minecraft.toml"), "utf8"));
+  const cfg = parseToml(readFileSync(path.join(ROOT, "src", "games", "minecraft", "presets", "minecraft.toml"), "utf8"));
   const vals = { "context.hp": 30, "ratelimit.5h": 40, "ratelimit.7d": 20, "act.errors": "1" };
   const errorsSlot = cfg.slot.findIndex((s) => s.id === "act.errors");
   const hud = (reaction) => buildHotbar(cfg, 100, renderContext({ values: vals, reaction, now: NOW }));
