@@ -1,9 +1,9 @@
 // Meters for the bar: colour stops and interpolation, and the value renderers
-// (bar, ammo, icons, spark, equalizer, text) that draw one metric from VALUES.
+// (bar, ammo, icons, spark, equalizer, text) that draw one metric from the values in the
+// render context (src/kit/context.js).
 
 import { TERM_RGB, TEXT, OK, CRIT, sgrFg, sgrBg, pyround } from "./ansi.js";
 import { vlen } from "./text.js";
-import { VALUES } from "./values.js";
 
 const WARN = [224, 184, 64];
 const SPARK = [120, 184, 232];
@@ -108,12 +108,13 @@ function rIcons(entry, pct) {
   return s;
 }
 
-export function iconsWidth(entry) {
+export function iconsWidth(ctx, entry) {
+  const { values } = ctx;
   const count = entry.count ?? 10;
   let w = count * Math.max(vlen(entry.glyph || "■"), vlen(entry.empty_glyph || entry.glyph || "■"))
     + Math.max(0, count - 1) * (entry.gap ?? 0);
   if (entry.show_pct) w += 5;
-  if (entry.suffix && entry.suffix in VALUES) w += 1 + vlen(String(VALUES[entry.suffix]));
+  if (entry.suffix && entry.suffix in values) w += 1 + vlen(String(values[entry.suffix]));
   return w;
 }
 
@@ -197,7 +198,8 @@ function rEqualizer(values, boxRgb, colorSpec) {
   return body + bgsgrBox(boxRgb);
 }
 
-export function renderValue(entry, cells, boxRgb) {
+export function renderValue(ctx, entry, cells, boxRgb) {
+  const { values } = ctx;
   const icon = entry.icon || "";
   const label = icon ? icon + " " : "";
   const render = entry.render || "text";
@@ -205,27 +207,27 @@ export function renderValue(entry, cells, boxRgb) {
 
   if ("group" in entry) {
     const sep = entry.sep ?? " ";
-    const parts = entry.group.filter((i) => i in VALUES).map((i) => String(VALUES[i]));
+    const parts = entry.group.filter((i) => i in values).map((i) => String(values[i]));
     return label + f(TEXT) + parts.join(sep);
   }
-  const val = entry.id in VALUES ? VALUES[entry.id] : "?";
+  const val = entry.id in values ? values[entry.id] : "?";
   if (render === "bar") {
     let s = label + rBar(val, cells, boxRgb, color || "threshold", entry.show_pct !== false);
     const sid = entry.suffix;
-    if (sid && sid in VALUES) s += f(TEXT) + " " + String(VALUES[sid]);
+    if (sid && sid in values) s += f(TEXT) + " " + String(values[sid]);
     return s;
   }
   if (render === "ammo") return label + rAmmo(val, color || "threshold");
   if (render === "icons") {
     let s = label + rIcons(entry, val);
     const sid = entry.suffix;
-    if (sid && sid in VALUES) s += f(TEXT) + " " + String(VALUES[sid]);
+    if (sid && sid in values) s += f(TEXT) + " " + String(values[sid]);
     return s;
   }
   if (render === "spark") return label + rSpark(val, entry.spark_style || "block", boxRgb, entry.spark_max);
   if (render === "equalizer") return label + rEqualizer(val, boxRgb, color || "threshold");
   if (render === "list") {
-    const items = VALUES[entry.id] || [];
+    const items = values[entry.id] || [];
     return label + f(TEXT) + items.map((x) => (Array.isArray(x) ? `${x[0]} ${x[1]}` : String(x))).join("  ");
   }
   // number / text
@@ -233,19 +235,20 @@ export function renderValue(entry, cells, boxRgb) {
   return label + f(col) + String(val);
 }
 
-export function barMeta(entry) {
+export function barMeta(ctx, entry) {
+  const { values } = ctx;
   const icon = entry.icon || "";
   const lw = vlen(icon ? icon + " " : "");
   const r = entry.render;
   if (r === "bar" || r === "ammo") {
     let sw = entry.show_pct === false ? 0 : 5;
     const sid = entry.suffix;
-    if (sid && sid in VALUES) sw += 1 + vlen(String(VALUES[sid]));
+    if (sid && sid in values) sw += 1 + vlen(String(values[sid]));
     return [lw, sw, r];
   }
   if (r === "icons") { // only reached for stretch icons: the glyph row takes the bar's cells
     let sw = entry.show_pct ? 5 : 0;
-    if (entry.suffix && entry.suffix in VALUES) sw += 1 + vlen(String(VALUES[entry.suffix]));
+    if (entry.suffix && entry.suffix in values) sw += 1 + vlen(String(values[entry.suffix]));
     return [lw, sw, r];
   }
   return [lw, 0, entry.render || "text"];

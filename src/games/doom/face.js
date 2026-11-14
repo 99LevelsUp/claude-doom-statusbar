@@ -19,14 +19,6 @@ const TERM_BG = "term-bg";
 
 const _cache = new Map();
 const _images = new Map(); // sprite name -> decoded RGBA, or null when it cannot be read
-let _opts = { step: "octant", background: [0, 0, 0] };
-
-// The face settings of the render about to run: the glyph step the session may use and the
-// mugshot background transparent areas are fitted against. Set right before the builders run;
-// one session renders at a time.
-export function setFaceOptions({ step = "octant", background = [0, 0, 0] } = {}) {
-  _opts = { step, background };
-}
 
 function image(name) {
   if (!_images.has(name)) {
@@ -94,8 +86,10 @@ function dropStaleCaches() {
   }
 }
 
-export function loadFace(name, rows) {
-  const { step, background } = _opts;
+// `ctx` is the render context (src/kit/context.js): its glyph step is the one the session may use,
+// and its background the mugshot background transparent areas are fitted against. Both are part of
+// the cache key, so faces drawn for one session are never served to another with other settings.
+export function loadFace(name, rows, { step = "octant", background = [0, 0, 0] } = {}) {
   const key = `${name}@${rows}@${step}@${background.join(",")}`;
   let face = _cache.get(key);
   if (!face) {

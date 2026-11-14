@@ -24,6 +24,10 @@ export function taskTitle(ev) {
     (ev.tool_input && ev.tool_input.subject) || "task";
 }
 
+// Every expression expression() can return. The reaction and the games read this list, so a new
+// expression added here shows up wherever they test it.
+export const EXPRESSIONS = ["ouch", "kill", "evl", "tl", "tr"];
+
 export function expression(name, tool) {
   const b = base(tool);
   if (["PostToolUseFailure", "StopFailure", "PermissionDenied"].includes(name)) return "ouch";

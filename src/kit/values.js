@@ -1,5 +1,5 @@
-// The metric values the current render reads. One shared slot: render.js swaps
-// in real data via setValues; until then it holds SAMPLE, the preview data.
+// SAMPLE, the preview data: the metric values a render context carries when it is given none
+// (the preview CLI, tests). A real render passes the session's own values (src/kit/context.js).
 
 import { OK, CRIT } from "./ansi.js";
 
@@ -28,8 +28,3 @@ export const SAMPLE = {
 
   "save.leanctx": "8.3k 63%", "save.lingua": "1.2k 1.3x",
 };
-
-export let VALUES = SAMPLE;
-export function setValues(v) { VALUES = v; }
-
-const has = (k) => Object.prototype.hasOwnProperty.call(VALUES, k);

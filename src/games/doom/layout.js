@@ -1,57 +1,56 @@
 // The DOOM box layout: a row of metric boxes around the mugshot column, with
 // threshold colours, responsive widths and centering. Faithful port of
-// tools/render_preset.py. Reads metric values from VALUES (render.js swaps in
-// real data via setValues). Run directly, it previews a preset in the terminal.
+// tools/render_preset.py. Draws from the render context it is given (src/kit/context.js).
+// Run directly, it previews a preset in the terminal with the preview data.
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseToml } from "smol-toml";
 import { RESET, BOLD, TEXT, sgrFg } from "../../kit/ansi.js";
-import { faceCell } from "./face.js";
+import { faceCell, loadFace } from "./face.js";
+import { portrait } from "./portrait.js";
 import { PACKAGE_ROOT } from "../../package-root.js";
-import { VALUES } from "../../kit/values.js";
+import { renderContext } from "../../kit/context.js";
 import { vlen, marquee, scrollWindow, ESC_RE, OSC8_RE } from "../../kit/text.js";
 import { rgbOf, colorFor, isTerm, bgsgrBox, borderFg, barMeta, renderValue } from "../../kit/meters.js";
 import { boxWidth, layoutContext, planLayout } from "../../kit/planner.js";
+import { calmReaction } from "../../metrics/reaction.js";
 
 const TITLE = [222, 202, 128];
 
-const HP_THRESHOLDS = [20, 40, 60, 80];
-
 const f = sgrFg;
 
-export function hpRow(thresholds = HP_THRESHOLDS) {
-  let headroom;
-  if ("health.headroom" in VALUES) {
-    // Rate-limit health (src/metrics/ratelimits.js): distance to the first wall in 5h-budget units, where
-    // the binding window is weighted by the learned cap ratio (k = how much faster 5h% climbs
-    // than 7d%). Declines with consumption, flat when idle. Already in 0..100.
-    headroom = VALUES["health.headroom"];
-  } else if ("ratelimit.5h" in VALUES || "ratelimit.7d" in VALUES) {
-    // Defensive fallback (only if health.headroom is somehow absent): tightest remaining budget.
-    const rem5 = 100 - (VALUES["ratelimit.5h"] ?? 0);
-    const rem7 = "ratelimit.7d" in VALUES ? 100 - VALUES["ratelimit.7d"] : 100;
-    headroom = Math.min(rem5, rem7);
-  } else {
-    headroom = 100 - (VALUES["context.hp"] ?? 0);
-  }
-  return thresholds.filter((t) => headroom < t).length;
+// The context's reaction, or with none (the preview, tests) a calm one: nothing happened,
+// health from the context's values.
+const reactionOf = (ctx) => ctx.reaction || calmReaction(ctx.values);
+
+// The mugshot art for a render context, as the planner asks for it: rows -> rows of cells. The
+// planner's fit test and buildBar draw through this, so both measure the same face.
+export function mugshotFace(ctx) {
+  const reaction = reactionOf(ctx);
+  return (rows) => loadFace(portrait(reaction, ctx.now), rows, ctx);
 }
 
-export function buildBar(cfg, target, spriteFor, tick = 0, overflow) {
-  if (!spriteFor) spriteFor = (hp) => `STFST${hp}1`;
+// `ctx` is the render context (src/kit/context.js). Its reaction is the session's reaction
+// (src/metrics/reaction.js) and its `now` the clock in seconds that picks the idle glance;
+// without them the face is the calm, still one.
+export function buildBar(cfg, target, ctx) {
+  const { values, tick } = ctx;
+  const reaction = reactionOf(ctx);
+  const faceFor = mugshotFace(ctx);
   // How overflowing text fits its box: "scroll" (ping-pong marquee) or "clip" (static …).
-  const ovf = overflow || cfg.text_overflow || "scroll";
+  const ovf = ctx.overflow || cfg.text_overflow || "scroll";
 
-  const { style, headers, segs, totalRows, hp, face, faceW } = layoutContext(cfg, spriteFor);
+  const { style, headers, segs, totalRows, face, faceW } = layoutContext(ctx, cfg, faceFor);
+  const { hp } = reaction;
   const bar = cfg.bar || {};
   const boxRgb = rgbOf(bar.box_background ?? "term-bg");
   const bcol = bar.border_color ?? "term-fg";
   const mugRgb = rgbOf((cfg.mugshot || {}).background ?? "#000000");
   const titleFg = f(bar.title_color ? rgbOf(bar.title_color) : TITLE); // themes recolour box titles
 
-  const { cells, textCap } = planLayout(cfg, target, spriteFor);
+  const { cells, textCap } = planLayout(ctx, cfg, target, faceFor);
 
   const columns = [];
   let mugIdx = null;
@@ -61,7 +60,7 @@ export function buildBar(cfg, target, spriteFor, tick = 0, overflow) {
       columns.push(Array.from({ length: totalRows }, (_, r) => faceCell(face[r], faceW, mugRgb)));
       continue;
     }
-    const w = boxWidth(s, cells, textCap);
+    const w = boxWidth(ctx, s, cells, textCap);
     const col = [];
     if (headers) {
       const t = s.title || "";
@@ -73,7 +72,7 @@ export function buildBar(cfg, target, spriteFor, tick = 0, overflow) {
       if (m.render === "list") {
         const icon = m.icon || "";
         const lbl = icon ? icon + " " : "";
-        for (const item of VALUES[m.id] || []) {
+        for (const item of values[m.id] || []) {
           let body;
           if (Array.isArray(item) && item.length === 2) {
             const right = f(TEXT) + String(item[1]);
@@ -90,7 +89,7 @@ export function buildBar(cfg, target, spriteFor, tick = 0, overflow) {
       if (m.render === "scroll") {
         const icon = m.icon || "";
         const lbl = icon ? icon + " " : "";
-        const items = VALUES[m.id] || [];
+        const items = values[m.id] || [];
         const H = totalRows - (headers ? 1 : 0);
         const boundary = items.filter((it) => !Array.isArray(it) &&
           (it.mark === "✅" || it.mark === "❌")).length; // settled count (ignored for top anchor)
@@ -124,25 +123,25 @@ export function buildBar(cfg, target, spriteFor, tick = 0, overflow) {
         continue;
       }
       const rid = m.right;
-      const rhs = rid && rid in VALUES ? f(TEXT) + String(VALUES[rid]) : "";
+      const rhs = rid && rid in values ? f(TEXT) + String(values[rid]) : "";
       let body;
       if (m.render === "icons" && m.stretch) {
         // Stretch icons fill the whole box row (hearts end where the box ends), however wide the
         // box came out, rather than a fixed count. A bar's cells is the minimum.
-        const [lw, sw] = barMeta(m);
+        const [lw, sw] = barMeta(ctx, m);
         // With a gap, n glyphs take n + (n-1)*gap columns, so fit as many as the row allows.
         const room = Math.max(cells, w - lw - sw - vlen(rhs));
         const gap = m.gap ?? 0;
-        body = renderValue({ ...m, count: Math.max(1, Math.floor((room + gap) / (1 + gap))) }, 0, boxRgb);
+        body = renderValue(ctx, { ...m, count: Math.max(1, Math.floor((room + gap) / (1 + gap))) }, 0, boxRgb);
       } else {
-        body = renderValue(m, m.render === "bar" ? cells : 0, boxRgb);
+        body = renderValue(ctx, m, m.render === "bar" ? cells : 0, boxRgb);
       }
       // Plain text/number that overflows its column budget -> marquee. Skipped when
       // the value carries ANSI/OSC escapes (colours, hyperlinks): those can't be
       // sliced by column without corrupting the escape sequence.
       const r = m.render || "text";
-      if ((r === "text" || r === "number") && !("group" in m) && m.id in VALUES) {
-        const raw = String(VALUES[m.id]);
+      if ((r === "text" || r === "number") && !("group" in m) && m.id in values) {
+        const raw = String(values[m.id]);
         const lbl = m.icon ? m.icon + " " : "";
         const budget = w - vlen(lbl) - vlen(rhs);
         const sliceable = !ESC_RE.test(raw) || OSC8_RE.test(raw); // plain or hyperlink
@@ -204,7 +203,7 @@ function main() {
   const target = process.argv[3] ? parseInt(process.argv[3], 10) : 100;
   const tick = process.argv[4] ? parseInt(process.argv[4], 10) : 0; // marquee phase for previews
   const cfg = parseToml(readFileSync(p, "utf8"));
-  const res = buildBar(cfg, target, undefined, tick);
+  const res = buildBar(cfg, target, renderContext({ tick }));
   const out = ["", `  preset: ${path.basename(p)}   style=${res.style}  headers=${res.headers}  bar=${res.cells}`, ""];
   out.push(...res.lines, "");
   process.stdout.write(out.join("\n") + "\n");

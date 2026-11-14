@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import "../_temp-sandbox.mjs"; // before the modules that name temp paths
-import { setValues, SAMPLE } from "../../src/kit/values.js";
+import { SAMPLE } from "../../src/kit/values.js";
+import { renderContext } from "../../src/kit/context.js";
 import { metricFixedWidth } from "../../src/kit/planner.js";
 import { scrollWindow, vlen } from "../../src/kit/text.js";
 import { buildBar } from "../../src/games/doom/layout.js";
@@ -12,13 +13,12 @@ let fails = 0;
 const ok = (c, m) => { console.log((c?"  ok   ":"  FAIL ")+m); if(!c) fails++; };
 
 // metricFixedWidth handles the object item shape (mark + text), truncated by box later.
-setValues({ "act.tasklist": [{ mark:"✅", markRgb:null, text:"render engine" }] });
-const w = metricFixedWidth({ id:"act.tasklist", render:"scroll" });
+const one = renderContext({ values: { "act.tasklist": [{ mark:"✅", markRgb:null, text:"render engine" }] } });
+const w = metricFixedWidth(one, { id:"act.tasklist", render:"scroll" });
 ok(typeof w === "number" && w >= "render engine".length, `scroll width measures mark+text (got ${w})`);
 
 // Empty scroll value -> width is just the (absent) label, and box should be hidden via available.
-setValues({});
-ok(metricFixedWidth({ id:"act.tasklist", render:"scroll" }) === 0, "empty scroll -> zero width");
+ok(metricFixedWidth(renderContext({ values: {} }), { id:"act.tasklist", render:"scroll" }) === 0, "empty scroll -> zero width");
 
 // scrollWindow(n, H, anchor, boundary) -> { start, up, down }
 let r = scrollWindow(10, 4, "top", 0);
@@ -39,17 +39,17 @@ ok(r.start === 0 && r.up === 0 && r.down === 0, "boundary all-fit -> top aligned
 {
   const longAgents = [];
   for (let i = 0; i < 12; i++) longAgents.push([`a-really-long-agent-label-${i}`, "1m2s"]);
-  setValues({
+  const ctx = renderContext({ values: {
     ...SAMPLE,
     "act.subagents": longAgents,
     "act.tasklist": [
       { mark: "✅", markRgb: null, text: "x" },
       { mark: "🎯", markRgb: null, text: "y" },
     ],
-  });
+  } });
   const cfgRoot = path2.dirname(path2.dirname(f2u(import.meta.url)));
   const cfg = parseToml(readFileSync(path2.join(cfgRoot, "..", "presets", "full.toml"), "utf8"));
-  const res = buildBar(cfg, 160);
+  const res = buildBar(cfg, 160, ctx);
   const widths = res.lines.map((l) => vlen(l));
   ok(new Set(widths).size === 1, `all HUD rows equal width with overflow marker (widths: ${[...new Set(widths)].join(",")})`);
 }
@@ -57,17 +57,17 @@ ok(r.start === 0 && r.up === 0 && r.down === 0, "boundary all-fit -> top aligned
 // Marquee integration: a long scrolled label keeps every HUD row equal width at
 // every tick, and the visible window actually moves as the tick advances.
 {
-  setValues({
+  const values = {
     ...SAMPLE,
     "act.subagents": [["a-really-long-agent-label-that-overflows-its-box", "1m2s"]],
     "act.tasklist": [{ mark: "⏩", markRgb: null, text: "port-PIL-alpha-compositing-into-JS-render" }],
-  });
+  };
   const cfgRoot = path2.dirname(path2.dirname(f2u(import.meta.url)));
   const cfg = parseToml(readFileSync(path2.join(cfgRoot, "..", "presets", "full.toml"), "utf8"));
   let uniform = true;
   const frames = new Set();
   for (let t = 0; t < 24; t++) {
-    const res = buildBar(cfg, 160, undefined, t);
+    const res = buildBar(cfg, 160, renderContext({ values, tick: t }));
     if (new Set(res.lines.map((l) => vlen(l))).size !== 1) uniform = false;
     frames.add(res.lines.join("\n"));
   }
@@ -84,21 +84,21 @@ ok(r.start === 0 && r.up === 0 && r.down === 0, "boundary all-fit -> top aligned
   const url = "https://example.com/a/very/long/path";
   const inner = "a-very-long-linked-cwd-name";
   const link = `\x1b]8;;${url}\x1b\\${inner}\x1b]8;;\x1b\\`;
-  setValues({
+  const values = {
     ...SAMPLE,
     "loc.cwd": link, // OSC8 hyperlink -> hyperlink-aware marquee (inner sliced, URL re-wrapped)
     "act.tasklist": [{ mark: "⏩", markRgb: null, text: "port-PIL-alpha-compositing-into-JS-render" }],
-  });
+  };
   let uniform = true;
   const frames = new Set();
   for (let t = 0; t < 18; t++) {
-    const res = buildBar(full2, 120, undefined, t); // 120 < full's ~143 floor -> narrow scale
+    const res = buildBar(full2, 120, renderContext({ values, tick: t })); // 120 < full's ~143 floor -> narrow scale
     if (new Set(res.lines.map((l) => vlen(l))).size !== 1) uniform = false;
     frames.add(res.lines.join("\n"));
   }
   ok(uniform, "narrow scale: all HUD rows equal width across ticks");
   ok(frames.size > 1, "narrow scale: plain text still marquees (frames change)");
-  const out0 = buildBar(full2, 120, undefined, 0).lines.join("\n");
+  const out0 = buildBar(full2, 120, renderContext({ values, tick: 0 })).lines.join("\n");
   // The link is now column-sliced (windowed), so the full original is NOT present verbatim,
   // but the OSC8 wrapper + URL survive intact (the escape is never corrupted).
   ok(!out0.includes(link), "narrow scale: hyperlink inner text is windowed (now marquees)");

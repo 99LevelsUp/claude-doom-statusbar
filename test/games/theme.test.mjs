@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseToml } from "smol-toml";
 import { buildBar } from "../../src/games/doom/layout.js";
-import { setValues } from "../../src/kit/values.js";
+import { renderContext } from "../../src/kit/context.js";
 import { renderValue } from "../../src/kit/meters.js";
 import { vlen } from "../../src/kit/text.js";
 import { buildHotbar, wrapMessage } from "../../src/games/minecraft/layout.js";
@@ -21,18 +21,18 @@ const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fai
 const strip = (s) => s.replace(/\x1b\[[0-9;]*m/g, "");
 
 // icons render: invert reads a used% as what is left.
-setValues({ "context.hp": 70 });
-const hearts = strip(renderValue({ id: "context.hp", render: "icons", glyph: "♥", empty_glyph: "♡", count: 10, invert: true }, 0, [0, 0, 0]));
+const hearts = strip(renderValue(renderContext({ values: { "context.hp": 70 } }),
+  { id: "context.hp", render: "icons", glyph: "♥", empty_glyph: "♡", count: 10, invert: true }, 0, [0, 0, 0]));
 ok(hearts === "♥♥♥♡♡♡♡♡♡♡", `icons: 70% used -> 3 of 10 hearts (${hearts})`);
 
 // stretch icons fill their whole box row, like a bar does.
 {
-  setValues({ "context.hp": 50, "sys.ram": 40 });
+  const ctx = renderContext({ values: { "context.hp": 50, "sys.ram": 40 } });
   const box = { bar: { headers: false }, segment: [{ type: "box", metric: [
     { id: "context.hp", render: "icons", icon: "💖", glyph: "♥", empty_glyph: "♡", stretch: true, invert: true },
     { id: "sys.ram", render: "bar", icon: "💾" },
   ] }] };
-  const [heartsRow, barRow] = buildBar(box, 120).lines.map((l) => strip(l).trim());
+  const [heartsRow, barRow] = buildBar(box, 120, ctx).lines.map((l) => strip(l).trim());
   ok(vlen(heartsRow) === vlen(barRow), `stretch: hearts row is as wide as the bar row (${vlen(heartsRow)} vs ${vlen(barRow)})`);
   ok([...heartsRow].filter((c) => c === "♥" || c === "♡").length > 10, "stretch: more than the default 10 glyphs at full width");
 }
@@ -43,36 +43,37 @@ ok(hearts === "♥♥♥♡♡♡♡♡♡♡", `icons: 70% used -> 3 of 10 hear
   const vals = { "context.hp": 30, "ratelimit.5h": 80, "ratelimit.7d": 31, "model.name": "Opus 5.5",
     "model.effort_level": "high", "cost.total": "$1.83", "act.tasks": "2/5", "sys.cpu": "17%" };
   const calm = { now: 1005 };
+  const hud = (target, o) => buildHotbar(cfg, target, renderContext({ values: vals, ...o }));
   for (const target of [204, 100, 60, 46, 30]) {
-    const { lines, width } = buildHotbar(cfg, target, vals, calm);
+    const { lines, width } = hud(target, calm);
     const rows = lines.map((l) => vlen(strip(l)));
     ok(rows.every((w) => w === rows[0]) && rows[0] <= target && width <= target,
       `hotbar @${target}: every row the same width, inside the terminal (${rows[0]})`);
   }
-  const plain = buildHotbar(cfg, 100, vals, calm).lines.map(strip);
+  const plain = hud(100, calm).lines.map(strip);
   ok((plain[0].match(/♥/g) || []).length === 2, "hotbar: 80% of 5h used -> 2 of 10 hearts");
   ok((plain[0].match(/🍖/g) || []).length === 7, "hotbar: 30% context used -> 7 of 10 shanks");
   ok(/ 31 /.test(plain[1]), "hotbar: XP level shows the 7-day percent");
   ok(/┃ \$1\.83 ┃/.test(plain[4]) && /┃  2\/5  ┃/.test(plain[4]), "hotbar: odd-length values sit centred in their slot");
   ok(/^ *┏━+┳/.test(plain[2].slice(plain[2].indexOf("┏"))), "hotbar: slots drawn with heavy lines");
-  const dead = buildHotbar(cfg, 100, vals, { exhausted: true, now: 1005 }).lines.map(strip);
+  const dead = hud(100, { reaction: { dead: true }, now: 1005 }).lines.map(strip);
   ok(dead[0].includes("You died!") && !dead[0].includes("♥"), "hotbar: out of usage -> You died!, no hearts");
-  ok(buildHotbar(cfg, 100, vals, calm).lines.length === 6, "hotbar: six rows (no wave row)");
+  ok(hud(100, calm).lines.length === 6, "hotbar: six rows (no wave row)");
 
   // Selected slot: reacts to what just happened, otherwise wanders over time.
-  const react = buildHotbar(cfg, 100, vals, { now: 1005, expr: "ouch", exprAge: 1 }).selected;
+  const react = hud(100, { now: 1005, reaction: { expr: "ouch", exprAge: 1 } }).selected;
   ok(cfg.slot[react].id === "act.errors", "hotbar: an error selects the 💥 slot");
   const picks = new Set();
-  for (let t = 0; t < 200; t += 7) picks.add(buildHotbar(cfg, 100, vals, { now: t }).selected);
+  for (let t = 0; t < 200; t += 7) picks.add(hud(100, { now: t }).selected);
   ok(picks.size > 3, `hotbar: idle selection moves around (${picks.size} different slots)`);
 
   // Chat: on wide terminals, with the running model as a speaker; hidden when there's no room.
-  const wide = buildHotbar(cfg, 204, vals, calm).lines.map(strip).join("\n");
+  const wide = hud(204, calm).lines.map(strip).join("\n");
   ok(/<[A-Z][a-z]+ \d\.\d>/.test(wide), "hotbar: chat shows <Model> messages on a wide terminal");
   let mine = false;
-  for (let t = 0; t < 400; t += 5) if (buildHotbar(cfg, 204, vals, { now: t }).lines.map(strip).join("").includes("<Opus 5.5>")) mine = true;
+  for (let t = 0; t < 400; t += 5) if (hud(204, { now: t }).lines.map(strip).join("").includes("<Opus 5.5>")) mine = true;
   ok(mine, "hotbar: the selected model takes part in the chat");
-  ok(!/</.test(buildHotbar(cfg, 100, vals, calm).lines.map(strip).join("")), "hotbar: no chat when there's no room");
+  ok(!/</.test(hud(100, calm).lines.map(strip).join("")), "hotbar: no chat when there's no room");
 }
 
 // Chat timing: answers to questions come quickly, other pauses vary.
@@ -131,7 +132,7 @@ ok(hearts === "♥♥♥♡♡♡♡♡♡♡", `icons: 70% used -> 3 of 10 hear
   const cfg = parseToml(readFileSync(path.join(ROOT, "presets", "minecraft.toml"), "utf8"));
   const v = { "model.name": "Opus 5.5", "context.hp": 78, "model.window": "1M" };
   for (const target of [204, 150, 120]) {
-    const lines = buildHotbar(cfg, target, v, { now: 1005 }).lines.map(strip);
+    const lines = buildHotbar(cfg, target, renderContext({ values: v, now: 1005 })).lines.map(strip);
     ok(!lines.join("").includes("…"), `hotbar @${target}: chat wraps instead of cutting messages off`);
   }
 }

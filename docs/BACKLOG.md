@@ -52,10 +52,10 @@ Owner, 2026-11-13: rename on GitHub and npm together with 1.0.0; the bar becomes
 | ID | Item | Status |
 |---|---|---|
 | R-0 | Agree the rename and the refactor with the contributor | done (2026-11-13) |
-| R-5 | Test runner that runs every file and summarises (audit step 1) | next |
-| R-6 | Move files into `platform/` · `metrics/` · `kit/` · `games/<game>/`, entry paths kept; split `statusline.js`, `render.js`, `hook.js`, `fold.js` (audit steps 2–3) | next |
-| R-2 | Neutral reaction state `{expr, hp, god, dead}` instead of DOOM sprite names between engine and layouts (audit step 4) | next |
-| R-7 | Render context instead of module-level `VALUES` / face options (audit step 5) | next |
+| R-5 | Test runner that runs every file and summarises (audit step 1) | done (PR #6) |
+| R-6 | Move files into `platform/` · `metrics/` · `kit/` · `games/<game>/`, entry paths kept; split `statusline.js`, `render.js`, `hook.js`, `fold.js` (audit steps 2–3) | done (PR #7, #8) |
+| R-2 | Neutral reaction state `{expr, hp, god, dead}` instead of DOOM sprite names between engine and layouts (audit step 4) | done (1.0 plan step 4) |
+| R-7 | Render context instead of module-level `VALUES` / face options (audit step 5) | done (1.0 plan step 4) |
 | R-8 | Game registry `games/index.js` replaces `THEMES`; presets and assets under their game (audit step 6) | next |
 | R-1 | Rename package, bin (old bin as alias), repo, env vars `DOOMBAR_*` → `GAMEBAR_*` (with fallback), theme file, file prefixes, client name; DOOM-specific code keeps `doom` (audit step 7) | next |
 | R-4 | `install` migrates settings in place (paths, env names, theme file) | next |

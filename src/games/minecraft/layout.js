@@ -14,16 +14,7 @@
 import { RESET, BOLD, sgrFg as f, sgrBg as b, pyround } from "../../kit/ansi.js";
 import { vlen } from "../../kit/text.js";
 import { chatLog, chatScript } from "./chat.js";
-
-// The reaction the DOOM sprite name encodes ("STFOUCH2" -> "ouch", "STFGOD0" -> "god").
-// The statusline picks faces by sprite name; the hotbar only needs the expression.
-function spriteExpr(name) {
-  const s = String(name || "");
-  if (s === "STFDEAD0") return "dead";
-  if (s === "STFGOD0") return "god";
-  const m = /^STF(OUCH|KILL|EVL|TL|TR)\d/.exec(s);
-  return m ? m[1].toLowerCase() : "idle";
-}
+import { calmReaction } from "../../metrics/reaction.js";
 
 const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const C = {
@@ -152,18 +143,18 @@ function chatColumn(values, now, rows, w) {
   });
 }
 
-// Render the hotbar HUD. `values` are the statusline metric values; `opts`:
-//   sprite     the DOOM sprite the mugshot would show (hurt / invulnerable flashes)
-//   exhausted  out of usage -> "You died!"
+// Render the hotbar HUD from the render context `ctx` (src/kit/context.js), which carries:
+//   values     the statusline metric values
+//   reaction   the session's reaction (src/metrics/reaction.js): its flash colours the
+//              hearts, expr and exprAge hold the reacting slot, dead -> "You died!"
 //   now        seconds; drives the idle slot, the chat and the rainbow
-//   expr, exprAge  the last hook reaction and how long ago, for the reacting slot
-//   indent     columns Claude Code shifts the status line right (default 2), so the
-//              hotbar lands in the true centre of the terminal
-export function buildHotbar(cfg, target, values, opts = {}) {
-  const { sprite = "STFST01", exhausted = false, now = Date.now() / 1000, indent = 2 } = opts;
+// `indent` is the columns Claude Code shifts the status line right (default 2), so the
+// hotbar lands in the true centre of the terminal.
+export function buildHotbar(cfg, target, ctx, { indent = 2 } = {}) {
+  const { values, reaction = calmReaction(values), now = Date.now() / 1000 } = ctx;
+  const { flash, expr, exprAge, dead: exhausted } = reaction;
   const hb = cfg.hotbar || {};
   const all = (cfg.slot || []).slice(0, 9);
-  const flash = spriteExpr(sprite);
 
   // Slots are an ODD number of columns wide (7, or 5 when narrow), so the mostly
   // odd-length values ($1.83, 2/5, 17%) sit exactly in the middle. Narrower than nine
@@ -175,7 +166,7 @@ export function buildHotbar(cfg, target, values, opts = {}) {
   const slots = all.slice(0, n);
   const W = n * inner + n + 1;
   const padN = Math.max(0, Math.floor((target - W) / 2) - indent);
-  const sel = slots.length ? selectedSlot(slots, hb, { ...opts, now }) : -1;
+  const sel = slots.length ? selectedSlot(slots, hb, { expr, exprAge, now }) : -1;
 
   const rows = [];
   // Hearts (left half) and hunger (right half), spread across their half of the bar.
