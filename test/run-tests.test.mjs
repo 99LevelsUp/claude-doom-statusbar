@@ -4,7 +4,7 @@
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { findTests, runAll } from "../scripts/run-tests.mjs";
+import { findTests, runAll, testEnv } from "../scripts/run-tests.mjs";
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
@@ -32,6 +32,16 @@ try {
   const results = runAll(found, { stdio: "ignore" });
   ok(results.length === 3, `a failing first file does not stop the run (ran ${results.length} of 3)`);
   ok(results.filter((r) => !r.passed).map((r) => r.file).join() === failing, "only the failing file is reported as failed");
+
+  // The developer's bar settings, exported by a Claude Code session, do not reach the tests.
+  const leak = write(path.join("env", "d-no-settings.test.mjs"),
+    "process.exit(['DOOMBAR_PRESET', 'MUGSHOT_STATE', 'COLUMNS'].some((k) => k in process.env) ? 1 : 0);\n");
+  const inherited = { ...process.env, DOOMBAR_PRESET: "/old/clone/presets/full.toml", MUGSHOT_STATE: "/x", COLUMNS: "238" };
+  ok(runAll([leak], { stdio: "ignore", env: inherited })[0].passed === false,
+    "a test sees settings passed to it as they are (the check below can fail)");
+  ok(runAll([leak], { stdio: "ignore", env: testEnv(inherited) })[0].passed,
+    "the runner's environment drops DOOMBAR_*, MUGSHOT_* and COLUMNS");
+  ok(testEnv(inherited).PATH === inherited.PATH, "and keeps everything else");
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }
