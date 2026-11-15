@@ -25,7 +25,7 @@ import { effectiveStep } from "./glyph-level.js";
 import { foldBatch, statePaths, sessionPaths, writeAtomic, TASK_LINGER, runtimeDir, ensureRuntimeDir } from "./fold.js";
 import { currentTheme, themePreset } from "./theme.js";
 import { buildHotbar } from "./hotbar.js";
-import { MOVED_TEXT } from "./moved.js";
+import { movedText } from "./moved.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.dirname(HERE);
@@ -753,14 +753,16 @@ function loadPreset(file) {
 
 // The last release of this package: the bar has moved to claude-game-bar. One dim row after
 // the bar, in every theme. The one-shot render and the daemon frame both come from
-// renderSession, so both carry it. `claude-game-bar install` takes over this installation's
-// settings and prints how to remove this package.
-export const MOVED_NOTICE = `\x1b[2m${MOVED_TEXT}\x1b[0m`;
+// renderSession, so both carry it. It takes the longest wording that fits the terminal's
+// COLUMNS, as the bar does. `claude-game-bar install` takes over this installation's settings
+// and removes this package.
+export const movedNotice = (cols) => `\x1b[2m${movedText(cols)}\x1b[0m`;
 
 // Returns the bar's lines followed by the move notice, without trailing newlines. Sessions
 // must render one at a time: render.js keeps the values in one module-level slot (setValues).
 export function renderSession(args) {
-  return [...renderBar(args), MOVED_NOTICE];
+  const env = args.env || process.env;
+  return [...renderBar(args), movedNotice(parseInt(env.COLUMNS || "100", 10))];
 }
 
 // The bar alone, exactly as 0.15.0 rendered it.

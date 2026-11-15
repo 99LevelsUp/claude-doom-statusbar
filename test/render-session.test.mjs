@@ -42,7 +42,7 @@ mkdirSync(TMPDIR, { recursive: true });
 Object.assign(process.env, { ...sandboxEnv(TMPDIR), PATH: "", DOOMBAR_MSYS_REAP: "0",
   DOOMBAR_THEME: "doom", DOOMBAR_RATELIMITS_SHARE: "0", DOOMBAR_PRESET: path.join(PRESETS, "minimal.toml") });
 for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "DOOMBAR_GLYPHS"]) delete process.env[k];
-const { renderSession, renderBar, MOVED_NOTICE } = await import("../src/statusline.js");
+const { renderSession, renderBar, movedNotice } = await import("../src/statusline.js");
 
 const NOW_MS = 1793500000123;
 const NOW = NOW_MS / 1000;
@@ -154,8 +154,21 @@ try {
   // 0.16.0: every theme ends with the move notice, and every line above it is the bar exactly
   // as 0.15.0 drew it.
   {
-    ok(strip(MOVED_NOTICE) === "claude-doom-statusbar has moved: npm i -g claude-game-bar && claude-game-bar install",
-      "the notice names the new package and how to switch");
+    const FULL = "claude-doom-statusbar has moved: npm i -g claude-game-bar && claude-game-bar install";
+    const MOVED_NOTICE = movedNotice(200);
+    ok(MOVED_NOTICE === `\x1b[2m${FULL}\x1b[0m`, "a wide terminal gets the whole notice, dim");
+    // A narrow terminal gets the longest wording that fits its COLUMNS, as the bar shrinks too.
+    ok(movedNotice(FULL.length) === MOVED_NOTICE, `the whole notice still at exactly ${FULL.length} columns`);
+    ok(strip(movedNotice(83)) === "moved: npm i -g claude-game-bar && claude-game-bar install",
+      "one column less drops the old name but keeps both commands");
+    ok(strip(movedNotice(57)) === "moved to claude-game-bar", "too narrow for the commands: just where it went");
+    ok(strip(movedNotice(10)) === "moved to claude-game-bar", "narrower still keeps the shortest wording");
+    {
+      const s = session("moved-narrow", "moved");
+      const lines = renderSession({ data: s.data, env: { ...s.env, COLUMNS: "60" }, now: NOW });
+      ok(lines.at(-1) === movedNotice(60) && strip(lines.at(-1)).length <= 60,
+        "the render's notice follows the session's own COLUMNS");
+    }
     for (const [name, over] of [
       ["full", { DOOMBAR_PRESET: path.join(PRESETS, "full.toml"), COLUMNS: "250" }],
       ["minimal", { DOOMBAR_PRESET: path.join(PRESETS, "minimal.toml") }],

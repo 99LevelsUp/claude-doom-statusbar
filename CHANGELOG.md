@@ -15,7 +15,8 @@ The last release of `claude-doom-statusbar`. The bar continues as
 ### Added
 - **A permanent row under the bar saying the bar has moved, and how to switch:**
   `npm i -g claude-game-bar && claude-game-bar install`. It shows in every theme and preset,
-  from the render daemon and from the one-shot renderer alike. `install` and `uninstall`
+  from the render daemon and from the one-shot renderer alike. A terminal narrower than the
+  row gets a shorter wording, down to `moved to claude-game-bar`. `install` and `uninstall`
   print it too. `claude-game-bar install` takes over this package's settings and removes the
   old global package. Every other line of the bar is unchanged.
 
