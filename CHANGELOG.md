@@ -7,6 +7,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-15
+
+`claude-doom-statusbar` is now `claude-game-bar`: the same bar under a name that belongs to no
+single game. The package, the command, the repository (`99LevelsUp/claude-game-bar`), the
+settings and the bar's files carry the new name. Every theme and preset draws exactly the same
+bar as 0.15.0.
+
+### Upgrading
+- Run `npm i -g claude-game-bar && claude-game-bar install`. `install` takes over the old
+  installation in `~/.claude/settings.json` and removes the global `claude-doom-statusbar`
+  package; see *Added*. The bar may show `gamebar: offline` once, for a few seconds, while the
+  old render daemon exits and the new one starts.
+- A repository wired with `claude-doom-statusbar install --project` or `--local` is out of the
+  installer's sight: run `claude-game-bar install --project` (or `--local`) in it again.
+- The README section *Moving from claude-doom-statusbar* has the details.
+
+### Changed
+- **The package and its command are `claude-game-bar`.** 1.0.0 ships only that command; the
+  `claude-doom-statusbar` command goes with the old package.
+- **Settings are named `GAMEBAR_*`**, in place of `DOOMBAR_*`. The state path is
+  `GAMEBAR_STATE`, in place of `MUGSHOT_STATE`.
+- **The bar's files are renamed:** the runtime directory `gamebar` (`$XDG_RUNTIME_DIR/gamebar`,
+  on macOS `$TMPDIR/gamebar`, otherwise `/tmp/gamebar-<uid>`), the file prefix `gamebar_`, the
+  face cache `gamebar_faces_`, the Windows pipe `gamebar-<hash>`, the theme file
+  `~/.claude/gamebar-theme.json` and the status line client `src/gamebar-client.sh`. The
+  offline line reads `gamebar: offline`.
+- **The code is a platform plus game parts.** `src/` is split into `platform/`, `metrics/`,
+  `kit/` and `games/<game>/`; the games are reached only through the registry in
+  `src/games/index.js`, and each game's presets and images live in its own folder.
+  `CONTRIBUTING.md` describes how to add a game.
+
+### Added
+- **`install` takes over an installation of `claude-doom-statusbar`** in the settings file it
+  writes: the `statusLine` and the hooks point at the new package, with one set of hooks; the
+  `DOOMBAR_*` settings become `GAMEBAR_*`; a preset path into the old package becomes the same
+  preset in the new one; the saved theme moves to the new theme file.
+- **A user-level `install` removes the old global package.** It stops the old render daemon
+  (only a process it has confirmed as that daemon), then runs
+  `npm uninstall -g claude-doom-statusbar`. After that it moves the old learned state (the
+  shared rate limits, the rate-health estimate and the savings totals) to the new names and
+  deletes everything else the old package left: its files in the temp or runtime directory, the
+  old runtime directory once empty, and `~/.claude/doombar-theme.json`. If npm cannot remove the
+  package, the install still succeeds and prints the command to run. `install --project` and
+  `--local` never remove it.
+- **`install --keep-old`** keeps the old package and everything it uses, and prints the command
+  that removes it later.
+- **Settings backups:** `settings.json.bak` is written only when the settings change. The
+  install that takes over an old installation also keeps `settings.json.bak-claude-doom-statusbar`,
+  written once.
+
+### Deprecated
+The old names keep working, so a setup that has not moved yet keeps its bar. These fallbacks
+will be removed in a later 1.x release, marked as breaking:
+- `DOOMBAR_*` environment variables, and `MUGSHOT_STATE`, are read when the `GAMEBAR_*` name is
+  not set;
+- `~/.claude/doombar-theme.json` is read while `~/.claude/gamebar-theme.json` is missing;
+- learned state under the old file names, and in the old runtime directory `doombar` (only when
+  it is a private directory of this user), is read while the new file is missing;
+- a missing preset path in the old top-level `presets/` folder finds the bundled preset of the
+  same name;
+- `src/doombar-client.sh` still runs the client, so a `statusLine` that names it keeps working;
+- the stale-file sweep and `uninstall` also clean up files under the old names.
+
+## [0.16.0] - 2026-11-15
+
+The last release of `claude-doom-statusbar`, published from the `release/0.16` branch. The bar
+continues as `claude-game-bar` 1.0.0.
+
+### Added
+- **A permanent row under the bar saying the bar has moved, and how to switch:**
+  `npm i -g claude-game-bar && claude-game-bar install`. A terminal narrower than the row gets a
+  shorter wording. `install` and `uninstall` print it too.
+
 ## [0.15.0] - 2026-11-13
 
 ### Added
