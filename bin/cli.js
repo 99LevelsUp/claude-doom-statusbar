@@ -24,12 +24,14 @@
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { PACKAGE_ROOT, SRC_DIR } from "../src/package-root.js";
-import { THEMES, THEME_NAMES, currentTheme, saveTheme, clearTheme, nextTheme, resolveTheme, migrateTheme, themeFile } from "../src/theme.js";
+import {
+  THEMES, THEME_NAMES, currentTheme, saveTheme, clearTheme, nextTheme, resolveTheme, migrateTheme, themeFile, removeOldThemeFile,
+} from "../src/theme.js";
 import { rootHash, runtimeDir } from "../src/platform/runtime.js";
 import { envGet, newName, oldName } from "../src/platform/env.js";
 import { HOOK_EVENTS, die, settingsFile, load, save, install, uninstall } from "../src/install/settings.js";
 import { stopDaemon } from "../src/install/daemons.js";
-import { removeOldPackage } from "../src/install/old-package.js";
+import { removeOldPackage, OLD_PACKAGE } from "../src/install/old-package.js";
 import { STATUSLINE, CLIENT, NODE_CMD, clientCommand } from "../src/install/shell.js";
 import { STEPS, testCardLines } from "../src/kit/raster/glyphs.js";
 import { convertImage } from "../src/kit/raster/glyph-render.js";
@@ -168,7 +170,7 @@ async function main() {
   if (args.cmd === "uninstall") {
     uninstall(cfg);
     save(p, cfg);
-    if (!args.project && !args.local) clearTheme(); // drop the saved theme choice too
+    if (!args.project && !args.local) { clearTheme(); removeOldThemeFile(); } // drop the saved theme choice too
     const notes = stopDaemon({ hash: HASH, daemonJs: path.join(SRC_DIR, "daemon.js") });
     console.log(`✓ removed claude-game-bar from ${p}`);
     for (const n of notes) console.log(`  note       : ${n}`);
@@ -181,18 +183,20 @@ async function main() {
   if (!existsSync(script)) die(`! can't find ${script} — reinstall the package.`);
   const command = clientCmd || NODE_CMD;
   const notes = install(cfg, args.preset, args.refresh, command);
-  save(p, cfg);
+  save(p, cfg, { firstBackup: notes.migrated });
 
   // Taking over an installation of the old package: only from the user settings, the ones its
   // global install was wired into. A project or local install leaves them as they are, so the old
-  // package may still be in use there, and it stays, with its saved theme.
-  let old = { line: null, notes: [] };
+  // package may still be in use there, and it stays, with its saved theme. Once npm has removed the
+  // old package, its theme file goes too: its choice is in the new file by then.
+  let old = { line: null, notes: [], removed: false };
   if (!args.project && !args.local) {
     if (!args.keepOld) {
       const moved = migrateTheme();
       if (moved) notes.push(`kept the saved theme (${moved}), now in ${themeFile()}`);
     }
     old = removeOldPackage({ keepOld: args.keepOld });
+    if (old.removed) removeOldThemeFile();
   }
 
   const preset = cfg.env[newName("PRESET")];
@@ -205,6 +209,12 @@ async function main() {
   console.log(`  hooks      : ${HOOK_EVENTS.join(", ")}`);
   for (const n of [...notes, ...old.notes]) console.log(`  note       : ${n}`);
   if (old.line) console.log(`  old package: ${old.line}`);
+  // Settings of a project the old package was wired into (its `install --project` or `--local`)
+  // are out of the installer's sight.
+  if (old.removed) {
+    console.log(`  note       : a repository wired with \`${OLD_PACKAGE} install --project\` or \`--local\` needs ` +
+      "`claude-game-bar install --project` (or `--local`) run in it again");
+  }
   // Linux only: a desktop without a colour emoji font shows boxes in place of the bar's emoji.
   const font = await ensureEmojiFont({ skip: !args.fonts });
   for (const n of font.notes) console.log(n.startsWith("emoji font :") ? `  ${n}` : `  note       : ${n}`);

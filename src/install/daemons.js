@@ -12,10 +12,10 @@
 // GAMEBAR_RUNTIME_DIR set, only that one, so a test never reaches the live bar. Releases before
 // 1.0.0 used another directory name and another file prefix; those are tried the same way.
 
-import { readFileSync, readdirSync, unlinkSync, rmdirSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync, unlinkSync, rmdirSync, statSync, lstatSync } from "node:fs";
 import path from "node:path";
 import {
-  daemonPrefix, payloadPrefix, framePrefix, runtimeDir, existingPrivateDir,
+  daemonPrefix, payloadPrefix, framePrefix, runtimeDir, existingPrivateDir, ensureRuntimeDir, readLearned, samePath,
   RUNTIME_NAME, OLD_RUNTIME_NAME, FILE_PREFIX, OLD_FILE_PREFIX, OLD_FACES_PREFIX,
 } from "../platform/runtime.js";
 import { envGet } from "../platform/env.js";
@@ -149,13 +149,80 @@ export function stopOldPackageDaemon({ hash, daemonJs, env = process.env, ...opt
   return notes;
 }
 
-// The old package's daemon, payload and frame files, after npm removed the package.
-export function removeOldPackageFiles({ hash, env = process.env, ...opts }) {
-  const platform = opts.platform || process.platform;
+// Learned state (see readLearned in src/platform/runtime.js) under its name in an old runtime
+// directory: its name in the runtime directory now, or null when `name` is not learned state or the
+// bar never reads it from the old place. The rate-health accumulator and the rate-limit pool
+// (src/metrics/ratelimits.js) carried the old prefix; a session's savings totals
+// (src/metrics/savings.js) kept their name. A setting that names another file for one of them
+// means the old file is not read, as in those modules.
+function learnedName(name, env) {
+  for (const [shared, setting] of [["ratehealth_global.json", null], ["ratelimits_global.json", "RATELIMITS"]]) {
+    if (name === `${OLD_FILE_PREFIX}${shared}`) return setting && envGet(setting, env) ? null : `${FILE_PREFIX}${shared}`;
+  }
+  if (/^savings_.+\.json$/.test(name)) return envGet("SAVINGS_STATE", env) || envGet("STATE", env) ? null : name;
+  return null;
+}
+
+// Is `file` a regular file? A link is not one, and is never followed.
+const regularFile = (file) => { try { return lstatSync(file).isFile(); } catch { return false; } };
+
+// Moves the learned state in the old runtime directory `dir` to its new name in `newDir`: the old
+// file is copied when the new one is missing, through readLearned like every reader of it, and then
+// removed. An old file whose new one exists already is removed. A file that is the new one itself
+// (Windows keeps both in the temp directory, as does GAMEBAR_RUNTIME_DIR) is left alone, and so is
+// one that could not be copied. Returns { moved, kept }, kept the names left in place.
+function moveLearned(dir, newDir, env) {
+  let names = [];
+  try { names = readdirSync(dir); } catch {}
+  let moved = 0;
+  const kept = new Set();
+  for (const n of names) {
+    const target = learnedName(n, env);
+    if (!target) continue;
+    const oldFile = path.join(dir, n);
+    if (!regularFile(oldFile)) continue;
+    if (!newDir) { kept.add(n); continue; }
+    const file = path.join(newDir, target);
+    if (samePath(oldFile, file)) { kept.add(n); continue; }
+    const { text, old } = readLearned(file, () => oldFile);
+    if (old) {
+      try { writeFileSync(file, text, { flag: "wx" }); } catch (e) { if (e.code !== "EEXIST") { kept.add(n); continue; } }
+    } else if (text === null) { kept.add(n); continue; }
+    try { unlinkSync(oldFile); moved++; } catch { kept.add(n); }
+  }
+  return { moved, kept };
+}
+
+// Removes every regular file in `dir` named with the old prefix or the old face cache's prefix,
+// whatever its age or install hash, except `keep`. Returns how many went.
+function removeOldPrefixed(dir, keep) {
+  let names = [];
+  try { names = readdirSync(dir); } catch {}
   let removed = 0;
-  for (const dir of privateCandidates(env, { ...opts, name: OLD_RUNTIME_NAME })) {
-    removed += removePrefixed(dir, daemonFiles(hash, OLD_FILE_PREFIX));
-    removeIfEmpty(dir, env, platform);
+  for (const n of names) {
+    if (!(n.startsWith(OLD_FILE_PREFIX) || n.startsWith(OLD_FACES_PREFIX)) || keep.has(n)) continue;
+    const file = path.join(dir, n);
+    if (!regularFile(file)) continue;
+    try { unlinkSync(file); removed++; } catch {}
   }
   return removed;
+}
+
+// After npm removed the old package: in every old runtime directory that passes the check, its
+// daemon, payload and frame files go, its learned state moves to the new names, every other file
+// under the old prefixes goes (the old package is gone, so none of them is in use by it), and the
+// directory goes when that leaves it empty. Files under the current prefix are never touched.
+// Returns { daemon, learned, other }, how many files each step removed or moved.
+export function removeOldPackageFiles({ hash, env = process.env, ...opts }) {
+  const platform = opts.platform || process.platform;
+  const newDir = ensureRuntimeDir(env, { platform });
+  const out = { daemon: 0, learned: 0, other: 0 };
+  for (const dir of privateCandidates(env, { ...opts, name: OLD_RUNTIME_NAME })) {
+    out.daemon += removePrefixed(dir, daemonFiles(hash, OLD_FILE_PREFIX));
+    const { moved, kept } = moveLearned(dir, newDir, env);
+    out.learned += moved;
+    out.other += removeOldPrefixed(dir, kept);
+    removeIfEmpty(dir, env, platform);
+  }
+  return out;
 }

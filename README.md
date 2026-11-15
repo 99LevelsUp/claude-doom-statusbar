@@ -271,7 +271,10 @@ npm i -g claude-game-bar && claude-game-bar install
 - the `statusLine` and the hooks point at the new package, with exactly one set of hooks;
 - the `DOOMBAR_*` settings in the `env` block are renamed to `GAMEBAR_*`, and a preset path into the old package becomes the same preset in the new one, so your `--preset` choice stays;
 - your saved theme is kept: `~/.claude/doombar-theme.json` becomes `~/.claude/gamebar-theme.json` (for an install into `~/.claude/settings.json`; elsewhere the old file is still read);
-- the global `claude-doom-statusbar` package is removed. `install` stops its render daemon first, then runs `npm uninstall -g claude-doom-statusbar`. If npm cannot remove it, for example because the global prefix needs `sudo`, the install still succeeds and prints the command to run yourself.
+- the global `claude-doom-statusbar` package is removed. `install` stops its render daemon first, then runs `npm uninstall -g claude-doom-statusbar`. If npm cannot remove it, for example because the global prefix needs `sudo`, the install still succeeds and prints the command to run yourself;
+- once the old package is removed, so is what it left behind: its learned state (the shared rate limits, the rate-health estimate and the savings totals) moves to the new file names, its other files in the temp or runtime directory are deleted, along with the old runtime directory when that leaves it empty, and `~/.claude/doombar-theme.json` goes. A settings backup from before the takeover stays in `settings.json.bak-claude-doom-statusbar`.
+
+`install` cannot see a repository you wired with `claude-doom-statusbar install --project` or `--local`. Once the old package is removed, run `claude-game-bar install --project` (or `--local`) in each of those repositories again.
 
 The old package is removed only by an install into `~/.claude/settings.json`, the settings its global install was wired into. `install --project` and `install --local` never remove it, because the old package may still be in use elsewhere.
 

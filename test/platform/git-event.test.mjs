@@ -15,6 +15,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadState } from "../../src/metrics/tasks.js";
 import { buildValues } from "../../src/metrics/session.js";
+import { sandboxEnv } from "../_sandbox-env.mjs";
 
 // Pin the DOOM theme so a theme saved on this machine (`theme minecraft`) can't change
 // what the statusline renders under test. Child processes inherit it via process.env.
@@ -35,7 +36,8 @@ const git = (...args) => execFileSync("git", ["-C", repo, ...args], { encoding: 
 const checkpoint = path.join(tmp, "state.json");
 process.env.GAMEBAR_STATE = checkpoint;
 const sid = "gittest-" + process.pid;
-const env = { ...process.env, GAMEBAR_STATE: checkpoint, GAMEBAR_GIT_TTL: "0" }; // 0 = never throttle
+// sandboxEnv keeps the hook's runtime and temp files (its reap throttle, for one) out of the real ones.
+const env = { ...process.env, ...sandboxEnv(tmp), GAMEBAR_STATE: checkpoint, GAMEBAR_GIT_TTL: "0" }; // 0 = never throttle
 
 try {
   // Build a known repo: branch "doomtest", one commit, one uncommitted file.

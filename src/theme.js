@@ -7,7 +7,7 @@
 // is the default theme; a game that uses the preset setting follows GAMEBAR_PRESET, so the
 // installer's --preset choice keeps working exactly as before.
 
-import { readFileSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, rmSync, mkdirSync, existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { GAMES, findGame, defaultGame } from "./games/index.js";
@@ -68,39 +68,45 @@ export function defaultPreset(theme) {
   return g.presets[g.defaultPreset];
 }
 
-// Forget the saved choice, so the default game is the theme again. The old file goes too, or it
-// would be read again in place of the missing new one.
+// The old theme file is not removed here: the old package may still run (`install --keep-old`, or
+// an install into a project's settings) and read it. It goes only where the old package goes, with
+// removeOldThemeFile. While the new file exists the old one is never read.
+
+// Forget the saved choice, so the default game is the theme again (unless an old file is read in
+// place of the missing new one: then the default has to be saved, see saveTheme).
 export function clearTheme(env = process.env) {
   rmSync(themeFile(env), { force: true });
+}
+
+// Removes the theme file a release before 1.0.0 saved: in `uninstall`, and once `install` has
+// removed the old package.
+export function removeOldThemeFile(env = process.env) {
   const old = oldThemeFile(env);
   if (old) rmSync(old, { force: true });
 }
 
+// Saves `theme`. The default theme is no file at all, except while an old theme file exists: that
+// file would be read in place of the missing new one, so the default is written to the new file.
 export function saveTheme(theme, env = process.env) {
-  if (theme === defaultGame().name) { clearTheme(env); return; } // default -> no file at all
+  const old = oldThemeFile(env);
+  if (theme === defaultGame().name && !(old && existsSync(old))) { clearTheme(env); return; }
   const p = themeFile(env);
   mkdirSync(path.dirname(p), { recursive: true });
   writeFileSync(p, JSON.stringify({ theme }) + "\n");
-  const old = oldThemeFile(env);
-  if (old) rmSync(old, { force: true });
 }
 
 // The installer's move of a choice saved before 1.0.0: the old file's theme goes into the new file,
-// and the old file goes. A new file that already exists wins and is not touched. An old file that
-// cannot be read or names no theme is left as it is. Returns the theme moved, or null.
+// even the default theme (the old file is still there). A new file that already exists wins and is
+// not touched. An old file that cannot be read or names no theme is left as it is, and so is every
+// old file (see removeOldThemeFile). Returns the theme moved, or null.
 export function migrateTheme(env = process.env) {
   const old = oldThemeFile(env);
-  if (!old) return null;
+  if (!old || existsSync(themeFile(env))) return null;
   let theme;
   try { theme = JSON.parse(readFileSync(old, "utf8")).theme; } catch { return null; }
-  try {
-    readFileSync(themeFile(env));
-    rmSync(old, { force: true });
-    return null;
-  } catch { /* no new file yet */ }
   const want = resolveTheme(theme);
   if (!want) return null;
-  saveTheme(want, env); // removes the old file; the default theme leaves no file at all
+  saveTheme(want, env);
   return want;
 }
 

@@ -12,6 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadState } from "../../src/metrics/tasks.js";
 import { foldBatch } from "../../src/platform/journal.js";
+import { sandboxEnv } from "../_sandbox-env.mjs";
 
 // Pin the DOOM theme so a theme saved on this machine (`theme minecraft`) can't change
 // what the statusline renders under test. Child processes inherit it via process.env.
@@ -30,7 +31,8 @@ const journal = checkpoint + ".jsonl";
 // Both the hook subprocess (via env) and in-process loadState (via process.env) must point
 // at the same checkpoint/journal pair.
 process.env.GAMEBAR_STATE = checkpoint;
-const env = { ...process.env, GAMEBAR_STATE: checkpoint, GAMEBAR_GIT_TTL: "999999" };
+// sandboxEnv keeps the hook's runtime and temp files (its reap throttle, for one) out of the real ones.
+const env = { ...process.env, ...sandboxEnv(tmp), GAMEBAR_STATE: checkpoint, GAMEBAR_GIT_TTL: "999999" };
 const line = (o) => JSON.stringify(o) + "\n";
 
 try {

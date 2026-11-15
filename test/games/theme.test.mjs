@@ -197,14 +197,22 @@ try {
     rmSync(newFile, { force: true });
     writeFileSync(oldFile, JSON.stringify({ theme: "minecraft" }) + "\n");
     ok(saved() === "minecraft" && render().includes("━"), "only the old theme file says minecraft -> the saved theme is minecraft");
+    // The old package may still run and read the old file, so saving a theme never removes it.
     cli("doom");
-    ok(!existsSync(newFile) && !existsSync(oldFile), "theme doom removes the new and the old theme file");
+    ok(existsSync(oldFile) && JSON.parse(readFileSync(oldFile, "utf8")).theme === "minecraft", "theme doom leaves the old theme file as it is");
+    ok(existsSync(newFile) && JSON.parse(readFileSync(newFile, "utf8")).theme === "doom",
+      "while an old file exists, the default theme is written to the new file");
     ok(saved() === "doom", "after theme doom the saved theme reads doom, not the old file's minecraft");
 
     writeFileSync(oldFile, JSON.stringify({ theme: "doom" }) + "\n");
     cli("minecraft");
-    ok(existsSync(newFile) && !existsSync(oldFile), "saving a theme writes the new file and removes the old one");
+    ok(existsSync(newFile) && existsSync(oldFile), "saving a theme writes the new file and leaves the old one");
     ok(saved() === "minecraft", "and the saved theme is the new file's");
+
+    rmSync(oldFile, { force: true });
+    cli("doom");
+    ok(!existsSync(newFile), "with no old file, the default theme leaves no file at all");
+    ok(saved() === "doom", "and the saved theme reads doom");
   }
 } finally {
   rmSync(home, { recursive: true, force: true });

@@ -89,6 +89,11 @@ export function readLearned(file, oldFileOf) {
   try { return { text: readFileSync(oldFile, "utf8"), old: true }; } catch { return { text: null, old: false }; }
 }
 
+// Do `a` and `b` name the same path? Without case on Windows, whose file systems ignore it.
+export const samePath = (a, b) => process.platform === "win32"
+  ? path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase()
+  : path.resolve(a) === path.resolve(b);
+
 // The old place of a learned-state file in the old runtime directory, or null when that directory
 // is missing or not safe to read (see oldRuntimeDir).
 export function oldStateFile(name, env = process.env, opts = {}) {

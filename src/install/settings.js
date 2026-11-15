@@ -2,12 +2,13 @@
 // the entries this package wrote. Used by `claude-game-bar install` and `uninstall`
 // (bin/cli.js).
 
-import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync, constants } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { SRC_DIR } from "../package-root.js";
 import { defaultGame, registeredPreset } from "../games/index.js";
-import { bothNames, newName, oldName } from "../platform/env.js";
+import { bothNames, newName, newNameOf } from "../platform/env.js";
+import { samePath } from "../platform/runtime.js";
 import { OLD_PACKAGE } from "./old-package.js";
 
 // Normalise to forward slashes, like install.py's `.replace("\\", "/")`. The marker we
@@ -70,10 +71,25 @@ export function load(p) {
   }
 }
 
-export function save(p, data) {
+// Writes the settings, only when they change. The file as it was goes to `<file>.bak` first, a
+// one-level backup, so a run that changes nothing keeps the backup of the run before it. With
+// `firstBackup` (an install that took over the old package's entries) the file as it was is also
+// kept in `<file>.bak-claude-doom-statusbar`, written once and never replaced.
+export function save(p, data, { firstBackup = false } = {}) {
+  const text = JSON.stringify(data, null, 2) + "\n";
+  let before = null;
+  try { before = readFileSync(p, "utf-8"); } catch (e) { if (e.code !== "ENOENT") throw e; }
+  if (before === text) return;
   mkdirSync(path.dirname(p), { recursive: true });
-  if (existsSync(p)) copyFileSync(p, p + ".bak"); // one-level backup before writing
-  writeFileSync(p, JSON.stringify(data, null, 2) + "\n", "utf-8");
+  if (before !== null) {
+    if (firstBackup) {
+      try { copyFileSync(p, `${p}.bak-${OLD_PACKAGE}`, constants.COPYFILE_EXCL); } catch (e) { if (e.code !== "EEXIST") throw e; }
+    }
+    let bak = null;
+    try { bak = readFileSync(p + ".bak", "utf-8"); } catch {}
+    if (bak !== before) copyFileSync(p, p + ".bak");
+  }
+  writeFileSync(p, text, "utf-8");
 }
 
 // Match our hook in either form: shell form keeps the script path in `command`, exec form
@@ -86,43 +102,59 @@ const ours = (entry) => Array.isArray(entry?.hooks) && entry.hooks.some(ourHook)
 // Settings a release before 1.0.0 wrote under its names: env.DOOMBAR_<key> (and MUGSHOT_STATE)
 // is renamed to GAMEBAR_<key> in place, keeping the order of the keys. When both names are set the
 // new one wins and the old one goes. Returns how many old names went.
-const oldKeyOf = (k) => {
-  const m = /^DOOMBAR_(.+)$/.exec(k);
-  const key = m ? m[1] : k === oldName("STATE") ? "STATE" : null;
-  return key !== null && oldName(key) === k ? key : null;
-};
 export function renameOldEnv(cfg) {
   const env = cfg.env;
   if (!env || typeof env !== "object" || Array.isArray(env)) return 0;
   const renamed = {};
   let n = 0;
   for (const [k, v] of Object.entries(env)) {
-    const key = oldKeyOf(k);
-    if (key === null) { renamed[k] = v; continue; }
+    const name = newNameOf(k);
+    if (name === null) { renamed[k] = v; continue; }
     n++;
-    if (!Object.hasOwn(env, newName(key))) renamed[newName(key)] = v;
+    if (!Object.hasOwn(env, name)) renamed[name] = v;
   }
   if (n) cfg.env = renamed;
   return n;
 }
 
-const samePath = (a, b) => process.platform === "win32"
-  ? path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase()
-  : path.resolve(a) === path.resolve(b);
+// Is `root` a copy of this package or of the one it replaces? It is recognised by its package.json.
+const PACKAGE_NAMES = ["claude-game-bar", OLD_PACKAGE];
+function isPackageRoot(root) {
+  try { return PACKAGE_NAMES.includes(JSON.parse(readFileSync(path.join(root, "package.json"), "utf-8")).name); } catch { return false; }
+}
 
 // Is `file` a preset inside a copy of this package or of the one it replaces? Presets lived at
 // <root>/presets/<name>.toml before they moved into their games, and live at
-// <root>/src/games/<game>/presets/<name>.toml since. The root is recognised by its package.json.
-const PACKAGE_NAMES = ["claude-game-bar", OLD_PACKAGE];
+// <root>/src/games/<game>/presets/<name>.toml since.
 function inPackageCopy(file) {
   const dir = path.dirname(file);
   if (path.basename(dir) !== "presets") return false;
   const roots = [path.dirname(dir)];
   const games = path.dirname(path.dirname(dir));
   if (path.basename(games) === "games" && path.basename(path.dirname(games)) === "src") roots.push(path.dirname(path.dirname(games)));
-  return roots.some((root) => {
-    try { return PACKAGE_NAMES.includes(JSON.parse(readFileSync(path.join(root, "package.json"), "utf-8")).name); } catch { return false; }
-  });
+  return roots.some(isPackageRoot);
+}
+
+// The script a hook of ours runs: the argument, or the quoted or bare word of a shell-form command,
+// that ends in one of HOOK_MARKS. Null when none can be told apart.
+const HOOK_ALT = HOOK_MARKS.map(esc).join("|");
+const SCRIPT_RE = new RegExp(`"((?:[^"]*/)?(?:${HOOK_ALT}))"|'((?:[^']*/)?(?:${HOOK_ALT}))'|(?:^|\\s)((?:[^\\s"';]*/)?(?:${HOOK_ALT}))(?=$|[\\s;])`);
+function hookScript(h) {
+  for (const a of Array.isArray(h.args) ? h.args : []) if (hasMark(a, HOOK_RE)) return slash(String(a));
+  const m = SCRIPT_RE.exec(slash(String(h.command || "")));
+  return m ? (m[1] ?? m[2] ?? m[3]) : null;
+}
+
+// A hook of ours that install may re-point or drop as a duplicate: its script lies in a copy of this
+// package or of the one it replaces (<root>/src/hook.js, or <root>/mugshot_hook.py from the Python
+// releases), or no longer exists. A hook of another package whose path merely ends the same way is
+// left alone.
+function ourMovableHook(h) {
+  if (!ourHook(h)) return false;
+  const script = hookScript(h);
+  if (!script) return true;
+  const root = /(?:^|\/)src\/hook\.js$/.test(script) ? path.dirname(path.dirname(script)) : path.dirname(script);
+  return !existsSync(script) || isPackageRoot(root);
 }
 
 // The preset path to keep for a preset setting that is already there. One that names a registered
@@ -137,10 +169,12 @@ export function migratedPreset(value) {
 
 // `preset` is the name `--preset` gave, or null when it was not given: then a preset setting that is
 // already there is kept (moved to this package when it points at another copy, see migratedPreset),
-// and only a missing one gets the full preset.
+// and only a missing one gets the full preset. Returns the notes for the output; their `migrated`
+// is true when an earlier installation's entries were renamed or re-pointed (save's firstBackup).
 export function install(cfg, preset, refresh, command) {
   const notes = [];
   const existing = cfg.statusLine;
+  let migrated = Boolean(existing && hasMark(existing.command, SL_RE) && existing.command !== command);
   if (existing && !hasMark(existing.command, SL_RE)) {
     notes.push("replaced your existing statusLine (the old one is in settings.json.bak)");
   }
@@ -165,7 +199,10 @@ export function install(cfg, preset, refresh, command) {
     env[PRESET] = slash(registeredPreset(presetFile) || path.join(fallbackDir, presetFile));
   } else {
     const moved = migratedPreset(env[PRESET]);
-    if (moved !== env[PRESET]) notes.push(`${PRESET} now points at this package's ${path.basename(moved)}`);
+    if (moved !== env[PRESET]) {
+      notes.push(`${PRESET} now points at this package's ${path.basename(moved)}`);
+      migrated = true;
+    }
     env[PRESET] = moved;
   }
   env.FORCE_HYPERLINK ??= "1"; // clickable links (Windows Terminal needs this)
@@ -193,14 +230,15 @@ export function install(cfg, preset, refresh, command) {
     // previous version's code, so a fix shipped in the hook silently never took effect. Re-point
     // it instead. Exactly one hook of ours stays per event: the first one, in its place. Any further
     // one (a second set, left by another copy of the package) goes, and a group left empty by that
-    // goes with it. Hooks of others in the same groups stay.
+    // goes with it. Hooks of others in the same groups stay, and so does a hook of another package
+    // whose script path only looks like ours (see ourMovableHook).
     const current = (h) => h.command === "node" && Array.isArray(h.args) && h.args.includes(HOOK);
     let kept = false, moved = false;
     for (let i = 0; i < lst.length; i++) {
-      if (!ours(lst[i])) continue;
       const group = lst[i];
+      if (!Array.isArray(group?.hooks) || !group.hooks.some(ourMovableHook)) continue;
       group.hooks = group.hooks.flatMap((h) => {
-        if (!ourHook(h)) return [h];
+        if (!ourMovableHook(h)) return [h];
         if (kept) { duplicates++; return []; }
         kept = true;
         if (current(h)) return [h];
@@ -216,7 +254,7 @@ export function install(cfg, preset, refresh, command) {
     notes.push(`re-pointed ${repointed} hook event(s) from a previous install's path`);
   }
   if (duplicates) notes.push(`removed ${duplicates} duplicate hook entr${duplicates === 1 ? "y" : "ies"} of ours`);
-  return notes;
+  return Object.assign(notes, { migrated: migrated || renamed > 0 || repointed > 0 || duplicates > 0 });
 }
 
 export function uninstall(cfg) {

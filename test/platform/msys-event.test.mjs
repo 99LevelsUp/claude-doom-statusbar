@@ -54,7 +54,8 @@ try {
   // GAMEBAR_MSYS_REAP=0 throughout: these subprocesses are real hooks, and on a Windows dev box
   // with a pile already forming they would reap the developer's own live statusLine wrappers.
   // The reaper's selection rule is covered purely below instead.
-  const env = { ...process.env, GAMEBAR_STATE: checkpoint, GAMEBAR_GIT_TTL: "0", GAMEBAR_MSYS_REAP: "0" };
+  // sandboxEnv keeps the hook's runtime and temp files out of the real ones.
+  const env = { ...process.env, ...sandboxEnv(tmp), GAMEBAR_STATE: checkpoint, GAMEBAR_GIT_TTL: "0", GAMEBAR_MSYS_REAP: "0" };
   execFileSync(process.execPath, [HOOK], {
     input: JSON.stringify({ hook_event_name: "SessionStart", session_id: sid2, cwd: tmp }),
     encoding: "utf8", env,
@@ -77,7 +78,7 @@ try {
   const checkpoint2 = path.join(tmp, "state-rw.json");
   const journal2 = checkpoint2 + ".jsonl";
   const sid3 = "msysrw-" + process.pid;
-  const env0 = { ...process.env, GAMEBAR_STATE: checkpoint2, GAMEBAR_MSYS_TTL: "0", GAMEBAR_MSYS_REAP: "0" };
+  const env0 = { ...process.env, ...sandboxEnv(tmp), GAMEBAR_STATE: checkpoint2, GAMEBAR_MSYS_TTL: "0", GAMEBAR_MSYS_REAP: "0" };
   execFileSync(process.execPath, [HOOK], {
     input: JSON.stringify({ hook_event_name: "PostToolUse", session_id: sid3, tool_name: "PowerShell", cwd: tmp }),
     encoding: "utf8", env: env0,
