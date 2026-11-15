@@ -1,4 +1,4 @@
-// Shared, pure reducer for the DOOM HUD state. No spawns, no files.
+// Shared, pure reducer for the HUD's session state. No spawns, no files.
 //
 // Two writers used to fight over one state file (hook did read-modify-write per event).
 // Now hooks only APPEND raw events to a per-session journal, and statusline FOLDS that

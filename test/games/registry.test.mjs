@@ -22,13 +22,13 @@ let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 const inside = (dir, p) => !path.relative(dir, p).startsWith("..") && !path.isAbsolute(path.relative(dir, p));
 
-const SB = mkdtempSync(path.join(os.tmpdir(), "doombar-registry-"));
+const SB = mkdtempSync(path.join(os.tmpdir(), "gamebar-registry-"));
 const TMPDIR = path.join(SB, "tmp");
 mkdirSync(TMPDIR, { recursive: true });
 // Before the imports: the sandbox is the runtime directory, and the terminal running the tests must
 // not pick the mugshot's glyphs.
-Object.assign(process.env, { ...sandboxEnv(TMPDIR), PATH: "", DOOMBAR_MSYS_REAP: "0", DOOMBAR_RATELIMITS_SHARE: "0" });
-for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "DOOMBAR_GLYPHS", "DOOMBAR_THEME", "DOOMBAR_PRESET"]) delete process.env[k];
+Object.assign(process.env, { ...sandboxEnv(TMPDIR), PATH: "", GAMEBAR_MSYS_REAP: "0", GAMEBAR_RATELIMITS_SHARE: "0" });
+for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "GAMEBAR_GLYPHS", "GAMEBAR_THEME", "GAMEBAR_PRESET"]) delete process.env[k];
 
 const { GAMES, sampleImage, presetFile } = await import("../../src/games/index.js");
 const { THEME_NAMES, nextTheme, resolveTheme, currentTheme } = await import("../../src/theme.js");
@@ -41,10 +41,10 @@ function session(name) {
   const dir = path.join(SB, name);
   for (const d of ["tasks", "proj", "state"]) mkdirSync(path.join(dir, d), { recursive: true });
   const env = {
-    COLUMNS: "120", DOOMBAR_THEME_FILE: path.join(dir, "no-theme.json"), DOOMBAR_RATELIMITS_SHARE: "0",
-    MUGSHOT_STATE: path.join(dir, "state", "checkpoint.json"), DOOMBAR_TASKS_DIR: path.join(dir, "tasks"),
-    DOOMBAR_EVENTS: path.join(dir, "events.jsonl"), DOOMBAR_LLMLINGUA: path.join(dir, "ling.json"),
-    DOOMBAR_RATELIMITS: path.join(dir, "rl.json"),
+    COLUMNS: "120", GAMEBAR_THEME_FILE: path.join(dir, "no-theme.json"), GAMEBAR_RATELIMITS_SHARE: "0",
+    GAMEBAR_STATE: path.join(dir, "state", "checkpoint.json"), GAMEBAR_TASKS_DIR: path.join(dir, "tasks"),
+    GAMEBAR_EVENTS: path.join(dir, "events.jsonl"), GAMEBAR_LLMLINGUA: path.join(dir, "ling.json"),
+    GAMEBAR_RATELIMITS: path.join(dir, "rl.json"),
   };
   const data = {
     session_id: `sid-${name}`, session_name: `${name}-run`, cwd: path.join(dir, "proj"),
@@ -85,36 +85,36 @@ try {
       "its entry names only files from its own folder");
     const s = session("fixture");
     const want = "FIXTURE | width 120 | model Opus 5.5 | hp 2";
-    ok(render(s, { DOOMBAR_THEME: "fixture" }) !== want, "before it is registered, the fixture theme is not drawn");
+    ok(render(s, { GAMEBAR_THEME: "fixture" }) !== want, "before it is registered, the fixture theme is not drawn");
     withGame(FIXTURE_GAME, () => {
       ok(resolveTheme("fixture-old") === "fixture", "a registered game's alias resolves");
-      const viaTheme = render(s, { DOOMBAR_THEME: "fixture" });
+      const viaTheme = render(s, { GAMEBAR_THEME: "fixture" });
       ok(viaTheme === want, `chosen as a theme, it draws its own preset with its own layout (${JSON.stringify(viaTheme)})`);
-      ok(render(s, { DOOMBAR_THEME: "fixture", DOOMBAR_PRESET: path.join(DOOM_PRESETS, "full.toml") }) === want,
-        "as a theme with its own preset, it is not swayed by DOOMBAR_PRESET");
-      ok(render(s, { DOOMBAR_THEME: "doom", DOOMBAR_PRESET: FIXTURE_GAME.presets.fixture }) === want,
-        "its preset chosen through DOOMBAR_PRESET picks its layout by the preset's [bar] layout");
-      ok(render(s, { DOOMBAR_THEME: "doom", DOOMBAR_PRESET: path.join(ROOT, "presets", "fixture.toml") }) === want,
+      ok(render(s, { GAMEBAR_THEME: "fixture", GAMEBAR_PRESET: path.join(DOOM_PRESETS, "full.toml") }) === want,
+        "as a theme with its own preset, it is not swayed by GAMEBAR_PRESET");
+      ok(render(s, { GAMEBAR_THEME: "doom", GAMEBAR_PRESET: FIXTURE_GAME.presets.fixture }) === want,
+        "its preset chosen through GAMEBAR_PRESET picks its layout by the preset's [bar] layout");
+      ok(render(s, { GAMEBAR_THEME: "doom", GAMEBAR_PRESET: path.join(ROOT, "presets", "fixture.toml") }) === want,
         "an old-style path to its preset resolves by file name like the built-in ones");
-      ok(currentTheme({ DOOMBAR_THEME: "fixture" }) === "fixture", "the current theme can be the registered game");
+      ok(currentTheme({ GAMEBAR_THEME: "fixture" }) === "fixture", "the current theme can be the registered game");
     });
     ok(GAMES.map((g) => g.name).join(",") === "doom,minecraft", "taking the entry out leaves the production list as it was");
-    ok(render(s, { DOOMBAR_THEME: "doom" }).includes("MODEL"), "with the fixture gone, doom draws its boxes again");
+    ok(render(s, { GAMEBAR_THEME: "doom" }).includes("MODEL"), "with the fixture gone, doom draws its boxes again");
   }
 
-  // The preset decides the layout, not the theme: a preset of one game named through DOOMBAR_PRESET
+  // The preset decides the layout, not the theme: a preset of one game named through GAMEBAR_PRESET
   // under the other game's theme renders as it always did.
   {
     const s = session("cross");
-    const over = { COLUMNS: "160", DOOMBAR_INDENT: "4" };
-    const minecraft = render(s, { ...over, DOOMBAR_THEME: "minecraft" });
+    const over = { COLUMNS: "160", GAMEBAR_INDENT: "4" };
+    const minecraft = render(s, { ...over, GAMEBAR_THEME: "minecraft" });
     ok(minecraft.includes("━") && !minecraft.includes("MODEL"), "the minecraft theme draws the hotbar");
-    ok(render(s, { ...over, DOOMBAR_THEME: "doom", DOOMBAR_PRESET: path.join(ROOT, "src", "games", "minecraft", "presets", "minecraft.toml") }) === minecraft,
-      "theme doom with the minecraft preset in DOOMBAR_PRESET draws the same hotbar");
-    ok(render(s, { ...over, DOOMBAR_THEME: "doom", DOOMBAR_PRESET: path.join(ROOT, "presets", "minecraft.toml") }) === minecraft,
+    ok(render(s, { ...over, GAMEBAR_THEME: "doom", GAMEBAR_PRESET: path.join(ROOT, "src", "games", "minecraft", "presets", "minecraft.toml") }) === minecraft,
+      "theme doom with the minecraft preset in GAMEBAR_PRESET draws the same hotbar");
+    ok(render(s, { ...over, GAMEBAR_THEME: "doom", GAMEBAR_PRESET: path.join(ROOT, "presets", "minecraft.toml") }) === minecraft,
       "and so does the old path to the minecraft preset");
-    ok(render(s, { ...over, DOOMBAR_THEME: "minecraft", DOOMBAR_PRESET: path.join(DOOM_PRESETS, "full.toml") }) === minecraft,
-      "theme minecraft ignores a DOOM preset in DOOMBAR_PRESET");
+    ok(render(s, { ...over, GAMEBAR_THEME: "minecraft", GAMEBAR_PRESET: path.join(DOOM_PRESETS, "full.toml") }) === minecraft,
+      "theme minecraft ignores a DOOM preset in GAMEBAR_PRESET");
   }
 
   // The glyph test card's sample: the first registered game that has one.
@@ -140,8 +140,8 @@ try {
       "a missing full.toml outside the old presets folder stays as it is, not swapped for the bundled one");
     const s = session("old-path");
     for (const cols of ["250", "120", "90"]) {
-      const viaOld = render(s, { DOOMBAR_THEME: "doom", DOOMBAR_PRESET: oldFull, COLUMNS: cols });
-      const viaNew = render(s, { DOOMBAR_THEME: "doom", DOOMBAR_PRESET: newFull, COLUMNS: cols });
+      const viaOld = render(s, { GAMEBAR_THEME: "doom", GAMEBAR_PRESET: oldFull, COLUMNS: cols });
+      const viaNew = render(s, { GAMEBAR_THEME: "doom", GAMEBAR_PRESET: newFull, COLUMNS: cols });
       ok(viaOld === viaNew && viaOld.includes("MODEL"), `at ${cols} columns the old path draws DOOM full exactly like the new one`);
     }
     // At 90 columns full does not fit: the fallback chain loads standard (and minimal) beside the
@@ -149,11 +149,11 @@ try {
     const lone = path.join(SB, "lone");
     mkdirSync(lone);
     copyFileSync(newFull, path.join(lone, "full.toml"));
-    const narrow = render(s, { DOOMBAR_THEME: "doom", DOOMBAR_PRESET: oldFull, COLUMNS: "90" });
-    ok(narrow !== render(s, { DOOMBAR_THEME: "doom", DOOMBAR_PRESET: path.join(lone, "full.toml"), COLUMNS: "90" }),
+    const narrow = render(s, { GAMEBAR_THEME: "doom", GAMEBAR_PRESET: oldFull, COLUMNS: "90" });
+    ok(narrow !== render(s, { GAMEBAR_THEME: "doom", GAMEBAR_PRESET: path.join(lone, "full.toml"), COLUMNS: "90" }),
       "the narrow render really fell back to a sibling preset, found beside the redirected file");
-    ok(narrow === render(s, { DOOMBAR_THEME: "doom", DOOMBAR_PRESET: path.join(ROOT, "presets", "standard.toml"), COLUMNS: "90" })
-      || narrow === render(s, { DOOMBAR_THEME: "doom", DOOMBAR_PRESET: path.join(DOOM_PRESETS, "minimal.toml"), COLUMNS: "90" }),
+    ok(narrow === render(s, { GAMEBAR_THEME: "doom", GAMEBAR_PRESET: path.join(ROOT, "presets", "standard.toml"), COLUMNS: "90" })
+      || narrow === render(s, { GAMEBAR_THEME: "doom", GAMEBAR_PRESET: path.join(DOOM_PRESETS, "minimal.toml"), COLUMNS: "90" }),
       "and it draws what that sibling draws on its own");
   }
 } finally {

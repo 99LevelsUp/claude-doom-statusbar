@@ -139,12 +139,12 @@ ok(hearts === "♥♥♥♡♡♡♡♡♡♡", `icons: 70% used -> 3 of 10 hear
 }
 
 // End to end: `theme` writes the choice, the statusline picks it up on the next render.
-const tmp = mkdtempSync(path.join(os.tmpdir(), "doombar-theme-"));
+const tmp = mkdtempSync(path.join(os.tmpdir(), "gamebar-theme-"));
 try {
   // TEMP/TMP/TMPDIR -> tmp: the render's state files land here, not in the real temp dir.
-  const env = { ...process.env, DOOMBAR_THEME_FILE: path.join(tmp, "theme.json"), COLUMNS: "220",
-    ...sandboxEnv(tmp), DOOMBAR_MSYS_REAP: "0" };
-  delete env.DOOMBAR_THEME;
+  const env = { ...process.env, GAMEBAR_THEME_FILE: path.join(tmp, "theme.json"), COLUMNS: "220",
+    ...sandboxEnv(tmp), GAMEBAR_MSYS_REAP: "0" };
+  delete env.GAMEBAR_THEME;
   const cli = (...a) => execFileSync(process.execPath, [path.join(ROOT, "bin", "cli.js"), "theme", ...a], { env, encoding: "utf8" });
   const render = () => strip(execFileSync(process.execPath, [path.join(ROOT, "src", "statusline.js")], {
     env, encoding: "utf8", input: JSON.stringify({ session_id: `theme-test-${process.pid}`, cwd: tmp, model: { display_name: "Opus" } }),
@@ -152,19 +152,70 @@ try {
   cli("minecraft");
   ok(render().includes("━"), "theme minecraft -> statusline renders the hotbar HUD");
   cli("next");
-  ok(!existsSync(env.DOOMBAR_THEME_FILE), "theme next wraps to doom and removes the saved file");
+  ok(!existsSync(env.GAMEBAR_THEME_FILE), "theme next wraps to doom and removes the saved file");
   ok(render().includes("MODEL"), "doom theme -> back to the DOOM preset");
   cli("minecraft-hud");
-  ok(JSON.parse(readFileSync(env.DOOMBAR_THEME_FILE, "utf8")).theme === "minecraft", "old name minecraft-hud -> saved as minecraft");
-  writeFileSync(env.DOOMBAR_THEME_FILE, JSON.stringify({ theme: "minecraft-hud" }));
+  ok(JSON.parse(readFileSync(env.GAMEBAR_THEME_FILE, "utf8")).theme === "minecraft", "old name minecraft-hud -> saved as minecraft");
+  writeFileSync(env.GAMEBAR_THEME_FILE, JSON.stringify({ theme: "minecraft-hud" }));
   ok(render().includes("━"), "a saved 0.12.x choice (minecraft-hud) still renders the hotbar");
-  writeFileSync(env.DOOMBAR_THEME_FILE, JSON.stringify({ theme: "satisfactory" }));
+  writeFileSync(env.GAMEBAR_THEME_FILE, JSON.stringify({ theme: "satisfactory" }));
   ok(render().includes("MODEL"), "a saved theme that no longer exists falls back to doom");
   let threw = false;
   try { execFileSync(process.execPath, [path.join(ROOT, "bin", "cli.js"), "theme", "satisfactory"], { env, stdio: "pipe" }); } catch { threw = true; }
   ok(threw, "unknown (or removed) theme is rejected");
 } finally {
   rmSync(tmp, { recursive: true, force: true });
+}
+
+// The theme under its old names: the DOOMBAR_THEME variable, and the theme file a release before
+// 1.0.0 saved (~/.claude/doombar-theme.json). The home directory is a sandbox, and no theme file is
+// named, so the default places are used.
+const home = mkdtempSync(path.join(os.tmpdir(), "gamebar-theme-home-"));
+try {
+  const env = { ...process.env, ...sandboxEnv(home), HOME: home, USERPROFILE: home, COLUMNS: "220", GAMEBAR_MSYS_REAP: "0" };
+  for (const k of ["GAMEBAR_THEME", "DOOMBAR_THEME", "GAMEBAR_THEME_FILE", "DOOMBAR_THEME_FILE"]) delete env[k];
+  const childHome = execFileSync(process.execPath, ["--input-type=module", "-e", "import os from 'node:os'; process.stdout.write(os.homedir())"],
+    { env, encoding: "utf8" });
+  if (path.resolve(childHome) !== path.resolve(home)) {
+    ok(false, `the sandbox home is not the child's home (${childHome}): the old-file checks are skipped`);
+  } else {
+    const claudeDir = path.join(home, ".claude");
+    const newFile = path.join(claudeDir, "gamebar-theme.json"), oldFile = path.join(claudeDir, "doombar-theme.json");
+    const cli = (...a) => execFileSync(process.execPath, [path.join(ROOT, "bin", "cli.js"), "theme", ...a], { env, encoding: "utf8" });
+    const render = (extra = {}) => strip(execFileSync(process.execPath, [path.join(ROOT, "src", "statusline.js")], {
+      env: { ...env, ...extra }, encoding: "utf8",
+      input: JSON.stringify({ session_id: `theme-old-${process.pid}`, cwd: home, model: { display_name: "Opus" } }),
+    }));
+    const saved = () => execFileSync(process.execPath, ["--input-type=module", "-e",
+      `import { currentTheme } from ${JSON.stringify(new URL("../../src/theme.js", import.meta.url).href)}; process.stdout.write(currentTheme())`],
+    { env, encoding: "utf8" });
+
+    ok(render({ DOOMBAR_THEME: "minecraft" }).includes("━"), "only DOOMBAR_THEME=minecraft set -> the bar renders Minecraft");
+    ok(render({ GAMEBAR_THEME: "doom", DOOMBAR_THEME: "minecraft" }).includes("MODEL"), "both names set -> GAMEBAR_THEME wins");
+
+    cli("minecraft"); // creates ~/.claude
+    rmSync(newFile, { force: true });
+    writeFileSync(oldFile, JSON.stringify({ theme: "minecraft" }) + "\n");
+    ok(saved() === "minecraft" && render().includes("━"), "only the old theme file says minecraft -> the saved theme is minecraft");
+    // The old package may still run and read the old file, so saving a theme never removes it.
+    cli("doom");
+    ok(existsSync(oldFile) && JSON.parse(readFileSync(oldFile, "utf8")).theme === "minecraft", "theme doom leaves the old theme file as it is");
+    ok(existsSync(newFile) && JSON.parse(readFileSync(newFile, "utf8")).theme === "doom",
+      "while an old file exists, the default theme is written to the new file");
+    ok(saved() === "doom", "after theme doom the saved theme reads doom, not the old file's minecraft");
+
+    writeFileSync(oldFile, JSON.stringify({ theme: "doom" }) + "\n");
+    cli("minecraft");
+    ok(existsSync(newFile) && existsSync(oldFile), "saving a theme writes the new file and leaves the old one");
+    ok(saved() === "minecraft", "and the saved theme is the new file's");
+
+    rmSync(oldFile, { force: true });
+    cli("doom");
+    ok(!existsSync(newFile), "with no old file, the default theme leaves no file at all");
+    ok(saved() === "doom", "and the saved theme reads doom");
+  }
+} finally {
+  rmSync(home, { recursive: true, force: true });
 }
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILED`);

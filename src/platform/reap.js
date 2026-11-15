@@ -4,6 +4,7 @@
 
 import { spawnSync } from "node:child_process";
 import { envNum } from "./runtime.js";
+import { envGet } from "./env.js";
 
 // Windows MSYS "bash flood" pressure gauge. Git Bash backs every shell-form hook AND the Bash
 // tool AND — unavoidably — our own statusLine command, so when too many bash.exe inits collide
@@ -34,16 +35,16 @@ export function bashCount() {
 // never drops to zero, the shared section never gets an instant with no holder, and it cannot
 // heal itself. Killing the accumulated wrappers heals it at once — measured on Win11 26200:
 // 15233 ms + 0xC0000005 before, 277 ms + exit 0 immediately after. That is what we automate.
-const REAP_ON = process.env.DOOMBAR_MSYS_REAP !== "0";
-export const REAP_MIN = envNum(process.env.DOOMBAR_MSYS_REAP_MIN, 4); // only act once a pile is forming
-const REAP_AGE = envNum(process.env.DOOMBAR_MSYS_REAP_AGE, 10000); // ms; a healthy render ~300 ms
+const REAP_ON = envGet("MSYS_REAP") !== "0";
+export const REAP_MIN = envNum(envGet("MSYS_REAP_MIN"), 4); // only act once a pile is forming
+const REAP_AGE = envNum(envGet("MSYS_REAP_AGE"), 10000); // ms; a healthy render ~300 ms
 
 // Pure decision half, exported so it can be tested without touching real processes.
 // `procs` is [{ pid, ageMs, cmd }] as produced by listBashShells().
 export function stalePids(procs, ageMs = REAP_AGE) {
   return (procs || [])
     .filter((p) => p && Number.isInteger(p.pid) && p.pid > 0)
-    .filter((p) => /statusline\.js|doombar-client\.sh/i.test(String(p.cmd || "")))
+    .filter((p) => /statusline\.js|(?:gamebar|doombar)-client\.sh/i.test(String(p.cmd || "")))
     .filter((p) => Number.isFinite(p.ageMs) && p.ageMs >= ageMs)
     .map((p) => p.pid);
 }

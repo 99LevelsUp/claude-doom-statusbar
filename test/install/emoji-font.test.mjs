@@ -40,9 +40,9 @@ function sys({ families = "", payload = Buffer.from("font"), env = {}, platform 
   const s = sys();
   const r = await ensureEmojiFont({ ...s.deps, skip: true });
   ok(r.status === "skipped" && s.calls.run.length === 0, "--no-fonts skips the check");
-  const s2 = sys({ env: { DOOMBAR_NO_FONTS: "1" } });
+  const s2 = sys({ env: { GAMEBAR_NO_FONTS: "1" } });
   const r2 = await ensureEmojiFont(s2.deps);
-  ok(r2.status === "skipped" && s2.calls.run.length === 0, "DOOMBAR_NO_FONTS=1 skips the check");
+  ok(r2.status === "skipped" && s2.calls.run.length === 0, "GAMEBAR_NO_FONTS=1 skips the check");
 }
 {
   const s = sys({ families: "Noto Color Emoji\nTwemoji,Twitter Color Emoji\n" });

@@ -2,7 +2,7 @@
 #   a chat on the left (a looping pre-written script: no tokens), ♥ hearts (5h limit left)
 #   + 🍖 hunger (context left), the XP bar (7-day usage, level = its %), and a 9-slot
 #   hotbar of session stats.
-# Switch themes with:  claude-doom-statusbar theme <name>   (npm run theme <name>)
+# Switch themes with:  claude-game-bar theme <name>   (npm run theme <name>)
 [bar]
 layout = "hotbar"
 

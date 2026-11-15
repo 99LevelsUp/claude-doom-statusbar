@@ -8,7 +8,7 @@
 // It declines with CONSUMPTION (not speed) and is flat when idle.
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, existsSync, rmSync, readdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, existsSync, rmSync, readdirSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,9 +17,9 @@ import { sandboxEnv } from "../_sandbox-env.mjs";
 
 // Pin the DOOM theme so a theme saved on this machine (`theme minecraft`) can't change
 // what the statusline renders under test. Child processes inherit it via process.env.
-process.env.DOOMBAR_THEME = "doom";
+process.env.GAMEBAR_THEME = "doom";
 // Likewise keep the rate limits other live sessions shared on this machine out of the test.
-process.env.DOOMBAR_RATELIMITS_SHARE = "0";
+process.env.GAMEBAR_RATELIMITS_SHARE = "0";
 
 const HERE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const STATUSLINE = path.join(HERE, "..", "src", "statusline.js");
@@ -117,12 +117,12 @@ const near = (a, b, eps = 0.5) => Math.abs(a - b) <= eps;
 //    account-wide; we point the runtime directory at an isolated dir (sandboxEnv) so the test never
 //    touches the real shared file.
 {
-  const tmp = mkdtempSync(path.join(os.tmpdir(), "doombar-ratewire-"));
-  const healthFile = path.join(tmp, "mugshot_ratehealth_global.json");
+  const tmp = mkdtempSync(path.join(os.tmpdir(), "gamebar-ratewire-"));
+  const healthFile = path.join(tmp, "gamebar_ratehealth_global.json");
   const env = {
     ...process.env,
-    DOOMBAR_PRESET: path.join(HERE, "..", "src", "games", "doom", "presets", "standard.toml"),
-    MUGSHOT_STATE: path.join(tmp, "state.json"),
+    GAMEBAR_PRESET: path.join(HERE, "..", "src", "games", "doom", "presets", "standard.toml"),
+    GAMEBAR_STATE: path.join(tmp, "state.json"),
     ...sandboxEnv(tmp), // the global accumulator lands here
     COLUMNS: "100",
   };
@@ -146,11 +146,32 @@ const near = (a, b, eps = 0.5) => Math.abs(a - b) <= eps;
     // The whole point of going global: a DIFFERENT session shares the same accumulator. It does
     // not start over — it reads session-A's learned state from the one global file.
     run("session-B", 50);
-    const files = readdirSync(tmp).filter((f) => f.startsWith("mugshot_ratehealth_"));
-    ok(files.length === 1 && files[0] === "mugshot_ratehealth_global.json",
+    const files = readdirSync(tmp).filter((f) => f.startsWith("gamebar_ratehealth_"));
+    ok(files.length === 1 && files[0] === "gamebar_ratehealth_global.json",
       `both sessions share one global file, not per-session (got ${JSON.stringify(files)})`);
     const stB = JSON.parse(readFileSync(healthFile, "utf8"));
     ok(stB.sum5 > st.sum5, `session-B folded into session-A's accumulator (got sum5=${stB.sum5}, was ${st.sum5})`);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+// 9b. The accumulator a release before 1.0.0 kept, mugshot_ratehealth_global.json in the old runtime
+//     directory, is read while the new file is missing, so the learned k carries over; the result
+//     is written under the new name.
+{
+  const tmp = mkdtempSync(path.join(os.tmpdir(), "gamebar-ratewire-old-"));
+  const env = { ...process.env, GAMEBAR_PRESET: path.join(HERE, "..", "src", "games", "doom", "presets", "standard.toml"),
+    GAMEBAR_STATE: path.join(tmp, "state.json"), ...sandboxEnv(tmp), COLUMNS: "100" };
+  try {
+    writeFileSync(path.join(tmp, "mugshot_ratehealth_global.json"), JSON.stringify({ p5: 40, p7: 20, sum5: 50, sum7: 10 }));
+    execFileSync(process.execPath, [STATUSLINE], { encoding: "utf8", env, input: JSON.stringify({
+      session_id: "after-upgrade", context_window: { used_percentage: 20, context_window_size: 200000 },
+      rate_limits: { five_hour: { used_percentage: 42 }, seven_day: { used_percentage: 20 } }, model: { display_name: "Test" } }) });
+    let st = null;
+    try { st = JSON.parse(readFileSync(path.join(tmp, "gamebar_ratehealth_global.json"), "utf8")); } catch {}
+    ok(st && st.sum5 === 52 && st.sum7 === 10 && st.p5 === 42,
+      `the old accumulator's learned sums carry over into gamebar_ratehealth_global.json (got ${JSON.stringify(st)})`);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }

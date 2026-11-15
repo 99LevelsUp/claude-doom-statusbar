@@ -8,12 +8,13 @@ import { tasksDir, readDiskTasks, mergeDiskTasks, loadState } from "./tasks.js";
 import { sysValues } from "./system.js";
 import { statsValues } from "./savings.js";
 import { rateHealthValue, syncRateLimits } from "./ratelimits.js";
+import { envGet } from "../platform/env.js";
 
 export function collectValues(data, env, now) {
   // Account-wide limits: use the freshest reading any session has seen (see syncRateLimits).
-  // A brand-new chat that hasn't called the API yet gets them too. DOOMBAR_RATELIMITS_SHARE=0
+  // A brand-new chat that hasn't called the API yet gets them too. GAMEBAR_RATELIMITS_SHARE=0
   // turns it off.
-  if (env.DOOMBAR_RATELIMITS_SHARE !== "0") {
+  if (envGet("RATELIMITS_SHARE", env) !== "0") {
     try { data.rate_limits = syncRateLimits(data.rate_limits, env); } catch { /* keep the session's own */ }
     if (!Object.keys(data.rate_limits || {}).length) delete data.rate_limits;
   }

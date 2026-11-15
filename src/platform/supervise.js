@@ -10,13 +10,14 @@ import {
   sessionPaths, daemonPaths, rootHash, daemonSocket, procStartTicks, addressBound,
   writeAtomic, envNum, packageVersion as readPackageVersion, runtimeDir,
 } from "./runtime.js";
+import { envGet } from "./env.js";
 
 const DAEMON_JS = path.join(SRC_DIR, "daemon.js");
-const DAEMON_THROTTLE_MS = envNum(process.env.DOOMBAR_DAEMON_THROTTLE_MS, 15000);
-const DAEMON_GRACE_MS = envNum(process.env.DOOMBAR_DAEMON_GRACE_MS, 20000);
-const PAYLOAD_WAIT_MS = envNum(process.env.DOOMBAR_PAYLOAD_WAIT_MS, 10000);
+const DAEMON_THROTTLE_MS = envNum(envGet("DAEMON_THROTTLE_MS"), 15000);
+const DAEMON_GRACE_MS = envNum(envGet("DAEMON_GRACE_MS"), 20000);
+const PAYLOAD_WAIT_MS = envNum(envGet("PAYLOAD_WAIT_MS"), 10000);
 const PAYLOAD_POLL_MS = 200;
-const BUSY_IDLE_PCT = envNum(process.env.DOOMBAR_BUSY_IDLE_PCT, 10);
+const BUSY_IDLE_PCT = envNum(envGet("BUSY_IDLE_PCT"), 10);
 const BUSY_SAMPLE_MS = 250;
 const PROBE_MS = 150;
 const LOCK_STALE_MS = 2000; // a lock holder does a few file operations; older means it died
@@ -162,22 +163,25 @@ export function isOurPsDaemon(row, start, daemonJs = DAEMON_JS) {
   return Number.isFinite(start) && Number.isFinite(created) && Math.abs(created - start) <= START_SLACK_MS + 1000;
 }
 
-export function confirmedDaemonPid(hb, platform = process.platform) {
+// The heartbeat's pid when the process list confirms it is node running `daemonJs` (this
+// installation's src/daemon.js unless another installation's is named), started when the
+// heartbeat says; else null.
+export function confirmedDaemonPid(hb, platform = process.platform, daemonJs = DAEMON_JS) {
   const pid = hb && hb.pid;
   if (!Number.isInteger(pid) || pid <= 0 || pid === process.pid) return null;
   try {
     if (platform === "win32") {
       const r = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", PROCESS_PS(pid)],
         { encoding: "utf8", timeout: 5000, windowsHide: true });
-      return r.status === 0 && isOurDaemon(r.stdout, hb.start) ? pid : null;
+      return r.status === 0 && isOurDaemon(r.stdout, hb.start, daemonJs) ? pid : null;
     }
     if (platform === "linux") {
       const read = (f) => readFileSync(f, "utf8");
-      return isOurLinuxDaemon({ stat: read(`/proc/${pid}/stat`), cmdline: read(`/proc/${pid}/cmdline`) }, hb.startTicks)
+      return isOurLinuxDaemon({ stat: read(`/proc/${pid}/stat`), cmdline: read(`/proc/${pid}/cmdline`) }, hb.startTicks, daemonJs)
         ? pid : null;
     }
     const r = spawnSync("ps", ["-o", "lstart=,command=", "-p", String(pid)], { encoding: "utf8", timeout: 5000 });
-    return r.status === 0 && isOurPsDaemon(r.stdout, hb.start) ? pid : null;
+    return r.status === 0 && isOurPsDaemon(r.stdout, hb.start, daemonJs) ? pid : null;
   } catch { return null; }
 }
 

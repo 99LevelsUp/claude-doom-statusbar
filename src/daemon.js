@@ -2,14 +2,14 @@
 // Render daemon: one long-lived process per installation renders every active session.
 //
 // Single instance: the daemon listens on its installation's address (daemonSocket in src/platform/runtime.js):
-// the named pipe \\.\pipe\doombar-<install hash> on Windows, the socket file
-// mugshot_daemon_<hash>.sock in the runtime directory elsewhere. "Address in use" means a daemon
+// the named pipe \\.\pipe\gamebar-<install hash> on Windows, the socket file
+// gamebar_daemon_<hash>.sock in the runtime directory elsewhere. "Address in use" means a daemon
 // already runs, and the new one exits at once without writing anything. A socket file can also
 // be left behind by a daemon that was killed: when nothing answers on it, it is removed and taken
 // over. The address answers every connection with the daemon's pid, which is how a daemon tells
 // that its socket file is still its own; hooks only probe whether it is bound.
 //
-// Heartbeat, mugshot_daemon_<hash>.json: { pid, start, version, window, renewed, renameFailures }
+// Heartbeat, gamebar_daemon_<hash>.json: { pid, start, version, window, renewed, renameFailures }
 // start and renewed are epoch milliseconds, window is the largest window in use (seconds),
 // renameFailures counts frame and heartbeat writes that failed. On Linux it also carries
 // startTicks, the process start time from /proc, which hooks compare before killing the pid.
@@ -27,6 +27,7 @@ import {
   rootHash, daemonPaths, payloadPrefix, framePrefix, writeAtomic, pipePath, envNum, packageVersion,
   runtimeDir, ensureRuntimeDir, daemonSocket, procStartTicks, addressBound,
 } from "./platform/runtime.js";
+import { envGet, bothNames } from "./platform/env.js";
 
 export { pipePath };
 
@@ -36,29 +37,31 @@ const TICK_MS = 500;
 const JITTER_MS = 50;
 const SRC_CHECK_MS = 2000;
 
-// The variables the client forwards in the payload, as listed in src/doombar-client.sh. A session
-// that leaves one unset gets it unset, never the value in the daemon's own environment (which is
-// the environment of whichever session's hook started the daemon).
+// The variables the client forwards in the payload, as listed in src/gamebar-client.sh, each
+// setting under both its names (src/platform/env.js). A session that leaves one unset gets it
+// unset, never the value in the daemon's own environment (which is the environment of whichever
+// session's hook started the daemon): both names are dropped from that environment, so a session
+// that sets only the old name is never overruled by a new name the daemon inherited.
 export const FORWARDED_ENV = [
-  "COLUMNS", "DOOMBAR_PRESET", "DOOMBAR_THEME", "DOOMBAR_TEXT_OVERFLOW", "DOOMBAR_INDENT", "DOOMBAR_FRAME_WINDOW",
-  "MUGSHOT_STATE", "CLAUDE_CODE_TASK_LIST_ID", "CLAUDE_CONFIG_DIR",
-  "WT_SESSION", "TERM_PROGRAM", "TMUX", "DOOMBAR_GLYPHS", "TERM", "VTE_VERSION",
+  "COLUMNS", ...["PRESET", "THEME", "TEXT_OVERFLOW", "INDENT", "FRAME_WINDOW", "STATE"].flatMap(bothNames),
+  "CLAUDE_CODE_TASK_LIST_ID", "CLAUDE_CONFIG_DIR",
+  "WT_SESSION", "TERM_PROGRAM", "TMUX", ...bothNames("GLYPHS"), "TERM", "VTE_VERSION",
 ];
 const sessionEnv = (forwarded) => {
   const env = { ...process.env };
   for (const name of FORWARDED_ENV) delete env[name];
   return Object.assign(env, forwarded);
 };
-const windowOf = (env) => { const w = envNum(env.DOOMBAR_FRAME_WINDOW, DEFAULT_WINDOW_S); return w > 0 ? w : DEFAULT_WINDOW_S; };
+const windowOf = (env) => { const w = envNum(envGet("FRAME_WINDOW", env), DEFAULT_WINDOW_S); return w > 0 ? w : DEFAULT_WINDOW_S; };
 const inDir = (dir, file) => path.join(dir, path.basename(file));
 
-// Payload file text -> { env, data } or null when it is not complete. Line 1 is "doombar-env"
+// Payload file text -> { env, data } or null when it is not complete. Line 1 is "gamebar-env"
 // plus TAB-separated NAME=value items; the rest is the session JSON, which must be an object.
 export function parsePayload(text) {
   const lf = text.indexOf("\n");
   if (lf < 0) return null;
   const [tag, ...items] = text.slice(0, lf).split("\t");
-  if (tag !== "doombar-env") return null;
+  if (tag !== "gamebar-env") return null;
   let data;
   try { data = JSON.parse(text.slice(lf + 1)); } catch { return null; }
   if (!data || typeof data !== "object" || Array.isArray(data)) return null;
@@ -78,15 +81,15 @@ export function createState({ version, now = Date.now(), idleMs = DEFAULT_IDLE_M
 }
 
 // Hung Git Bash statusLine wrappers must be reaped even while no hook events arrive: at most one
-// detached `node src/hook.js --reap` per DOOMBAR_REAP_TICK, never awaited. Returns whether a
+// detached `node src/hook.js --reap` per GAMEBAR_REAP_TICK, never awaited. Returns whether a
 // reaper was started.
 const DEFAULT_REAP_TICK_MS = 15000;
 const REAPER_MAX_MS = 30000; // a healthy reaper takes about 1 s
 const HOOK_JS = path.join(SRC_DIR, "hook.js");
 export function maybeStartReaper(state, { now = Date.now(), env = process.env, platform = process.platform,
   spawn = spawnChild } = {}) {
-  if (platform !== "win32" || env.DOOMBAR_MSYS_REAP === "0") return false;
-  const tick = envNum(env.DOOMBAR_REAP_TICK, DEFAULT_REAP_TICK_MS);
+  if (platform !== "win32" || envGet("MSYS_REAP", env) === "0") return false;
+  const tick = envNum(envGet("REAP_TICK", env), DEFAULT_REAP_TICK_MS);
   if (state.reapedAt !== undefined && now - state.reapedAt < tick) return false;
   // A reaper that has not exited yet blocks the next one: reapers have been seen to hang, and a
   // long-lived daemon starting one per interval would pile them up until memory runs out. One
@@ -281,7 +284,7 @@ export async function startDaemon({ root = PACKAGE_ROOT, env = process.env } = {
   const original = srcSnapshot(src);
   let srcChecked = Date.now();
 
-  const state = createState({ version: packageVersion(root), idleMs: envNum(env.DOOMBAR_DAEMON_IDLE_MS, DEFAULT_IDLE_MS) });
+  const state = createState({ version: packageVersion(root), idleMs: envNum(envGet("DAEMON_IDLE_MS", env), DEFAULT_IDLE_MS) });
   const tick = async () => {
     let now = Date.now();
     if (now - srcChecked >= SRC_CHECK_MS) {

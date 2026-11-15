@@ -15,27 +15,29 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadState } from "../../src/metrics/tasks.js";
 import { buildValues } from "../../src/metrics/session.js";
+import { sandboxEnv } from "../_sandbox-env.mjs";
 
 // Pin the DOOM theme so a theme saved on this machine (`theme minecraft`) can't change
 // what the statusline renders under test. Child processes inherit it via process.env.
-process.env.DOOMBAR_THEME = "doom";
+process.env.GAMEBAR_THEME = "doom";
 // Likewise keep the rate limits other live sessions shared on this machine out of the test.
-process.env.DOOMBAR_RATELIMITS_SHARE = "0";
+process.env.GAMEBAR_RATELIMITS_SHARE = "0";
 
 const HERE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const HOOK = path.join(HERE, "..", "src", "hook.js");
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 
-const tmp = mkdtempSync(path.join(os.tmpdir(), "doombar-git-"));
+const tmp = mkdtempSync(path.join(os.tmpdir(), "gamebar-git-"));
 const repo = path.join(tmp, "repo");
 mkdirSync(repo);
 const git = (...args) => execFileSync("git", ["-C", repo, ...args], { encoding: "utf8" });
 
 const checkpoint = path.join(tmp, "state.json");
-process.env.MUGSHOT_STATE = checkpoint;
+process.env.GAMEBAR_STATE = checkpoint;
 const sid = "gittest-" + process.pid;
-const env = { ...process.env, MUGSHOT_STATE: checkpoint, DOOMBAR_GIT_TTL: "0" }; // 0 = never throttle
+// sandboxEnv keeps the hook's runtime and temp files (its reap throttle, for one) out of the real ones.
+const env = { ...process.env, ...sandboxEnv(tmp), GAMEBAR_STATE: checkpoint, GAMEBAR_GIT_TTL: "0" }; // 0 = never throttle
 
 try {
   // Build a known repo: branch "doomtest", one commit, one uncommitted file.

@@ -1,18 +1,19 @@
 // --- Token-savings rows -----------------------------------------------------
 // Read from what context-optimization tools already persist on disk. No plugin
-// patching, no binary spawn. Paths are env-overridable (DOOMBAR_*) for tests.
+// patching, no binary spawn. Paths are env-overridable (GAMEBAR_*) for tests.
 
 import { readFileSync, writeFileSync, openSync, readSync, closeSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { sessionPaths } from "../platform/runtime.js";
+import { sessionPaths, readLearned, oldStateFile } from "../platform/runtime.js";
+import { envGet } from "../platform/env.js";
 
 // Human-readable token count: 8263 -> "8.3k", 1200000 -> "1.2M", 512 -> "512".
 // Lowercase k/M — the savings rows read softer than model.window's uppercase K/M.
 const k = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : `${n}`);
 
-const eventsPath = (env) => env.DOOMBAR_EVENTS || path.join(os.homedir(), ".lean-ctx", "events.jsonl");
-const llmlinguaPath = (env) => env.DOOMBAR_LLMLINGUA || path.join(os.homedir(), ".llmlingua-stats.json");
+const eventsPath = (env) => envGet("EVENTS", env) || path.join(os.homedir(), ".lean-ctx", "events.jsonl");
+const llmlinguaPath = (env) => envGet("LLMLINGUA", env) || path.join(os.homedir(), ".llmlingua-stats.json");
 
 // Defensive read: missing file or malformed JSON -> null (the row simply never appears).
 function readJson(p) {
@@ -31,8 +32,15 @@ function fmtSaved(st) {
   return st.original > 0 ? `${k(st.saved)} ${Math.round(100 * st.saved / st.original)}%` : k(st.saved);
 }
 
-const savingsStatePath = (sid, env) =>
-  env.DOOMBAR_SAVINGS_STATE || sessionPaths(sid, undefined, env).savings;
+// The per-session totals file, and where a release before 1.0.0 kept it: the same name in the old
+// runtime directory, which differs only on Linux and macOS. No old place when GAMEBAR_SAVINGS_STATE
+// names the file or GAMEBAR_STATE moves the session's files: then the place has not changed.
+function savingsStatePaths(sid, env) {
+  const set = envGet("SAVINGS_STATE", env);
+  if (set) return { file: set, oldFileOf: null };
+  const file = sessionPaths(sid, undefined, env).savings;
+  return { file, oldFileOf: envGet("STATE", env) ? null : () => oldStateFile(path.basename(file), env) };
+}
 
 // Per-session lean-ctx savings. lean-ctx's mcp-live.json is a single global file clobbered
 // by every concurrent session, so it can't be per-session. events.jsonl is append-only and
@@ -45,11 +53,12 @@ const savingsStatePath = (sid, env) =>
 function leanCtxSavings(cwd, sid, env) {
   if (!cwd) return null;
   const cwdN = normPath(cwd).replace(/\/+$/, "") + "/"; // match on a path boundary, not a prefix
-  const sp = savingsStatePath(sid, env);
+  const { file: sp, oldFileOf } = savingsStatePaths(sid, env);
   const events = eventsPath(env);
   let st = { offset: null, saved: 0, original: 0 };
-  try { st = { ...st, ...JSON.parse(readFileSync(sp, "utf8")) }; } catch { /* fresh session */ }
-  const before = JSON.stringify(st);
+  const { text, old } = readLearned(sp, oldFileOf);
+  try { st = { ...st, ...JSON.parse(text) }; } catch { /* fresh session */ }
+  const before = old ? null : JSON.stringify(st);
 
   let size = -1;
   try { size = statSync(events).size; } catch { /* no log */ }

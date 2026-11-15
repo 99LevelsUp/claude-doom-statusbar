@@ -1,9 +1,10 @@
 // Rate limits: the rate-based mugshot health, and the account-wide rate limits pooled across
 // sessions.
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import path from "node:path";
-import { runtimeDir, writeAtomic } from "../platform/runtime.js";
+import { runtimeDir, writeAtomic, readLearned, oldStateFile, FILE_PREFIX, OLD_FILE_PREFIX } from "../platform/runtime.js";
+import { envGet } from "../platform/env.js";
 
 // --- Rate-based mugshot health -------------------------------------------------------------
 // Health = distance to the FIRST rate-limit wall, in units of the 5h budget. Anthropic exposes
@@ -83,12 +84,15 @@ export function rateHealthValue(data) {
   // scratch and almost always stall at k=1 (7d moves <1pp per session), so identical accounts
   // showed different health. One global file -> one shared k -> identical health everywhere, and
   // it captures movement that happened while any given session wasn't sampling.
-  const file = path.join(runtimeDir(), "mugshot_ratehealth_global.json");
-  let raw, prev = null;
-  try { raw = readFileSync(file, "utf8"); prev = JSON.parse(raw); } catch { /* no accumulator yet */ }
+  // A release before 1.0.0 kept it under the old name; that one is read until the new one exists.
+  const name = "ratehealth_global.json";
+  const file = path.join(runtimeDir(), `${FILE_PREFIX}${name}`);
+  const { text: raw, old } = readLearned(file, () => oldStateFile(`${OLD_FILE_PREFIX}${name}`));
+  let prev = null;
+  try { prev = JSON.parse(raw); } catch { /* no accumulator yet */ }
   const { headroom, state } = rateHeadroom(prev, cur);
   const text = JSON.stringify(state);
-  if (text !== raw) {
+  if (old || text !== raw) {
     try { writeFileSync(file, text); } catch { /* ignore */ }
   }
   return headroom;
@@ -126,17 +130,25 @@ export function mergeRateLimits(mine, shared) {
   return out;
 }
 
-const rateLimitsFile = (env) => env.DOOMBAR_RATELIMITS || path.join(runtimeDir(), "mugshot_ratelimits_global.json");
+// The shared file, and where a release before 1.0.0 kept it (no old place when GAMEBAR_RATELIMITS
+// names the file: then there is only that one).
+const POOL = "ratelimits_global.json";
+function rateLimitsFiles(env) {
+  const set = envGet("RATELIMITS", env);
+  if (set) return { file: set, oldFileOf: null };
+  return { file: path.join(runtimeDir(), `${FILE_PREFIX}${POOL}`), oldFileOf: () => oldStateFile(`${OLD_FILE_PREFIX}${POOL}`) };
+}
 
 // I/O wrapper: read the shared snapshot, merge, write it back if anything got fresher.
 // Throw-proof: the render path has no top-level catch, so failures keep the session's own.
 export function syncRateLimits(mine, env) {
-  const file = rateLimitsFile(env);
+  const { file, oldFileOf } = rateLimitsFiles(env);
+  const { text, old } = readLearned(file, oldFileOf);
   let shared = null;
-  try { shared = JSON.parse(readFileSync(file, "utf8")); } catch { /* first reading */ }
+  try { shared = JSON.parse(text); } catch { /* first reading */ }
   const merged = mergeRateLimits(mine, shared);
   const pick = (o) => ({ five_hour: o && o.five_hour, seven_day: o && o.seven_day });
-  if (JSON.stringify(pick(merged)) !== JSON.stringify(pick(shared))) {
+  if (old || JSON.stringify(pick(merged)) !== JSON.stringify(pick(shared))) {
     try { // atomic: concurrent sessions never read a half-written file
       writeAtomic(file, JSON.stringify(pick(merged)));
     } catch { /* ignore: next render retries */ }

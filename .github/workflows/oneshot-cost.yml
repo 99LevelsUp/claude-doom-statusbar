@@ -15,7 +15,7 @@ on:
       - src/games/doom/face.js
       - scripts/measure-oneshot.mjs
       - scripts/measure-client.mjs
-      - src/doombar-client.sh
+      - src/gamebar-client.sh
       - src/daemon.js
       - .github/workflows/oneshot-cost.yml
 

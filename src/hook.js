@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Claude Code hook: an APPEND-ONLY event recorder for the DOOM HUD.
+// Claude Code hook: an APPEND-ONLY event recorder for the game HUD.
 //
 // Old design did read-modify-write on a shared state file per event; under async hooks that
 // races (lost subagents/tasks). Now each invocation just APPENDS one slim line to a
@@ -11,13 +11,13 @@
 //
 // Extra job: git lives here now, not on the render hot path. On write-affecting events (and
 // once per turn on Stop, and at SessionStart) we snapshot git into a `git` journal line,
-// throttled by DOOMBAR_GIT_TTL. statusline no longer spawns git at all, so the render process
+// throttled by GAMEBAR_GIT_TTL. statusline no longer spawns git at all, so the render process
 // itself has no children -> it cannot feed the Windows MSYS "bash flood" from below.
 //
 // It can still be fed from ABOVE, by the shell Claude Code wraps our render command in. That is
 // what reapStaleShells() in src/platform/reap.js cleans up.
 //
-// Journal: <checkpoint>.jsonl where checkpoint is $MUGSHOT_STATE or <runtime dir>/mugshot_<sid>.json (runtimeDir in src/platform/runtime.js).
+// Journal: <checkpoint>.jsonl where checkpoint is $GAMEBAR_STATE or <runtime dir>/gamebar_<sid>.json (runtimeDir in src/platform/runtime.js).
 
 import { appendFileSync, writeFileSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

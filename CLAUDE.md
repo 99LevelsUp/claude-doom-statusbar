@@ -1,6 +1,6 @@
-# claude-doom-statusbar
+# claude-game-bar
 
-DOOM-inspired status bar / HUD for Claude Code CLI.
+A status bar for the Claude Code CLI that draws the session as a game HUD (DOOM, Minecraft).
 
 ## Language
 
@@ -10,14 +10,23 @@ Spoken communication with the user is in Czech.
 
 ## Project Overview
 
-A terminal status bar for Claude Code that maps session metrics to DOOM (1993) game elements:
-- Context window usage → Health (HP)
-- Rate limits → Ammo
-- Model tier → Weapon equipped
-- Tool permissions → Skull keys
-- Task progress → Automap
+A platform plus game parts. The platform reads the Claude Code session (usage, rate limits, model, project, agents, tasks, system), turns it into metric values and a game-neutral reaction, and renders the bar through a render daemon and a bash client. Each game draws those values in its own look. Nothing in the platform knows about a particular game; games are reached only through the registry.
 
-See `docs/ideation/2026-06-06-doom-statusbar-ideation.md` for the full ideation output.
+Layers under `src/`:
+- entry files with stable paths: `hook.js`, `statusline.js`, `daemon.js`, `gamebar-client.sh` (and the shim `doombar-client.sh`), plus `render.js` (`renderSession`), `theme.js` and `package-root.js`;
+- `platform/`: runtime directory and file names, settings from the environment (`GAMEBAR_*` with `DOOMBAR_*` fallbacks), journal, daemon supervision, sweep, reaper, git and MSYS snapshots, the frame file;
+- `metrics/`: metric values and the game-neutral reaction;
+- `kit/`: drawing primitives, the width planner, the render context and the glyph raster;
+- `install/`: settings, the statusLine command, daemons, the old package, the emoji font;
+- `games/`: the registry (`games/index.js`) and one folder per game:
+  - `doom/`: the boxes layout, the mugshot (portrait and face), presets `full`, `standard`, `minimal`, sprite assets;
+  - `minecraft/`: the hotbar layout, the chat, the `minecraft` preset.
+
+`bin/cli.js` is the `claude-game-bar` command. `CONTRIBUTING.md` describes how to add a game.
+
+The DOOM game's mapping: usage headroom is the mugshot's health, the 5h and 7d rate limits and the context window are bars, and the reaction is the face. The Minecraft game's mapping: the 5h rate limit is the hearts, context is hunger, the 7d rate limit is the XP bar, and the rest is a 9-slot hotbar.
+
+The bar started as a DOOM HUD; `docs/ideation/2026-06-06-doom-statusbar-ideation.md` is that original ideation.
 
 ## Auto-learned Rules
 

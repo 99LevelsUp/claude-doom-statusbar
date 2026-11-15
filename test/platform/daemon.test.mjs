@@ -36,20 +36,20 @@ os.cpus = () => [0, 1, 2, 3].map((i) => ({ model: "x", speed: 1, times: { user: 
 fs.statfsSync = () => ({ blocks: 1000, bfree: 400, bavail: 400, bsize: 4096, type: 0, files: 0, ffree: 0 });
 syncBuiltinESMExports();
 
-const SB = mkdtempSync(path.join(os.tmpdir(), "doombar-daemon-"));
+const SB = mkdtempSync(path.join(os.tmpdir(), "gamebar-daemon-"));
 const TMPDIR = path.join(SB, "tmp");
 for (const d of ["tmp", "tasks", "proj"]) mkdirSync(path.join(SB, d), { recursive: true });
 // Before the imports, so any path the render modules take when they load comes from the sandbox.
 const SANDBOX_ENV = {
-  ...sandboxEnv(TMPDIR), PATH: "", DOOMBAR_MSYS_REAP: "0", DOOMBAR_THEME: "doom",
-  DOOMBAR_THEME_FILE: path.join(SB, "no-theme.json"), DOOMBAR_RATELIMITS_SHARE: "0",
-  DOOMBAR_RATELIMITS: path.join(SB, "rl.json"), DOOMBAR_TASKS_DIR: path.join(SB, "tasks"),
-  DOOMBAR_EVENTS: path.join(SB, "events.jsonl"), DOOMBAR_LLMLINGUA: path.join(SB, "ling.json"),
-  DOOMBAR_PRESET: path.join(PRESETS, "minimal.toml"),
+  ...sandboxEnv(TMPDIR), PATH: "", GAMEBAR_MSYS_REAP: "0", GAMEBAR_THEME: "doom",
+  GAMEBAR_THEME_FILE: path.join(SB, "no-theme.json"), GAMEBAR_RATELIMITS_SHARE: "0",
+  GAMEBAR_RATELIMITS: path.join(SB, "rl.json"), GAMEBAR_TASKS_DIR: path.join(SB, "tasks"),
+  GAMEBAR_EVENTS: path.join(SB, "events.jsonl"), GAMEBAR_LLMLINGUA: path.join(SB, "ling.json"),
+  GAMEBAR_PRESET: path.join(PRESETS, "minimal.toml"),
 };
 Object.assign(process.env, SANDBOX_ENV);
 // The terminal that runs the tests must not pick the mugshot's glyphs for one side of a comparison.
-for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "DOOMBAR_GLYPHS"]) delete process.env[k];
+for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "GAMEBAR_GLYPHS"]) delete process.env[k];
 const { renderSession } = await import("../../src/render.js");
 const { sessionPaths, daemonPaths, rootHash, daemonSocket, procStartTicks } = await import("../../src/platform/runtime.js");
 const { parseFrame } = await import("../../src/platform/frame.js");
@@ -60,7 +60,7 @@ const OTHER = rootHash(path.join(SB, "elsewhere"));
 
 // What the bash client writes: the environment line, then the stdin JSON as received.
 const payloadText = (data, env) =>
-  ["doombar-env", ...Object.entries(env).map(([k, v]) => `${k}=${v}`)].join("\t") + "\n" + JSON.stringify(data);
+  ["gamebar-env", ...Object.entries(env).map(([k, v]) => `${k}=${v}`)].join("\t") + "\n" + JSON.stringify(data);
 const payloadFile = (key, hash = HASH, dir = TMPDIR) => path.join(dir, path.basename(sessionPaths(key, hash).payload));
 const frameFile = (key, hash = HASH, dir = TMPDIR) => path.join(dir, path.basename(sessionPaths(key, hash).frame));
 const heartbeatFile = (hash = HASH, dir = TMPDIR) => path.join(dir, path.basename(daemonPaths(hash).heartbeat));
@@ -68,8 +68,8 @@ const heartbeatFile = (hash = HASH, dir = TMPDIR) => path.join(dir, path.basenam
 // A session as the client hands it over; `bump` forces a new mtime so a rewrite is always seen.
 let bumps = 0;
 function session(key, { label = key, env = {}, hash = HASH, dir = TMPDIR } = {}) {
-  const fwd = { COLUMNS: "250", DOOMBAR_PRESET: path.join(PRESETS, "full.toml"),
-    MUGSHOT_STATE: path.join(SB, `state-${key}.json`), ...env };
+  const fwd = { COLUMNS: "250", GAMEBAR_PRESET: path.join(PRESETS, "full.toml"),
+    GAMEBAR_STATE: path.join(SB, `state-${key}.json`), ...env };
   const data = {
     session_id: key, session_name: `${label}-run`, cwd: path.join(SB, "proj"),
     model: { display_name: "Opus 5.5" }, context_window: { used_percentage: 42, context_window_size: 1000000 },
@@ -102,7 +102,7 @@ async function stopAll() {
 try {
   // The CPU sample is throttled on the real clock (1 s), so a daemon render and the comparison
   // render right after it could straddle a new sample. Hold one cached sample for the whole run.
-  writeFileSync(path.join(TMPDIR, "mugshot_cpu.json"), JSON.stringify({
+  writeFileSync(path.join(TMPDIR, "gamebar_cpu.json"), JSON.stringify({
     ts: Date.now() + 864e5, total: 0, idle: 0, cores: [], result: { cpu: 12, cores: [0.1, 0.2, 0.3, 0.4] } }));
 
   // A new session gets a frame within one pass, and the frame is what renderSession prints.
@@ -127,7 +127,7 @@ try {
   // still follows the clock (crossing a minute boundary) and matches renderSession at that moment.
   {
     const a = session("steady");
-    const b = session("wide", { env: { DOOMBAR_FRAME_WINDOW: "5" } });
+    const b = session("wide", { env: { GAMEBAR_FRAME_WINDOW: "5" } });
     const t0 = Math.ceil(Date.now() / 60000) * 60000 - 20000;
     const state = createState({ version: VERSION, now: t0 });
     let renewed = true, matches = true, wide = true, prev = -1;
@@ -142,7 +142,7 @@ try {
       if (f && strip(f.slots[0].lines.join("\n")).includes(hhmm(now))) clocks.add(hhmm(now));
     }
     ok(renewed, "every pass over 60 s renews the deadline of an unchanged payload");
-    ok(wide, "a forwarded DOOMBAR_FRAME_WINDOW sets that session's window");
+    ok(wide, "a forwarded GAMEBAR_FRAME_WINDOW sets that session's window");
     ok(matches, "every pass renders afresh: the body equals renderSession at that pass's moment");
     ok(clocks.size === 2, "the body follows the clock across a minute boundary without a new payload");
     const hb = heartbeat();
@@ -159,7 +159,7 @@ try {
     const state = createState({ version: VERSION, now: t0 });
     runPass(state, { dir: TMPDIR, hash: HASH, now: t0 });
     const before = readFrame(bad);
-    bad.fwd.DOOMBAR_PRESET = path.join(SB, "missing.toml"); // renderSession's readFileSync throws
+    bad.fwd.GAMEBAR_PRESET = path.join(SB, "missing.toml"); // renderSession's readFileSync throws
     bad.write();
     let kept = true, others = true;
     for (let i = 1; i <= 6; i++) {
@@ -171,7 +171,7 @@ try {
     }
     ok(before !== null && kept, "the failing session keeps its previous frame, deadline included");
     ok(others, "the other session keeps renewing while one session's render throws");
-    bad.fwd.DOOMBAR_PRESET = path.join(PRESETS, "full.toml");
+    bad.fwd.GAMEBAR_PRESET = path.join(PRESETS, "full.toml");
     bad.write();
     const now = t0 + 4000;
     runPass(state, { dir: TMPDIR, hash: HASH, now });
@@ -221,34 +221,84 @@ try {
   // A forwarded variable the session leaves unset stays unset for that session's render, even
   // when the daemon's own environment (inherited from whichever session's hook started it) sets it.
   {
-    const saved = { theme: process.env.DOOMBAR_THEME, state: process.env.MUGSHOT_STATE, wt: process.env.WT_SESSION };
-    process.env.DOOMBAR_THEME = "minecraft";
-    process.env.MUGSHOT_STATE = path.join(SB, "spawner-state.json");
+    const saved = { theme: process.env.GAMEBAR_THEME, state: process.env.GAMEBAR_STATE, wt: process.env.WT_SESSION };
+    process.env.GAMEBAR_THEME = "minecraft";
+    process.env.GAMEBAR_STATE = path.join(SB, "spawner-state.json");
     process.env.WT_SESSION = "spawner-terminal";
     try {
       const s = session("unset");
-      delete s.fwd.MUGSHOT_STATE;
+      delete s.fwd.GAMEBAR_STATE;
       s.write();
       const now = Date.now();
       const state = createState({ version: VERSION, now });
       runPass(state, { dir: TMPDIR, hash: HASH, now });
       const own = { ...process.env, ...s.fwd };
-      delete own.DOOMBAR_THEME;
-      delete own.MUGSHOT_STATE;
+      delete own.GAMEBAR_THEME;
+      delete own.GAMEBAR_STATE;
       delete own.WT_SESSION;
       const want = renderSession({ data: s.data, env: own, now: now / 1000 });
       const inherited = renderSession({ data: s.data, env: { ...process.env, ...s.fwd }, now: now / 1000 });
-      ok(!sameLines(want, inherited), "the daemon's own DOOMBAR_THEME would change the render (so the next case can tell)");
-      ok(sameLines(frameOf(s)?.slots[0].lines, want), "a session without DOOMBAR_THEME renders the default theme, not the daemon's");
-      ok(state.sessions.get("unset")?.env.MUGSHOT_STATE === undefined,
-        "a session without MUGSHOT_STATE does not take the daemon's checkpoint path");
+      ok(!sameLines(want, inherited), "the daemon's own GAMEBAR_THEME would change the render (so the next case can tell)");
+      ok(sameLines(frameOf(s)?.slots[0].lines, want), "a session without GAMEBAR_THEME renders the default theme, not the daemon's");
+      ok(state.sessions.get("unset")?.env.GAMEBAR_STATE === undefined,
+        "a session without GAMEBAR_STATE does not take the daemon's checkpoint path");
       ok(state.sessions.get("unset")?.env.WT_SESSION === undefined,
         "a session without WT_SESSION does not take the terminal of the session that started the daemon");
     } finally {
       if (saved.wt === undefined) delete process.env.WT_SESSION; else process.env.WT_SESSION = saved.wt;
-      process.env.DOOMBAR_THEME = saved.theme;
-      if (saved.state === undefined) delete process.env.MUGSHOT_STATE; else process.env.MUGSHOT_STATE = saved.state;
+      process.env.GAMEBAR_THEME = saved.theme;
+      if (saved.state === undefined) delete process.env.GAMEBAR_STATE; else process.env.GAMEBAR_STATE = saved.state;
       try { unlinkSync(payloadFile("unset")); } catch {}
+    }
+  }
+
+  // A setting has two names (src/platform/env.js), and the daemon drops both from its own
+  // environment: a session that sets only one of them renders with it, even when the daemon
+  // inherited the other name with another value.
+  {
+    const saved = { now: process.env.GAMEBAR_PRESET, old: process.env.DOOMBAR_PRESET };
+    const full = path.join(PRESETS, "full.toml"), minimal = path.join(PRESETS, "minimal.toml");
+    try {
+      for (const [inherited, forwarded] of [["GAMEBAR_PRESET", "DOOMBAR_PRESET"], ["DOOMBAR_PRESET", "GAMEBAR_PRESET"]]) {
+        delete process.env.GAMEBAR_PRESET;
+        delete process.env.DOOMBAR_PRESET;
+        process.env[inherited] = full;
+        const s = session(`only-${forwarded}`);
+        delete s.fwd.GAMEBAR_PRESET;
+        s.fwd[forwarded] = minimal;
+        s.write();
+        const now = Date.now();
+        const state = createState({ version: VERSION, now });
+        runPass(state, { dir: TMPDIR, hash: HASH, now });
+        const base = { ...process.env, ...s.fwd };
+        delete base.GAMEBAR_PRESET;
+        delete base.DOOMBAR_PRESET;
+        const want = renderSession({ data: s.data, env: { ...base, GAMEBAR_PRESET: minimal }, now: now / 1000 });
+        const other = renderSession({ data: s.data, env: { ...base, GAMEBAR_PRESET: full }, now: now / 1000 });
+        ok(!sameLines(want, other), `the inherited ${inherited} would change the render (so the next case can tell)`);
+        ok(sameLines(frameOf(s)?.slots[0].lines, want),
+          `a session forwarding only ${forwarded} renders with it, though the daemon inherited a different ${inherited}`);
+        unlinkSync(payloadFile(`only-${forwarded}`));
+      }
+      // Nor does an old name the daemon inherited reach a session that sets neither name.
+      delete process.env.GAMEBAR_PRESET;
+      process.env.DOOMBAR_PRESET = full;
+      const s = session("neither");
+      delete s.fwd.GAMEBAR_PRESET;
+      s.write();
+      const now = Date.now();
+      runPass(createState({ version: VERSION, now }), { dir: TMPDIR, hash: HASH, now });
+      const base = { ...process.env, ...s.fwd };
+      delete base.GAMEBAR_PRESET;
+      delete base.DOOMBAR_PRESET;
+      const want = renderSession({ data: s.data, env: base, now: now / 1000 });
+      ok(!sameLines(want, renderSession({ data: s.data, env: { ...base, DOOMBAR_PRESET: full }, now: now / 1000 })),
+        "the inherited DOOMBAR_PRESET would change the render (so the next case can tell)");
+      ok(sameLines(frameOf(s)?.slots[0].lines, want), "a session that sets neither name does not take the daemon's DOOMBAR_PRESET");
+      unlinkSync(payloadFile("neither"));
+    } finally {
+      if (saved.now === undefined) delete process.env.GAMEBAR_PRESET; else process.env.GAMEBAR_PRESET = saved.now;
+      if (saved.old === undefined) delete process.env.DOOMBAR_PRESET; else process.env.DOOMBAR_PRESET = saved.old;
     }
   }
 
@@ -305,14 +355,14 @@ try {
     "a daemon that never gets a payload is idle once the idle period since its start has passed");
   }
 
-  // DOOMBAR_COLLECT_MS in the render's environment sets how long one CPU sample is reused.
+  // GAMEBAR_COLLECT_MS in the render's environment sets how long one CPU sample is reused.
   {
-    const cache = path.join(TMPDIR, "mugshot_cpu.json");
+    const cache = path.join(TMPDIR, "gamebar_cpu.json");
     const pinned = readFileSync(cache, "utf8");
     const realNow = Date.now;
-    const s = session("collect", { env: { DOOMBAR_COLLECT_MS: "5000" } });
+    const s = session("collect", { env: { GAMEBAR_COLLECT_MS: "5000" } });
     const plain = { ...s, fwd: { ...s.fwd } };
-    delete plain.fwd.DOOMBAR_COLLECT_MS;
+    delete plain.fwd.GAMEBAR_COLLECT_MS;
     const sampledAt = () => JSON.parse(readFileSync(cache, "utf8")).ts;
     try {
       let t = realNow();
@@ -322,7 +372,7 @@ try {
       const first = sampledAt();
       t += 2000;
       expected(s, t);
-      ok(first === t - 2000 && sampledAt() === first, "with DOOMBAR_COLLECT_MS=5000 two renders 2 s apart reuse one CPU sample");
+      ok(first === t - 2000 && sampledAt() === first, "with GAMEBAR_COLLECT_MS=5000 two renders 2 s apart reuse one CPU sample");
       t += 2000;
       expected(plain, t);
       ok(sampledAt() === t, "without it the default 1 s interval takes a new sample");
@@ -334,7 +384,7 @@ try {
   }
 
   // The daemon starts the detached reaper (`node src/hook.js --reap`) on its own timer: at most one
-  // per DOOMBAR_REAP_TICK (default 15 s), on Windows only, never with DOOMBAR_MSYS_REAP=0, and
+  // per GAMEBAR_REAP_TICK (default 15 s), on Windows only, never with GAMEBAR_MSYS_REAP=0, and
   // never waits for it. Driven with a simulated clock and a recording spawn, so no reaper runs.
   {
     const fakeSpawn = () => {
@@ -360,8 +410,8 @@ try {
       && c.args.length === 2, "the reaper is `node src/hook.js --reap`");
     ok(c && c.opts.detached === true && c.opts.stdio === "ignore" && c.opts.windowsHide === true && c.child.unrefd,
       "it is detached, silent and unref'd, so the daemon never waits for it");
-    ok(drive({ env: { DOOMBAR_REAP_TICK: "1000" }, ms: 10000 }).length === 11, "DOOMBAR_REAP_TICK sets the interval");
-    ok(drive({ env: { DOOMBAR_MSYS_REAP: "0" } }).length === 0, "DOOMBAR_MSYS_REAP=0 starts no reaper");
+    ok(drive({ env: { GAMEBAR_REAP_TICK: "1000" }, ms: 10000 }).length === 11, "GAMEBAR_REAP_TICK sets the interval");
+    ok(drive({ env: { GAMEBAR_MSYS_REAP: "0" } }).length === 0, "GAMEBAR_MSYS_REAP=0 starts no reaper");
     ok(drive({ platform: "linux" }).length === 0, "no reaper outside Windows");
     const throwing = createState({ version: VERSION });
     let threw = false;
@@ -411,7 +461,7 @@ try {
     };
     const startDaemon = (pkg, tmp, idleMs = 60000) => {
       const env = { ...SANDBOX_ENV, SystemRoot: process.env.SystemRoot, ...sandboxEnv(tmp),
-        DOOMBAR_DAEMON_IDLE_MS: String(idleMs) };
+        GAMEBAR_DAEMON_IDLE_MS: String(idleMs) };
       const c = spawn(process.execPath, [path.join(pkg.dir, "src", "daemon.js")], { env, stdio: ["ignore", "ignore", "pipe"] });
       c.err = "";
       c.stderr.on("data", (d) => { c.err += d; });
@@ -429,7 +479,7 @@ try {
       srv.once("error", () => resolve(false));
       srv.listen(pipePath(hash), () => srv.close(() => resolve(true)));
     });
-    const sockOf = (pkg, dir) => daemonSocket(pkg.hash, { DOOMBAR_RUNTIME_DIR: dir });
+    const sockOf = (pkg, dir) => daemonSocket(pkg.hash, { GAMEBAR_RUNTIME_DIR: dir });
     const addressFree = async (pkg, dir) => (WIN ? pipeFree(pkg.hash) : !existsSync(sockOf(pkg, dir)));
     const answers = (addr) => new Promise((resolve) => {
       const s = net.connect(addr);
@@ -594,7 +644,7 @@ try {
 // The names the daemon takes from a session's payload are exactly the names the client writes:
 // one missing on either side would render that session with the daemon's own value.
 {
-  const src = readFileSync(path.join(ROOT, "src", "doombar-client.sh"), "utf8");
+  const src = readFileSync(path.join(ROOT, "src", "gamebar-client.sh"), "utf8");
   const m = /for name in ([\s\S]*?); do/.exec(src);
   const clientNames = m ? m[1].replace(/\\\r?\n/g, " ").trim().split(/\s+/).sort() : [];
   const daemonNames = [...FORWARDED_ENV].sort();

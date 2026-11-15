@@ -1,5 +1,5 @@
 // The statusLine command the installer writes: bash detection and the client command, or the
-// one-shot renderer when no suitable bash is found. Used by `claude-doom-statusbar install`
+// one-shot renderer when no suitable bash is found. Used by `claude-game-bar install`
 // (bin/cli.js).
 
 import { existsSync } from "node:fs";
@@ -8,15 +8,16 @@ import path from "node:path";
 import { PACKAGE_ROOT, SRC_DIR } from "../package-root.js";
 import { rootHash } from "../platform/runtime.js";
 import { slash } from "./settings.js";
+import { envGet } from "../platform/env.js";
 
 const HASH = rootHash(PACKAGE_ROOT); // this installation's daemon and its files
 
 export const STATUSLINE = slash(path.join(SRC_DIR, "statusline.js"));
-export const CLIENT = slash(path.join(SRC_DIR, "doombar-client.sh"));
+export const CLIENT = slash(path.join(SRC_DIR, "gamebar-client.sh"));
 export const NODE_CMD = `node "${STATUSLINE}"`;
 
 // The statusLine command that runs the bash client, which prints the frame the render daemon
-// prepared (see src/doombar-client.sh, src/daemon.js). The client lives in the package, so an
+// prepared (see src/gamebar-client.sh, src/daemon.js). The client lives in the package, so an
 // upgrade in the same place reaches it without touching settings.json; the guard keeps a removed
 // package from printing shell errors into the bar. `if` rather than `[ ] && . || echo`: the
 // client may end with a non-zero status after printing a frame, and `||` would then add the
@@ -32,18 +33,19 @@ export const NODE_CMD = `node "${STATUSLINE}"`;
 // bar prints the offline line. Without a bash 5 (macOS ships 3.2; Windows without Git Bash runs
 // PowerShell) the one-shot renderer stays. The paths are single-quoted: a `$`, backtick or `"` in
 // a home directory name stays text instead of running in /bin/sh on every tick.
-const WIN_CLIENT_CMD = `DOOMBAR_ROOT_HASH=${HASH}; f="${CLIENT}"; ` +
-  `if [ -r "$f" ]; then . "$f"; else echo 'doombar: offline'; fi`;
+const WIN_CLIENT_CMD = `GAMEBAR_ROOT_HASH=${HASH}; f="${CLIENT}"; ` +
+  `if [ -r "$f" ]; then . "$f"; else echo 'gamebar: offline'; fi`;
 const shQuote = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 const posixClientCmd = (bash) => `b=${shQuote(bash)}; f=${shQuote(CLIENT)}; ` +
   `if [ -r "$f" ] && [ -x "$b" ]; then unset BASH_ENV; exec "$b" --norc --noprofile "$f" ${HASH}; ` +
-  `else echo 'doombar: offline'; fi`;
+  `else echo 'gamebar: offline'; fi`;
 
 // Linux and macOS: a bash of major version 5 or newer for the client, by the path it was found
-// at, or null. DOOMBAR_BASH, when set, is the only candidate. One short spawn per candidate, at
+// at, or null. GAMEBAR_BASH, when set, is the only candidate. One short spawn per candidate, at
 // install only.
 function posixBash(env = process.env) {
-  const cands = env.DOOMBAR_BASH ? [env.DOOMBAR_BASH]
+  const set = envGet("BASH", env);
+  const cands = set ? [set]
     : ["/bin/bash", "/usr/bin/bash", "/usr/local/bin/bash", "/opt/homebrew/bin/bash",
       ...String(env.PATH || "").split(":").filter((d) => d.startsWith("/")).map((d) => path.posix.join(d, "bash"))];
   for (const bash of new Set(cands)) {

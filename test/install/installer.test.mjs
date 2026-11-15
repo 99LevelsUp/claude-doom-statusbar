@@ -13,9 +13,9 @@ import { sandboxEnv } from "../_sandbox-env.mjs";
 
 // Pin the DOOM theme so a theme saved on this machine (`theme minecraft`) can't change
 // what the statusline renders under test. Child processes inherit it via process.env.
-process.env.DOOMBAR_THEME = "doom";
+process.env.GAMEBAR_THEME = "doom";
 // Likewise keep the rate limits other live sessions shared on this machine out of the test.
-process.env.DOOMBAR_RATELIMITS_SHARE = "0";
+process.env.GAMEBAR_RATELIMITS_SHARE = "0";
 
 const HERE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const CLI = path.join(HERE, "..", "bin", "cli.js");
@@ -48,11 +48,11 @@ function run(tmp, ...args) {
 }
 function runEnv(tmp, env, ...args) {
   return execFileSync(process.execPath, [CLI, ...args],
-    { cwd: tmp, encoding: "utf-8", env: withEnv({ ...sandboxEnv(tmp), DOOMBAR_NO_FONTS: "1", ...env }) });
+    { cwd: tmp, encoding: "utf-8", env: withEnv({ ...sandboxEnv(tmp), GAMEBAR_NO_FONTS: "1", ...env }) });
 }
 const settingsPath = (tmp) => path.join(tmp, ".claude", "settings.json");
 const read = (tmp) => JSON.parse(readFileSync(settingsPath(tmp), "utf-8"));
-const tmpdir = () => mkdtempSync(path.join(os.tmpdir(), "doombar-test-"));
+const tmpdir = () => mkdtempSync(path.join(os.tmpdir(), "gamebar-test-"));
 
 // Git Bash present, whatever this machine has: CLAUDE_CODE_GIT_BASH_PATH names a file that exists.
 function gitBashEnv(tmp) {
@@ -88,17 +88,17 @@ function oldBashEnv(tmp) {
   const fake = path.join(tmp, "old-bash");
   writeFileSync(fake, "#!/bin/sh\necho 3\n");
   chmodSync(fake, 0o755);
-  return { DOOMBAR_BASH: fake };
+  return { GAMEBAR_BASH: fake };
 }
 // The client's environment and its absence, per platform.
-const clientEnv = (tmp) => (WIN ? gitBashEnv(tmp) : { DOOMBAR_BASH: BASH5 });
+const clientEnv = (tmp) => (WIN ? gitBashEnv(tmp) : { GAMEBAR_BASH: BASH5 });
 const noClientEnv = (tmp) => (WIN ? noGitBashEnv(tmp) : oldBashEnv(tmp));
 const clientHere = WIN ? gitBashHere : Boolean(BASH5);
 
-const CLIENT = `${ROOT.replace(/\\/g, "/")}/src/doombar-client.sh`;
+const CLIENT = `${ROOT.replace(/\\/g, "/")}/src/gamebar-client.sh`;
 const NODE_CMD = `node "${ROOT.replace(/\\/g, "/")}/src/statusline.js"`;
 const ourFiles = (dir, hash = HASH) => readdirSync(dir).filter((n) =>
-  n.startsWith(`mugshot_daemon_${hash}.`) || n.startsWith(`mugshot_payload_${hash}_`) || n.startsWith(`mugshot_frame_${hash}_`));
+  n.startsWith(`gamebar_daemon_${hash}.`) || n.startsWith(`gamebar_payload_${hash}_`) || n.startsWith(`gamebar_frame_${hash}_`));
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 
 // 1. empty {} -> install -> full structure present
@@ -106,14 +106,14 @@ const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { retu
   const tmp = tmpdir();
   run(tmp, "install", "--project", "--preset", "full");
   const cfg = read(tmp);
-  const want = clientHere ? "src/doombar-client.sh" : "src/statusline.js";
+  const want = clientHere ? "src/gamebar-client.sh" : "src/statusline.js";
   ok(cfg.statusLine?.command?.includes(want), `statusLine points at ${want}`);
   // 1 s on EVERY platform, Windows included. The Git Bash / MSYS cost of a 1 Hz tick on Windows
   // is paid by the reaper, not by slowing the HUD down — a live clock is the point of this thing.
   ok(cfg.statusLine?.refreshInterval === 1, "statusLine refreshInterval is 1 on all platforms");
-  ok(cfg.env?.DOOMBAR_PRESET === `${ROOT.replace(/\\/g, "/")}/src/games/doom/presets/full.toml`,
-    `DOOMBAR_PRESET -> src/games/doom/presets/full.toml (${cfg.env?.DOOMBAR_PRESET})`);
-  ok(existsSync(cfg.env.DOOMBAR_PRESET), "and that preset file exists");
+  ok(cfg.env?.GAMEBAR_PRESET === `${ROOT.replace(/\\/g, "/")}/src/games/doom/presets/full.toml`,
+    `GAMEBAR_PRESET -> src/games/doom/presets/full.toml (${cfg.env?.GAMEBAR_PRESET})`);
+  ok(existsSync(cfg.env.GAMEBAR_PRESET), "and that preset file exists");
   ok(cfg.env?.FORCE_HYPERLINK === "1", "FORCE_HYPERLINK = 1");
   const EVENTS = ["SessionStart", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied",
     "Stop", "SubagentStart", "SubagentStop", "TaskCreated", "TaskCompleted"];
@@ -249,6 +249,23 @@ const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { retu
   rmSync(tmp, { recursive: true, force: true });
 }
 
+// 5b. uninstall removes what a release before 1.0.0 wrote: the client's old path, its hash under the
+// old name, and DOOMBAR_PRESET.
+{
+  const tmp = tmpdir();
+  mkdirSync(path.join(tmp, ".claude"), { recursive: true });
+  const old = {
+    statusLine: { type: "command", refreshInterval: 1, command: 'DOOMBAR_ROOT_HASH=0123456789; f="/x/src/doombar-client.sh"; ' +
+      "if [ -r \"$f\" ]; then . \"$f\"; else echo 'doombar: offline'; fi" },
+    env: { DOOMBAR_PRESET: "/x/presets/full.toml", FORCE_HYPERLINK: "1" },
+    hooks: { Stop: [{ hooks: [{ type: "command", command: "node", args: ["/x/src/hook.js"], async: true }] }] },
+  };
+  writeFileSync(settingsPath(tmp), JSON.stringify(old, null, 2));
+  run(tmp, "uninstall", "--project");
+  ok(Object.keys(read(tmp)).length === 0, "an install written before 1.0.0 (old client path, DOOMBAR_PRESET) is fully removed");
+  rmSync(tmp, { recursive: true, force: true });
+}
+
 // 6. Windows with Git Bash: the statusLine sources the packaged client into Claude Code's bash,
 // with this installation's hash and a guard for a missing client. Re-installing changes nothing.
 if (WIN) {
@@ -256,9 +273,9 @@ if (WIN) {
   const env = gitBashEnv(tmp);
   runEnv(tmp, env, "install", "--project");
   const cmd = read(tmp).statusLine?.command || "";
-  ok(cmd.startsWith(`DOOMBAR_ROOT_HASH=${HASH};`), `client command sets the install hash first (got: ${cmd})`);
-  ok(cmd.includes(`"${CLIENT}"`), "client command names this package's doombar-client.sh");
-  ok(/if \[ -r "\$f" \]; then \. "\$f"; else echo 'doombar: offline'; fi$/.test(cmd),
+  ok(cmd.startsWith(`GAMEBAR_ROOT_HASH=${HASH};`), `client command sets the install hash first (got: ${cmd})`);
+  ok(cmd.includes(`"${CLIENT}"`), "client command names this package's gamebar-client.sh");
+  ok(/if \[ -r "\$f" \]; then \. "\$f"; else echo 'gamebar: offline'; fi$/.test(cmd),
     "client command sources the client, or prints the offline line when it is missing");
   ok(!/\bnode\b/.test(cmd), "client command starts no node process");
   ok(read(tmp).statusLine.refreshInterval === 1, "client command keeps the 1 s refresh");
@@ -280,7 +297,7 @@ if (!WIN && BASH5) {
   ok(cmd.includes(`exec "$b" --norc --noprofile "$f" ${HASH};`), "client command execs that bash with the install hash");
   ok(cmd.includes('[ -r "$f" ] && [ -x "$b" ]') && cmd.includes("unset BASH_ENV"),
     "client command guards a missing client or bash and clears BASH_ENV");
-  ok(/else echo 'doombar: offline'; fi$/.test(cmd), "client command prints the offline line otherwise");
+  ok(/else echo 'gamebar: offline'; fi$/.test(cmd), "client command prints the offline line otherwise");
   ok(!/\bnode\b/.test(cmd), "client command starts no node process");
   const before = readFileSync(settingsPath(tmp), "utf-8");
   const out = runEnv(tmp, env, "install", "--project");
@@ -289,7 +306,7 @@ if (!WIN && BASH5) {
   // Claude Code runs it through /bin/sh. A bash that went away prints the offline line, exit 0.
   const gone = cmd.replace(`b='${BASH5}'`, `b='${path.join(tmp, "no-bash")}'`);
   const r = spawnSync("/bin/sh", ["-c", gone], { input: "{}", encoding: "utf8", env: withEnv(sandboxEnv(tmp)) });
-  ok(r.status === 0 && r.stdout === "doombar: offline\n", `a bash that is gone prints the offline line (got ${JSON.stringify(r.stdout)})`);
+  ok(r.status === 0 && r.stdout === "gamebar: offline\n", `a bash that is gone prints the offline line (got ${JSON.stringify(r.stdout)})`);
   rmSync(tmp, { recursive: true, force: true });
 }
 
@@ -300,7 +317,7 @@ if (!WIN && BASH5) {
   const odd = path.join(tmp, "b $(touch pwned) `touch pwned2` 'q\" dir");
   mkdirSync(odd, { recursive: true });
   symlinkSync(BASH5, path.join(odd, "bash"));
-  runEnv(tmp, { DOOMBAR_BASH: path.join(odd, "bash") }, "install", "--project");
+  runEnv(tmp, { GAMEBAR_BASH: path.join(odd, "bash") }, "install", "--project");
   const cmd = read(tmp).statusLine?.command || "";
   ok(cmd.includes("exec \"$b\""), `an odd bash path still gets the client command (got: ${cmd})`);
   const r = spawnSync("/bin/sh", ["-c", cmd], { cwd: tmp, input: "{}", encoding: "utf8", env: withEnv(sandboxEnv(tmp)) });
@@ -349,9 +366,9 @@ if (WIN || BASH5) {
 {
   const tmp = tmpdir();
   runEnv(tmp, gitBashEnv(tmp), "install", "--project");
-  writeFileSync(path.join(tmp, `mugshot_payload_${HASH}_s1.json`), "doombar-env\n{}");
-  writeFileSync(path.join(tmp, `mugshot_frame_${HASH}_s1.json`), "doombar-frame v=1\n");
-  writeFileSync(path.join(tmp, `mugshot_daemon_${HASH}.claim`), "{}");
+  writeFileSync(path.join(tmp, `gamebar_payload_${HASH}_s1.json`), "gamebar-env\n{}");
+  writeFileSync(path.join(tmp, `gamebar_frame_${HASH}_s1.json`), "gamebar-frame v=1\n");
+  writeFileSync(path.join(tmp, `gamebar_daemon_${HASH}.claim`), "{}");
   run(tmp, "uninstall", "--project");
   const cfg = read(tmp);
   ok(Object.keys(cfg).length === 0, "uninstall after a client install -> settings.json is {}");
@@ -367,12 +384,12 @@ if (WIN || BASH5) {
   const sleeper = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
   try {
     const start = Date.now();
-    writeFileSync(path.join(tmp, `mugshot_daemon_${HASH}.json`),
+    writeFileSync(path.join(tmp, `gamebar_daemon_${HASH}.json`),
       JSON.stringify({ pid: sleeper.pid, start, version: "0", window: 3, renewed: start }));
-    const claim = path.join(tmp, `mugshot_daemon_${HASH}.claim`);
-    for (const f of [claim, `${claim}.lock`, `${claim}.123.tmp`, path.join(tmp, `mugshot_payload_${HASH}_abc.json`),
-      path.join(tmp, `mugshot_frame_${HASH}_abc.json`), path.join(tmp, `mugshot_frame_${HASH}_abc.json.77.tmp`),
-      path.join(tmp, `mugshot_daemon_${other}.json`), path.join(tmp, `mugshot_payload_${other}_abc.json`)]) {
+    const claim = path.join(tmp, `gamebar_daemon_${HASH}.claim`);
+    for (const f of [claim, `${claim}.lock`, `${claim}.123.tmp`, path.join(tmp, `gamebar_payload_${HASH}_abc.json`),
+      path.join(tmp, `gamebar_frame_${HASH}_abc.json`), path.join(tmp, `gamebar_frame_${HASH}_abc.json.77.tmp`),
+      path.join(tmp, `gamebar_daemon_${other}.json`), path.join(tmp, `gamebar_payload_${other}_abc.json`)]) {
       writeFileSync(f, "x");
     }
     const out = run(tmp, "uninstall", "--project");
@@ -396,7 +413,7 @@ if (WIN || process.platform === "linux") {
   const fake = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)", path.join(ROOT, "src", "daemon.js")],
     { stdio: "ignore" });
   try {
-    writeFileSync(path.join(tmp, `mugshot_daemon_${HASH}.json`),
+    writeFileSync(path.join(tmp, `gamebar_daemon_${HASH}.json`),
       JSON.stringify({ pid: fake.pid, start, startTicks: WIN ? undefined : procStartTicks(fake.pid), version: "0", window: 3, renewed: start }));
     const out = run(tmp, "uninstall", "--project");
     // Wait for the exit event, not the pid: on Linux a killed child stays a zombie (and its pid
@@ -414,16 +431,16 @@ if (WIN || process.platform === "linux") {
   }
 }
 
-// 12. With DOOMBAR_RUNTIME_DIR set, uninstall cleans only that directory: a heartbeat and files of
+// 12. With GAMEBAR_RUNTIME_DIR set, uninstall cleans only that directory: a heartbeat and files of
 // this installation in another candidate directory (here, an XDG runtime dir) stay.
 if (!WIN) {
   const tmp = tmpdir();
   const xdg = path.join(tmp, "xdg");
-  mkdirSync(path.join(xdg, "doombar"), { recursive: true, mode: 0o700 });
-  const planted = [`mugshot_daemon_${HASH}.json`, `mugshot_payload_${HASH}_s1.json`];
-  for (const n of planted) writeFileSync(path.join(xdg, "doombar", n), "x");
+  mkdirSync(path.join(xdg, "gamebar"), { recursive: true, mode: 0o700 });
+  const planted = [`gamebar_daemon_${HASH}.json`, `gamebar_payload_${HASH}_s1.json`];
+  for (const n of planted) writeFileSync(path.join(xdg, "gamebar", n), "x");
   runEnv(tmp, { XDG_RUNTIME_DIR: xdg }, "uninstall", "--project");
-  ok(planted.every((n) => existsSync(path.join(xdg, "doombar", n))), "uninstall with the override leaves other runtime dirs alone");
+  ok(planted.every((n) => existsSync(path.join(xdg, "gamebar", n))), "uninstall with the override leaves other runtime dirs alone");
   rmSync(tmp, { recursive: true, force: true });
 }
 

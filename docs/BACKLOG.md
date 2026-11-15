@@ -57,8 +57,8 @@ Owner, 2026-11-13: rename on GitHub and npm together with 1.0.0; the bar becomes
 | R-2 | Neutral reaction state `{expr, hp, god, dead}` instead of DOOM sprite names between engine and layouts (audit step 4) | done (1.0 plan step 4) |
 | R-7 | Render context instead of module-level `VALUES` / face options (audit step 5) | done (1.0 plan step 4) |
 | R-8 | Game registry `games/index.js` replaces `THEMES`; presets and assets under their game (audit step 6) | done (PR #10) |
-| R-1 | Rename package, bin (old bin as alias), repo, env vars `DOOMBAR_*` → `GAMEBAR_*` (with fallback), theme file, file prefixes, client name; DOOM-specific code keeps `doom` (audit step 7) | next |
-| R-4 | `install` migrates settings in place (paths, env names, theme file) | next |
+| R-1 | Rename package, bin (only `claude-game-bar`; owner decision 2026-11-15), repo, env vars `DOOMBAR_*` → `GAMEBAR_*` (with fallback), theme file, file prefixes, client name; DOOM-specific code keeps `doom` (audit step 7) | done in code (1.0 plan step 7); repo rename with the release |
+| R-4 | `install` migrates settings in place (paths, env names, theme file) | done (1.0 plan step 7) |
 | R-3 | npm: set up trusted publishing for the new package, last `claude-doom-statusbar` release with a notice, `npm deprecate` (audit step 8) | next |
 
 ## Shared game layout engine
@@ -118,6 +118,7 @@ Source: [ideation/2026-06-06-doom-statusbar-ideation.md](ideation/2026-06-06-doo
 | S-4 | AGENTS box mislabels and miscounts subagents. Observed 2026-11-10: two running `general-purpose` agents ("Simplify review: test value", "Simplify review: comments") both showed as `iew: comments 3m`, while Claude Code's own list showed three running agents. Leads: `SubagentStart` takes the description from the first pending `Agent` launch of the same `agent_type` (FIFO in `src/fold.js`), so parallel launches of one type can get swapped or duplicated labels; an agent that stopped while its own background work still runs gets `SubagentStop`, so the bar drops it while Claude Code still lists it. Verify against the journal before fixing | open |
 | S-6 | A preset path that does not exist and is not a registered preset (`DOOMBAR_PRESET=…/nope.toml`) makes `src/statusline.js` print a raw `ENOENT` stack on stderr. Print one line naming the missing preset instead (found on the Pi, 2026-11-14) | open |
 | S-7 | When the daemon exits because its source changed (a `git pull` in a checkout), nothing starts its successor until the next hook. An idle machine shows the last frame until it expires, then a grey bar until the next tool call. Option: spawn the successor on that exit path only (the socket singleton prevents doubles), or document "resumes at the next hook" (found on the Pi, 2026-11-13) | owner decision |
+| S-8 | The render daemon does not forward `EVENTS`, `LLMLINGUA` or `SAVINGS_STATE` per session, so a session that shares the daemon gets the values the daemon inherited when it started, not its own. This predates the rename to `claude-game-bar`. Proposal: forward both spellings (`GAMEBAR_*` and `DOOMBAR_*`) per session, and clear both inherited spellings before a session's values apply (found in the review of the rename, 2026-11-15) | open |
 
 ## Done
 

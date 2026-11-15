@@ -66,6 +66,7 @@ The full findings, with file-level evidence, are in `docs/ideation/2026-11-13-re
 - **The README is rewritten in full for the new project.** Governs R13. (session-settled: user-directed — the owner added it to the scope.)
 - **1.0.0 ships only the `claude-game-bar` command.** The old command keeps working until the old package is removed. Governs R8. (session-settled: user-directed, 2026-11-15 — chosen over keeping `claude-doom-statusbar` as an alias, which makes `npm i -g claude-game-bar` fail with `EEXIST` wherever the old package is installed, and over `--force`.)
 - **`claude-game-bar install` removes the old global package itself.** `claude-game-bar` is logically the next version of the same program, so the user is not asked to clean up after it. A manual command is printed only when the removal fails. Governs R10. (session-settled: user-directed, 2026-11-15 — chosen over printing the removal command only. `--keep-old` stays as an edge-case escape hatch.)
+- **Removing the old package also removes every trace of it the installer can find.** After a successful removal: the old daemon's files, the learned state (moved to the new names first), every other old-prefix file and the old runtime directory when empty, and the old theme file (moved first). Repositories wired with the old package's `install --project` or `--local` cannot be seen by the installer; the output and the README tell the user to re-install them. Governs R10, R11. (session-settled: user-directed, 2026-11-15, after the PR7 review — chosen over keeping the old package by default while any settings may still name it.)
 
 ### Requirements
 
@@ -290,7 +291,7 @@ flowchart TB
 The structure as of 1.0.0. The per-unit Files lists are authoritative.
 
 ```
-bin/cli.js                       claude-game-bar CLI (bins: claude-game-bar, claude-doom-statusbar)
+bin/cli.js                       claude-game-bar CLI (bin: claude-game-bar)
 src/
   hook.js  statusline.js  daemon.js        entry files, stable paths
   gamebar-client.sh                        client

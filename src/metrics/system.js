@@ -4,18 +4,20 @@ import { readFileSync, writeFileSync, statfsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pyround } from "../kit/ansi.js";
-import { runtimeDir } from "../platform/runtime.js";
+import { runtimeDir, FILE_PREFIX } from "../platform/runtime.js";
+import { envGet } from "../platform/env.js";
 
 function ramPercent() {
   try { return pyround((1 - os.freemem() / os.totalmem()) * 100); } catch { return null; }
 }
 
 // Minimum interval between CPU snapshots; below this, per-core deltas are tick-quantised noise.
-// DOOMBAR_COLLECT_MS (a positive number of ms) in the render's environment overrides it.
+// GAMEBAR_COLLECT_MS (a positive number of ms) in the render's environment overrides it.
 const CPU_MIN_MS = 1000;
 const collectMs = (env) => {
-  const n = Number(env.DOOMBAR_COLLECT_MS);
-  return env.DOOMBAR_COLLECT_MS && Number.isFinite(n) && n > 0 ? n : CPU_MIN_MS;
+  const v = envGet("COLLECT_MS", env);
+  const n = Number(v);
+  return v && Number.isFinite(n) && n > 0 ? n : CPU_MIN_MS;
 };
 
 // Pure: should cpuMetrics recompute, or hold the cached result? Recompute on cold start,
@@ -56,7 +58,7 @@ function cpuMetrics(env) {
   const agg = cores.reduce((a, c) => ({ total: a.total + c.total, idle: a.idle + c.idle }), { total: 0, idle: 0 });
   const now = Date.now();
   const cur = { ts: now, total: agg.total, idle: agg.idle, cores };
-  const cache = path.join(runtimeDir(), "mugshot_cpu.json");
+  const cache = path.join(runtimeDir(), `${FILE_PREFIX}cpu.json`);
   let prev = null;
   try { prev = JSON.parse(readFileSync(cache, "utf8")); } catch { /* none */ }
   // Windows updates os.cpus() times only on the ~15.6ms scheduler tick, so a per-core

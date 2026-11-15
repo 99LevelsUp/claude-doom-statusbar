@@ -14,7 +14,7 @@ import { sandboxEnv } from "../test/_sandbox-env.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const RUNS = Math.max(3, Number(process.argv[2]) || 15);
-const sandbox = mkdtempSync(path.join(os.tmpdir(), "doombar-oneshot-"));
+const sandbox = mkdtempSync(path.join(os.tmpdir(), "gamebar-oneshot-"));
 
 const payload = JSON.stringify({
   session_id: "oneshot-cost", cwd: ROOT, workspace: { current_dir: ROOT, project_dir: ROOT },
@@ -25,8 +25,8 @@ const payload = JSON.stringify({
 
 const env = {
   ...process.env, ...sandboxEnv(sandbox), COLUMNS: "200",
-  DOOMBAR_GLYPHS: "octant", DOOMBAR_PRESET: path.join(ROOT, "src", "games", "doom", "presets", "full.toml"),
-  DOOMBAR_THEME: "doom", DOOMBAR_RATELIMITS_SHARE: "0", DOOMBAR_MSYS_REAP: "0",
+  GAMEBAR_GLYPHS: "octant", GAMEBAR_PRESET: path.join(ROOT, "src", "games", "doom", "presets", "full.toml"),
+  GAMEBAR_THEME: "doom", GAMEBAR_RATELIMITS_SHARE: "0", GAMEBAR_MSYS_REAP: "0",
 };
 
 function run() {

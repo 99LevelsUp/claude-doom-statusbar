@@ -1,6 +1,7 @@
 # Releasing
 
-This project follows [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
+`claude-game-bar` is published to npm as the package `claude-game-bar` from the GitHub repository
+[99LevelsUp/claude-game-bar](https://github.com/99LevelsUp/claude-game-bar). It follows [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 
 - **MAJOR** — incompatible / breaking changes.
 - **MINOR** — new functionality, backward compatible.
@@ -21,8 +22,8 @@ on `master`.
 
 ## Prerequisites (one-time)
 
-- On npmjs.com, configure this package as a **trusted publisher** for the
-  GitHub repository and the `publish.yml` workflow, so the OIDC token authorizes
+- On npmjs.com, configure the `claude-game-bar` package with a **trusted publisher** for the
+  GitHub repository `99LevelsUp/claude-game-bar` and the `publish.yml` workflow, so the OIDC token authorizes
   publishing without a long-lived `NPM_TOKEN`.
 - The GitHub `npm` environment referenced by the workflow must exist in the repo
   settings.

@@ -2,7 +2,7 @@
 // End-to-end smoke test: module byte-parity proves each piece in isolation, but only the
 // installer makes the HUD run live. This installs into a temp project, then runs the EXACT
 // statusLine command the installer wrote into settings.json — through a shell, with the
-// DOOMBAR_PRESET it set — and asserts a non-empty HUD comes out. This is the check that
+// GAMEBAR_PRESET it set — and asserts a non-empty HUD comes out. This is the check that
 // catches "`node` not on PATH" and any wiring drift the structural test can't see.
 
 import { execFileSync, execSync } from "node:child_process";
@@ -14,9 +14,9 @@ import { sandboxEnv } from "./_sandbox-env.mjs";
 
 // Pin the DOOM theme so a theme saved on this machine (`theme minecraft`) can't change
 // what the statusline renders under test. Child processes inherit it via process.env.
-process.env.DOOMBAR_THEME = "doom";
+process.env.GAMEBAR_THEME = "doom";
 // Likewise keep the rate limits other live sessions shared on this machine out of the test.
-process.env.DOOMBAR_RATELIMITS_SHARE = "0";
+process.env.GAMEBAR_RATELIMITS_SHARE = "0";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.join(HERE, "..", "bin", "cli.js");
@@ -38,7 +38,7 @@ const gitBash = () => [process.env.CLAUDE_CODE_GIT_BASH_PATH,
   "C:/Program Files/Git/bin/bash.exe",
 ].find((p) => p && existsSync(p));
 
-const tmp = mkdtempSync(path.join(os.tmpdir(), "doombar-smoke-"));
+const tmp = mkdtempSync(path.join(os.tmpdir(), "gamebar-smoke-"));
 // TEMP/TMP/TMPDIR -> tmp: the render's state files and the client's payload land here, not in
 // the real temp dir (where this checkout's live daemon may be reading).
 const tmpEnv = { ...sandboxEnv(tmp) };
@@ -47,9 +47,9 @@ try {
     { cwd: tmp, env: { ...process.env, ...tmpEnv } });
   const cfg = JSON.parse(readFileSync(path.join(tmp, ".claude", "settings.json"), "utf-8"));
   const cmd = cfg.statusLine.command;
-  const preset = cfg.env.DOOMBAR_PRESET;
-  const env = { ...process.env, DOOMBAR_PRESET: preset, COLUMNS: "100", FORCE_HYPERLINK: "1",
-    ...tmpEnv, DOOMBAR_MSYS_REAP: "0" };
+  const preset = cfg.env.GAMEBAR_PRESET;
+  const env = { ...process.env, GAMEBAR_PRESET: preset, COLUMNS: "100", FORCE_HYPERLINK: "1",
+    ...tmpEnv, GAMEBAR_MSYS_REAP: "0" };
 
   const sample = JSON.stringify({
     session_id: "smoke-1",
@@ -58,20 +58,20 @@ try {
     workspace: { current_dir: tmp },
   });
 
-  const client = cmd.includes("doombar-client.sh");
+  const client = cmd.includes("gamebar-client.sh");
   if (client) {
     // Claude Code runs the command through a shell: Git Bash on Windows (`bash -c '<command>'`),
     // /bin/sh elsewhere. No daemon serves this sandbox, so the client prints the offline line.
     const bash = process.platform === "win32" ? gitBash() : "/bin/sh";
     ok(Boolean(bash), "found the shell Claude Code runs the client command with");
     const out = execFileSync(bash, ["-c", cmd], { input: sample, encoding: "utf-8", env });
-    ok(out === "doombar: offline\n", `client command prints the offline line with no daemon (got: ${JSON.stringify(out)})`);
-    const hash = (/^DOOMBAR_ROOT_HASH=([0-9a-f]+);/.exec(cmd) || / "\$f" ([0-9a-f]+);/.exec(cmd))?.[1];
-    ok(Boolean(hash) && existsSync(path.join(tmp, `mugshot_payload_${hash}_smoke-1.json`)),
+    ok(out === "gamebar: offline\n", `client command prints the offline line with no daemon (got: ${JSON.stringify(out)})`);
+    const hash = (/^GAMEBAR_ROOT_HASH=([0-9a-f]+);/.exec(cmd) || / "\$f" ([0-9a-f]+);/.exec(cmd))?.[1];
+    ok(Boolean(hash) && existsSync(path.join(tmp, `gamebar_payload_${hash}_smoke-1.json`)),
       "the install hash reached the sourced client (payload written under it)");
-    const missing = cmd.replace("src/doombar-client.sh", "src/no-such-client.sh");
+    const missing = cmd.replace("src/gamebar-client.sh", "src/no-such-client.sh");
     const out2 = execFileSync(bash, ["-c", missing], { input: sample, encoding: "utf-8", env });
-    ok(out2 === "doombar: offline\n", `a missing client prints the offline line (got: ${JSON.stringify(out2)})`);
+    ok(out2 === "gamebar: offline\n", `a missing client prints the offline line (got: ${JSON.stringify(out2)})`);
   }
 
   // The one-shot renderer, run the way Claude Code does: through a shell, command verbatim.

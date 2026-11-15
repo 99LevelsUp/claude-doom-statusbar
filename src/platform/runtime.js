@@ -8,40 +8,97 @@ import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { PACKAGE_ROOT } from "../package-root.js";
+import { envGet } from "./env.js";
 
 // Filesystem-safe session key, shared by hook + statusline so they agree on file names.
 export const sidKey = (id) => String(id || "default").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 48);
 
+// The name of the runtime directory, and the one releases before 1.0.0 used.
+export const RUNTIME_NAME = "gamebar";
+export const OLD_RUNTIME_NAME = "doombar";
+
 // The directory every file of the bar lives in. On Windows that is the temp directory, which
 // belongs to one user. On Linux and macOS /tmp is shared by every user, so the bar uses a private
-// per-user directory instead. The client (src/doombar-client.sh) applies the same rule with bash
+// per-user directory instead. The client (src/gamebar-client.sh) applies the same rule with bash
 // builtins, so every process of a session lands in the same place:
-//   1. DOOMBAR_RUNTIME_DIR when set (tests, custom setups), on every platform;
+//   1. GAMEBAR_RUNTIME_DIR when set (tests, custom setups), on every platform;
 //   2. Windows: the temp directory;
-//   3. $XDG_RUNTIME_DIR/doombar when XDG_RUNTIME_DIR is absolute and either missing or owned by
+//   3. $XDG_RUNTIME_DIR/gamebar when XDG_RUNTIME_DIR is absolute and either missing or owned by
 //      this user. A missing one keeps its path: the bar then shows offline rather than moving to
 //      another directory in the middle of a session (an ssh logout removes /run/user/<uid>);
-//   4. macOS: $TMPDIR/doombar when TMPDIR is absolute and owned by this user (it is per user);
-//   5. otherwise /tmp/doombar-<effective uid>.
+//   4. macOS: $TMPDIR/gamebar when TMPDIR is absolute and owned by this user (it is per user);
+//   5. otherwise /tmp/gamebar-<effective uid>.
+// `opts.name` picks another directory name under the same rule (the old one, OLD_RUNTIME_NAME).
 const ownerUid = (p) => { try { return statSync(p).uid; } catch { return null; } };
 const absolute = (p) => typeof p === "string" && p.startsWith("/");
 // The daemon looks the directory up many times per render; with this process's own uid and
 // filesystem, the answer for an environment is kept rather than stat-ed again.
 const resolvedDirs = new Map();
 export function runtimeDir(env = process.env, opts = {}) {
-  const { platform = process.platform, euid = process.geteuid ? process.geteuid() : null, ownerOf = ownerUid } = opts;
-  if (env.DOOMBAR_RUNTIME_DIR) return env.DOOMBAR_RUNTIME_DIR;
+  const { platform = process.platform, euid = process.geteuid ? process.geteuid() : null, ownerOf = ownerUid,
+    name = RUNTIME_NAME } = opts;
+  const override = envGet("RUNTIME_DIR", env);
+  if (override) return override;
   if (platform === "win32") return os.tmpdir();
   const cacheable = opts.ownerOf === undefined && opts.euid === undefined;
-  const key = `${platform}|${env.XDG_RUNTIME_DIR}|${env.TMPDIR}`;
+  const key = `${name}|${platform}|${env.XDG_RUNTIME_DIR}|${env.TMPDIR}`;
   if (cacheable && resolvedDirs.has(key)) return resolvedDirs.get(key);
-  let dir = `/tmp/doombar-${euid}`;
+  let dir = `/tmp/${name}-${euid}`;
   const xdg = env.XDG_RUNTIME_DIR, tmp = env.TMPDIR;
   const xdgOwner = absolute(xdg) ? ownerOf(xdg) : undefined;
-  if (absolute(xdg) && (xdgOwner === null || xdgOwner === euid)) dir = path.posix.join(xdg, "doombar");
-  else if (platform === "darwin" && absolute(tmp) && ownerOf(tmp) === euid) dir = path.posix.join(tmp, "doombar");
+  if (absolute(xdg) && (xdgOwner === null || xdgOwner === euid)) dir = path.posix.join(xdg, name);
+  else if (platform === "darwin" && absolute(tmp) && ownerOf(tmp) === euid) dir = path.posix.join(tmp, name);
   if (cacheable) resolvedDirs.set(key, dir);
   return dir;
+}
+
+// `dir` when it may be read from without being prepared first, else null: on Linux and macOS a
+// real directory, not a link, owned by the effective uid. It never creates the directory and never
+// changes its mode; any failure means null. On Windows the temp directory belongs to one user, so
+// `dir` is returned as it is. This is the check for directories the bar no longer creates itself,
+// such as an old runtime directory: another user may have planted one where a release before 1.0.0
+// would have created it.
+export function existingPrivateDir(dir, opts = {}) {
+  const { platform = process.platform, euid = process.geteuid ? process.geteuid() : null, lstat = lstatSync } = opts;
+  if (platform === "win32") return dir;
+  try {
+    const st = lstat(dir);
+    return st.isDirectory() && st.uid === euid ? dir : null;
+  } catch { return null; }
+}
+
+// The runtime directory a release before 1.0.0 used, when it passes existingPrivateDir, else null.
+// With GAMEBAR_RUNTIME_DIR (or its old name) set, that is the same directory as runtimeDir's; on
+// Windows it is the temp directory.
+export function oldRuntimeDir(env = process.env, opts = {}) {
+  return existingPrivateDir(runtimeDir(env, { ...opts, name: OLD_RUNTIME_NAME }), opts);
+}
+
+// Learned state (the rate-limit pool, rate-health and the savings totals) that was kept under
+// another name or in another directory before 1.0.0: the text of `file`, or, only when `file` is
+// missing, the text of the file `oldFileOf()` names. `oldFileOf` is null, or returns null, when
+// there is no old place to look; it is asked only when `file` is missing, so the old directory is
+// not checked on every render. Returns { text, old }, text null when neither can be read, old true
+// when the text came from the old file. Callers always write to `file`, so the next read finds it.
+export function readLearned(file, oldFileOf) {
+  try { return { text: readFileSync(file, "utf8"), old: false }; } catch (e) {
+    if (!e || e.code !== "ENOENT" || !oldFileOf) return { text: null, old: false };
+  }
+  const oldFile = oldFileOf();
+  if (!oldFile || path.resolve(oldFile) === path.resolve(file)) return { text: null, old: false };
+  try { return { text: readFileSync(oldFile, "utf8"), old: true }; } catch { return { text: null, old: false }; }
+}
+
+// Do `a` and `b` name the same path? Without case on Windows, whose file systems ignore it.
+export const samePath = (a, b) => process.platform === "win32"
+  ? path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase()
+  : path.resolve(a) === path.resolve(b);
+
+// The old place of a learned-state file in the old runtime directory, or null when that directory
+// is missing or not safe to read (see oldRuntimeDir).
+export function oldStateFile(name, env = process.env, opts = {}) {
+  const dir = oldRuntimeDir(env, opts);
+  return dir ? path.join(dir, name) : null;
 }
 
 // The runtime directory when it is safe to use, else null. On Linux and macOS it is created with
@@ -64,10 +121,10 @@ export function ensureRuntimeDir(env = process.env, { platform = process.platfor
 }
 
 // Checkpoint (statusline-owned folded state) + journal (hook-appended events) live next to
-// each other so both processes derive the same pair from the session id. MUGSHOT_STATE
+// each other so both processes derive the same pair from the session id. GAMEBAR_STATE
 // overrides the checkpoint path (tests, custom setups); the journal hangs off it.
 export function statePaths(sessionId, env = process.env) {
-  const base = env.MUGSHOT_STATE || path.join(runtimeDir(env), `mugshot_${sidKey(sessionId)}.json`);
+  const base = envGet("STATE", env) || path.join(runtimeDir(env), `${FILE_PREFIX}${sidKey(sessionId)}.json`);
   return { checkpoint: base, journal: base + ".jsonl" };
 }
 
@@ -83,7 +140,7 @@ export function rootHash(root = PACKAGE_ROOT) {
 }
 const ROOT_HASH = rootHash();
 
-export const pipePath = (hash) => `\\\\.\\pipe\\doombar-${hash}`;
+export const pipePath = (hash) => `\\\\.\\pipe\\gamebar-${hash}`;
 
 // The address the render daemon listens on, so only one runs. On Windows a named pipe, one per
 // installation. Elsewhere a Unix socket file in the private runtime directory, one per
@@ -124,14 +181,25 @@ export function procStartTicks(pid = "self", read = (p) => readFileSync(p, "utf8
   } catch { return null; }
 }
 
-export const payloadPrefix = (hash) => `mugshot_payload_${hash}_`;
-export const framePrefix = (hash) => `mugshot_frame_${hash}_`;
-export const daemonPrefix = (hash) => `mugshot_daemon_${hash}.`;
+// Every file the bar names starts with this prefix, except the savings accumulator (savings_).
+// Releases before 1.0.0 used OLD_FILE_PREFIX.
+export const FILE_PREFIX = "gamebar_";
+export const OLD_FILE_PREFIX = "mugshot_";
+// The disk cache of a game that draws faces from images: it is not a session's file, and the
+// sweep leaves it alone.
+export const FACES_PREFIX = `${FILE_PREFIX}faces_`;
+// The face cache's name before 1.0.0. Only the sweep and uninstall name it, to clean it up.
+export const OLD_FACES_PREFIX = "doombar_faces_";
 
-// Every per-session file. Most sit next to the checkpoint, so MUGSHOT_STATE relocates them and
+// `prefix` is OLD_FILE_PREFIX only where files a release before 1.0.0 left are cleaned up.
+export const payloadPrefix = (hash, prefix = FILE_PREFIX) => `${prefix}payload_${hash}_`;
+export const framePrefix = (hash, prefix = FILE_PREFIX) => `${prefix}frame_${hash}_`;
+export const daemonPrefix = (hash, prefix = FILE_PREFIX) => `${prefix}daemon_${hash}.`;
+
+// Every per-session file. Most sit next to the checkpoint, so GAMEBAR_STATE relocates them and
 // the sweep (which scans the checkpoint's directory) sees them. The render daemon's payload and
 // frame are the exception: they always live in the runtime directory, prefixed with the install
-// hash, so the daemon knows where to look without being told about MUGSHOT_STATE. The `.json`
+// hash, so the daemon knows where to look without being told about GAMEBAR_STATE. The `.json`
 // suffix keeps them inside the sweep's name patterns even though the frame is text. The
 // writers, the sweep and end-of-session cleanup all name files through here, so they always agree.
 export function sessionPaths(sessionId, hash = ROOT_HASH, env = process.env) {
@@ -142,9 +210,9 @@ export function sessionPaths(sessionId, hash = ROOT_HASH, env = process.env) {
   return {
     checkpoint,
     journal,
-    git: path.join(dir, `mugshot_git_${key}.json`),     // git probe throttle marker
-    msys: path.join(dir, `mugshot_msys_${key}.json`),   // bash-count probe throttle marker
-    adv: path.join(dir, `mugshot_adv_${key}.json`),     // advisor consult cache
+    git: path.join(dir, `${FILE_PREFIX}git_${key}.json`),     // git probe throttle marker
+    msys: path.join(dir, `${FILE_PREFIX}msys_${key}.json`),   // bash-count probe throttle marker
+    adv: path.join(dir, `${FILE_PREFIX}adv_${key}.json`),     // advisor consult cache
     savings: path.join(dir, `savings_${key}.json`),     // lean-ctx savings accumulator
     payload: path.join(rt, `${payloadPrefix(hash)}${key}.json`), // client -> daemon input
     frame: path.join(rt, `${framePrefix(hash)}${key}.json`),     // daemon -> client output

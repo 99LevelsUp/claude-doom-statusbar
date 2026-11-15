@@ -13,11 +13,11 @@ const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fai
 const glyphs = (f) => new Set(f.flat().map((cell) => cell[0]));
 
 // Before the import: the sandbox is the runtime directory face.js caches its faces in.
-const SB = mkdtempSync(path.join(os.tmpdir(), "doombar-face-"));
+const SB = mkdtempSync(path.join(os.tmpdir(), "gamebar-face-"));
 Object.assign(process.env, { ...sandboxEnv(SB) });
-const OLD = path.join(SB, "doombar_faces_000000000000.json");
-const RECENT = path.join(SB, "doombar_faces_111111111111.json");
-const OTHER = path.join(SB, "doombar_other.json");
+const OLD = path.join(SB, "gamebar_faces_000000000000.json");
+const RECENT = path.join(SB, "gamebar_faces_111111111111.json");
+const OTHER = path.join(SB, "gamebar_other.json");
 for (const f of [OLD, RECENT, OTHER]) writeFileSync(f, "{}");
 const twoDaysAgo = new Date(Date.now() - 2 * 24 * 3600 * 1000);
 for (const f of [OLD, OTHER]) utimesSync(f, twoDaysAgo, twoDaysAgo);
@@ -45,7 +45,7 @@ try {
 
   console.log("disk cache:");
   {
-    const own = readdirSync(SB).filter((n) => /^doombar_faces_/.test(n) && ![OLD, RECENT].includes(path.join(SB, n)));
+    const own = readdirSync(SB).filter((n) => /^gamebar_faces_/.test(n) && ![OLD, RECENT].includes(path.join(SB, n)));
     ok(own.length === 1, `the converted faces are written to one cache file (found ${own.join(", ") || "none"})`);
     ok(!existsSync(OLD), "a face cache untouched for a day is removed");
     ok(existsSync(RECENT), "a recent face cache, maybe another installation's, is kept");

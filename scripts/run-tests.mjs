@@ -23,13 +23,13 @@ export function findTests(dir) {
 }
 
 // The environment the tests run in: `env` without the developer's own bar settings. Inside a
-// Claude Code session the settings' env (DOOMBAR_PRESET and the like) is exported to every
+// Claude Code session the settings' env (GAMEBAR_PRESET, the old DOOMBAR_PRESET and the like) is exported to every
 // child, and a test that spawns the bar would render with it instead of its own setup. The same
 // list the daemon end-to-end test scrubs.
 export function testEnv(env = process.env) {
   const out = { ...env };
   for (const k of Object.keys(out)) {
-    if (/^(DOOMBAR_|MUGSHOT_)/i.test(k) || /^(CLAUDE_CONFIG_DIR|CLAUDE_CODE_TASK_LIST_ID|COLUMNS)$/i.test(k)) delete out[k];
+    if (/^(GAMEBAR_|DOOMBAR_|MUGSHOT_)/i.test(k) || /^(CLAUDE_CONFIG_DIR|CLAUDE_CODE_TASK_LIST_ID|COLUMNS)$/i.test(k)) delete out[k];
   }
   return out;
 }
