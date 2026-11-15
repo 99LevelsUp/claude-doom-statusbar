@@ -3,7 +3,7 @@
 // The one-shot command (main) and a long-lived renderer serving many sessions both go through
 // it, so this pins: main prints exactly what renderSession returns, the passed environment wins
 // over process.env, sessions rendered back to back never see each other's values, and the
-// session's MUGSHOT_STATE decides where its checkpoint lives.
+// session's GAMEBAR_STATE decides where its checkpoint lives.
 //
 // Everything that changes on its own between two renders is pinned: the clock (passed as `now`,
 // or faked in the child process), RAM, CPU and disk usage, and the temp dir (a sandbox, so the
@@ -34,14 +34,14 @@ fs.statfsSync = () => ({ blocks: 1000, bfree: 400, bavail: 400, bsize: 4096, typ
 new Function("os", "fs", PIN_METRICS)(os, fs);
 syncBuiltinESMExports();
 
-const SB = mkdtempSync(path.join(os.tmpdir(), "doombar-session-"));
+const SB = mkdtempSync(path.join(os.tmpdir(), "gamebar-session-"));
 const TMPDIR = path.join(SB, "tmp");
 mkdirSync(TMPDIR, { recursive: true });
 // Before the import: the sandbox is the runtime directory for the renders. The terminal that runs the
 // tests must not pick the mugshot's glyphs, so its identifying variables go.
-Object.assign(process.env, { ...sandboxEnv(TMPDIR), PATH: "", DOOMBAR_MSYS_REAP: "0",
-  DOOMBAR_THEME: "doom", DOOMBAR_RATELIMITS_SHARE: "0", DOOMBAR_PRESET: path.join(PRESETS, "minimal.toml") });
-for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "DOOMBAR_GLYPHS"]) delete process.env[k];
+Object.assign(process.env, { ...sandboxEnv(TMPDIR), PATH: "", GAMEBAR_MSYS_REAP: "0",
+  GAMEBAR_THEME: "doom", GAMEBAR_RATELIMITS_SHARE: "0", GAMEBAR_PRESET: path.join(PRESETS, "minimal.toml") });
+for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "GAMEBAR_GLYPHS"]) delete process.env[k];
 const { renderSession } = await import("../../src/render.js");
 
 const NOW_MS = 1793500000123;
@@ -69,11 +69,11 @@ function session(name, label, usd = 1) {
   writeFileSync(path.join(dir, "tasks", "1.json"), JSON.stringify({ id: "1", subject: `${label} task`, status: "in_progress" }));
   writeFileSync(path.join(dir, "ling.json"), JSON.stringify({ sessions: { [`sid-${name}`]: { tokens_saved: 4321, last_saved_pct: 37 } } }));
   const env = {
-    COLUMNS: "200", DOOMBAR_THEME: "doom", DOOMBAR_THEME_FILE: path.join(dir, "no-theme.json"),
-    DOOMBAR_PRESET: path.join(PRESETS, "standard.toml"), DOOMBAR_RATELIMITS_SHARE: "0",
-    MUGSHOT_STATE: path.join(dir, "state", "checkpoint.json"), DOOMBAR_TASKS_DIR: path.join(dir, "tasks"),
-    DOOMBAR_EVENTS: path.join(dir, "events.jsonl"), DOOMBAR_LLMLINGUA: path.join(dir, "ling.json"),
-    DOOMBAR_RATELIMITS: path.join(dir, "rl.json"),
+    COLUMNS: "200", GAMEBAR_THEME: "doom", GAMEBAR_THEME_FILE: path.join(dir, "no-theme.json"),
+    GAMEBAR_PRESET: path.join(PRESETS, "standard.toml"), GAMEBAR_RATELIMITS_SHARE: "0",
+    GAMEBAR_STATE: path.join(dir, "state", "checkpoint.json"), GAMEBAR_TASKS_DIR: path.join(dir, "tasks"),
+    GAMEBAR_EVENTS: path.join(dir, "events.jsonl"), GAMEBAR_LLMLINGUA: path.join(dir, "ling.json"),
+    GAMEBAR_RATELIMITS: path.join(dir, "rl.json"),
   };
   const data = {
     session_id: `sid-${name}`, session_name: `${label}-run`, cwd: path.join(dir, "proj"),
@@ -91,15 +91,15 @@ try {
 
   // main() prints what renderSession returns, byte for byte. Each path renders twice in a fresh
   // copy of the same session directory, the second time over the state the first one wrote.
-  for (const [name, over] of [["doom", {}], ["hotbar", { DOOMBAR_THEME: "minecraft", COLUMNS: "160", DOOMBAR_INDENT: "4" }]]) {
+  for (const [name, over] of [["doom", {}], ["hotbar", { GAMEBAR_THEME: "minecraft", COLUMNS: "160", GAMEBAR_INDENT: "4" }]]) {
     let s = session(`same-${name}`, "same");
     const childEnv = { ...s.env, ...over, SystemRoot: process.env.SystemRoot, PATH: "",
-      ...sandboxEnv(TMPDIR), DOOMBAR_MSYS_REAP: "0" };
-    rmSync(path.join(TMPDIR, "mugshot_cpu.json"), { force: true });
+      ...sandboxEnv(TMPDIR), GAMEBAR_MSYS_REAP: "0" };
+    rmSync(path.join(TMPDIR, "gamebar_cpu.json"), { force: true });
     const viaMain = [1, 2].map(() => execFileSync(process.execPath, ["--import", pathToFileURL(PIN).href, STATUSLINE],
       { input: JSON.stringify(s.data), env: childEnv }).toString("utf8"));
     s = session(`same-${name}`, "same");
-    rmSync(path.join(TMPDIR, "mugshot_cpu.json"), { force: true });
+    rmSync(path.join(TMPDIR, "gamebar_cpu.json"), { force: true });
     const viaRender = [1, 2].map(() => render(s, over));
     ok(viaMain[0] === viaRender[0] && viaMain[1] === viaRender[1],
       `${name}: main() prints exactly what renderSession returns (two renders in a row)`);
@@ -109,12 +109,12 @@ try {
   // The passed environment's preset wins over process.env's (minimal here).
   {
     const s = session("preset", "preset");
-    const full = render(s, { DOOMBAR_PRESET: path.join(PRESETS, "full.toml"), COLUMNS: "250" });
-    const minimal = render(s, { DOOMBAR_PRESET: path.join(PRESETS, "minimal.toml"), COLUMNS: "250" });
+    const full = render(s, { GAMEBAR_PRESET: path.join(PRESETS, "full.toml"), COLUMNS: "250" });
+    const minimal = render(s, { GAMEBAR_PRESET: path.join(PRESETS, "minimal.toml"), COLUMNS: "250" });
     ok(full !== minimal, "the full and the minimal preset draw differently (the check below can fail)");
     // Without `env`, renderSession reads process.env: set the same settings there and compare.
     const saved = { ...process.env };
-    Object.assign(process.env, s.env, { DOOMBAR_PRESET: path.join(PRESETS, "full.toml"), COLUMNS: "250" });
+    Object.assign(process.env, s.env, { GAMEBAR_PRESET: path.join(PRESETS, "full.toml"), COLUMNS: "250" });
     const viaProcess = renderSession({ data: s.data, now: NOW }).join("\n") + "\n";
     for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
     Object.assign(process.env, saved);
@@ -138,30 +138,54 @@ try {
   // [mugshot] glyphs key: one daemon draws each session with the glyphs its terminal can show.
   {
     const s = session("glyphs", "glyphs");
-    const half = render(s, { DOOMBAR_GLYPHS: "half" });
-    const octant = render(s, { DOOMBAR_GLYPHS: "octant" });
+    const half = render(s, { GAMEBAR_GLYPHS: "half" });
+    const octant = render(s, { GAMEBAR_GLYPHS: "octant" });
     ok(half !== octant, "a session asking for half blocks draws a different face than one asking for octants");
-    ok(render(s, { DOOMBAR_GLYPHS: "half" }) === half, "the same session settings draw the same face again");
+    ok(render(s, { GAMEBAR_GLYPHS: "half" }) === half, "the same session settings draw the same face again");
     const capped = path.join(s.dir, "capped.toml");
     const preset = readFileSync(path.join(PRESETS, "standard.toml"), "utf8");
     ok(/^glyphs = "octant"$/m.test(preset), "the standard preset names its mugshot glyph step (the check below can fail)");
     writeFileSync(capped, preset.replace(/^glyphs = "octant"$/m, 'glyphs = "half"'));
-    ok(render(s, { DOOMBAR_PRESET: capped, DOOMBAR_GLYPHS: "octant" }) === half,
+    ok(render(s, { GAMEBAR_PRESET: capped, GAMEBAR_GLYPHS: "octant" }) === half,
       "a preset that caps the mugshot at half blocks wins over a terminal that draws octants");
     ok(render(s, { WT_SESSION: "x" }) === octant, "a Windows Terminal session gets octants without any setting");
   }
 
-  // MUGSHOT_STATE in the passed env decides where the checkpoint is read and written.
+  // GAMEBAR_STATE in the passed env decides where the checkpoint is read and written.
   {
     const s = session("state", "state");
-    const journal = s.env.MUGSHOT_STATE + ".jsonl";
+    const journal = s.env.GAMEBAR_STATE + ".jsonl";
     const line = JSON.stringify({ ts: 1, name: "Notification", ev: { permission_mode: "plan" } }) + "\n";
     writeFileSync(journal, line);
     render(s);
-    ok(existsSync(s.env.MUGSHOT_STATE), "the checkpoint is written where the session's MUGSHOT_STATE points");
-    const cp = JSON.parse(readFileSync(s.env.MUGSHOT_STATE, "utf8"));
+    ok(existsSync(s.env.GAMEBAR_STATE), "the checkpoint is written where the session's GAMEBAR_STATE points");
+    const cp = JSON.parse(readFileSync(s.env.GAMEBAR_STATE, "utf8"));
     ok(cp.mode === "plan" && cp.offset === Buffer.byteLength(line), "the journal next to it is the one folded");
-    ok(!existsSync(path.join(os.tmpdir(), `mugshot_${s.data.session_id}.json`)), "no checkpoint at the default location");
+    ok(!existsSync(path.join(os.tmpdir(), `gamebar_${s.data.session_id}.json`)), "no checkpoint at the default location");
+  }
+
+  // Every setting is also read under the name releases before 1.0.0 used (src/platform/env.js),
+  // and each keeps its own treatment of the empty string: GAMEBAR_INDENT is read with `??`.
+  {
+    const s = session("old-names", "old");
+    const base = render(s);
+    const oldEnv = Object.fromEntries(Object.entries(s.env).map(([k, v]) =>
+      [k === "GAMEBAR_STATE" ? "MUGSHOT_STATE" : k.replace(/^GAMEBAR_/, "DOOMBAR_"), v]));
+    ok(Object.keys(oldEnv).every((k) => !k.startsWith("GAMEBAR_")) && oldEnv.MUGSHOT_STATE === s.env.GAMEBAR_STATE,
+      "precondition: the session's settings are spelled with the old names only");
+    ok(renderSession({ data: s.data, env: oldEnv, now: NOW }).join("\n") + "\n" === base,
+      "a session that sets only the old names renders exactly as with the new ones");
+    ok(render(s, { GAMEBAR_PRESET: path.join(PRESETS, "full.toml"), DOOMBAR_PRESET: path.join(PRESETS, "minimal.toml"), COLUMNS: "250" })
+      === render(s, { GAMEBAR_PRESET: path.join(PRESETS, "full.toml"), COLUMNS: "250" }), "with both names set, the new one wins");
+
+    // The hotbar centres itself in the columns left after the indent, so the indent shows there.
+    const hotbar = { GAMEBAR_THEME: "minecraft", COLUMNS: "160" };
+    const zero = render(s, { ...hotbar, GAMEBAR_INDENT: "0" });
+    ok(zero !== render(s, hotbar), "an indent of 0 draws differently from the default (the checks below can fail)");
+    ok(render(s, { ...hotbar, GAMEBAR_INDENT: "" }) === zero, "GAMEBAR_INDENT=\"\" is an indent of 0, not the default (??)");
+    ok(render(s, { ...hotbar, DOOMBAR_INDENT: "" }) === zero, "DOOMBAR_INDENT=\"\" alone is an indent of 0 as well");
+    ok(render(s, { ...hotbar, GAMEBAR_INDENT: "", DOOMBAR_INDENT: "4" }) === zero,
+      "GAMEBAR_INDENT=\"\" is set, so it wins over the old name");
   }
 } finally {
   rmSync(SB, { recursive: true, force: true });

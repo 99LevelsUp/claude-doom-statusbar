@@ -4,7 +4,7 @@
 // places. The order is the order `theme next` cycles through.
 //
 // An entry:
-//   name               the theme name (`claude-doom-statusbar theme <name>`)
+//   name               the theme name (`claude-game-bar theme <name>`)
 //   about              a one-line blurb for the theme list
 //   aliases            older names that still choose this game
 //   default            the game used when no theme is chosen, or the chosen one is unknown; it also
@@ -14,7 +14,7 @@
 //                      width and the render context (src/kit/context.js)
 //   presets            preset name -> absolute path of its .toml file
 //   defaultPreset      the preset the theme renders
-//   usesPresetSetting  the theme renders the user's preset setting (DOOMBAR_PRESET, written by
+//   usesPresetSetting  the theme renders the user's preset setting (GAMEBAR_PRESET, written by
 //                      `install --preset`) and its default preset only when that is unset
 //   sample             optional image the glyph test card draws at every glyph step
 //
@@ -25,7 +25,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { PACKAGE_ROOT, SRC_DIR } from "../package-root.js";
 import { doomLayout } from "./doom/layout.js";
-import { ALPHA_DIR } from "./doom/face.js";
+import { IDLE_FACE } from "./doom/face.js";
 import { minecraftLayout } from "./minecraft/layout.js";
 
 const gameDir = (name) => path.join(SRC_DIR, "games", name);
@@ -43,7 +43,7 @@ export const GAMES = [
     presets: presetsOf("doom", ["full", "standard", "minimal"]),
     defaultPreset: "standard",
     usesPresetSetting: true,
-    sample: path.join(ALPHA_DIR, "STFST01.png"), // the idle mugshot
+    sample: IDLE_FACE,
   },
   {
     name: "minecraft",

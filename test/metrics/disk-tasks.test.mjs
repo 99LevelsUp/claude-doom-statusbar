@@ -10,7 +10,7 @@ import { activityValues } from "../../src/metrics/activity.js";
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 
-const dir = mkdtempSync(path.join(os.tmpdir(), "doombar-tasks-"));
+const dir = mkdtempSync(path.join(os.tmpdir(), "gamebar-tasks-"));
 const put = (id, subject, status, mtime) => {
   const f = path.join(dir, `${id}.json`);
   writeFileSync(f, JSON.stringify({ id, subject, description: "", status, blocks: [], blockedBy: [] }));
@@ -18,9 +18,9 @@ const put = (id, subject, status, mtime) => {
 };
 try {
   // tasksDir: env override, list id, session id.
-  process.env.DOOMBAR_TASKS_DIR = "/x/y";
-  ok(tasksDir("s1") === "/x/y", "DOOMBAR_TASKS_DIR overrides the directory");
-  delete process.env.DOOMBAR_TASKS_DIR;
+  process.env.GAMEBAR_TASKS_DIR = "/x/y";
+  ok(tasksDir("s1") === "/x/y", "GAMEBAR_TASKS_DIR overrides the directory");
+  delete process.env.GAMEBAR_TASKS_DIR;
   process.env.CLAUDE_CONFIG_DIR = "/cfg";
   ok(tasksDir("s1") === path.join("/cfg", "tasks", "s1"), "defaults to <config>/tasks/<session id>");
   process.env.CLAUDE_CODE_TASK_LIST_ID = "shared";
@@ -67,7 +67,7 @@ try {
   ok(kept.tasks["7"] && kept.tasks["7"].status === "completed", "journal task without a file kept");
 
   // Claude Code cleaned up a finished list: no task files, only .highwatermark.
-  const hw = mkdtempSync(path.join(os.tmpdir(), "doombar-hwm-"));
+  const hw = mkdtempSync(path.join(os.tmpdir(), "gamebar-hwm-"));
   try {
     writeFileSync(path.join(hw, ".highwatermark"), "2");
     writeFileSync(path.join(hw, ".lock"), "");

@@ -35,12 +35,14 @@ try {
 
   // The developer's bar settings, exported by a Claude Code session, do not reach the tests.
   const leak = write(path.join("env", "d-no-settings.test.mjs"),
-    "process.exit(['DOOMBAR_PRESET', 'MUGSHOT_STATE', 'COLUMNS'].some((k) => k in process.env) ? 1 : 0);\n");
-  const inherited = { ...process.env, DOOMBAR_PRESET: "/old/clone/presets/full.toml", MUGSHOT_STATE: "/x", COLUMNS: "238" };
+    "process.exit(['GAMEBAR_PRESET', 'GAMEBAR_STATE', 'DOOMBAR_PRESET', 'MUGSHOT_STATE', 'COLUMNS']" +
+    ".some((k) => k in process.env) ? 1 : 0);\n");
+  const inherited = { ...process.env, GAMEBAR_PRESET: "/new/clone/src/games/doom/presets/full.toml", GAMEBAR_STATE: "/y",
+    DOOMBAR_PRESET: "/old/clone/presets/full.toml", MUGSHOT_STATE: "/x", COLUMNS: "238" };
   ok(runAll([leak], { stdio: "ignore", env: inherited })[0].passed === false,
     "a test sees settings passed to it as they are (the check below can fail)");
   ok(runAll([leak], { stdio: "ignore", env: testEnv(inherited) })[0].passed,
-    "the runner's environment drops DOOMBAR_*, MUGSHOT_* and COLUMNS");
+    "the runner's environment drops GAMEBAR_*, DOOMBAR_*, MUGSHOT_* and COLUMNS");
   ok(testEnv(inherited).PATH === inherited.PATH, "and keeps everything else");
 } finally {
   rmSync(dir, { recursive: true, force: true });

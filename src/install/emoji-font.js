@@ -1,5 +1,5 @@
 // Make sure a Linux desktop can draw the bar's emoji, and install Noto Color Emoji for the user
-// when it cannot. Called by `claude-doom-statusbar install` (bin/cli.js).
+// when it cannot. Called by `claude-game-bar install` (bin/cli.js).
 //
 // Only Linux needs this: Windows ships Segoe UI Emoji and macOS ships Apple Color Emoji, and the
 // bar draws fine there out of the box. A Linux install without a colour emoji font (Raspberry Pi
@@ -18,6 +18,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { envGet } from "../platform/env.js";
 
 export const FONT_FILE = "NotoColorEmoji.ttf";
 export const FONT_URL = "https://github.com/googlefonts/noto-emoji/raw/v2.051/fonts/NotoColorEmoji.ttf";
@@ -74,7 +75,7 @@ const defaults = {
 export async function ensureEmojiFont(opts = {}) {
   const d = { ...defaults, ...opts };
   if (d.platform !== "linux") return { status: "skipped", notes: [] };
-  if (d.skip || d.env.DOOMBAR_NO_FONTS === "1") {
+  if (d.skip || envGet("NO_FONTS", d.env) === "1") {
     return { status: "skipped", notes: ["emoji font check skipped (--no-fonts)"] };
   }
 

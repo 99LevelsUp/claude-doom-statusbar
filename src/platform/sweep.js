@@ -7,51 +7,56 @@
 // SessionStart we drop the ones that have gone cold.
 //
 // Deliberately narrow, because this deletes files:
-//   * only names matching our own `mugshot_` / `savings_` prefixes, in the checkpoint's
+//   * only names matching our own `gamebar_` / `savings_` prefixes, in the checkpoint's
 //     directory, non-recursively;
 //   * never SHARED state: the rate-health accumulator, the rate-limit pool and the CPU sample
 //     are cross-session by design (see src/metrics/ratelimits.js and src/metrics/system.js) and the reap throttle is process-wide, so
 //     they are keyed by a fixed name with no session id and are excluded by name; the render
-//     daemon's heartbeat and claim (one pair per install hash) are excluded by pattern;
+//     daemon's heartbeat and claim (one pair per install hash) and a game's face cache are
+//     excluded by pattern;
 //   * never this session's own files;
 //   * decided per session, by its newest file, so a session that is merely idle — or a
 //     concurrent one — is never touched, and a session's files go together or not at all;
 //   * a session that ever rendered a bar (it has a checkpoint, advisor cache or savings file)
-//     goes once its newest file is older than DOOMBAR_JOURNAL_TTL (default 7 days); one
+//     goes once its newest file is older than GAMEBAR_JOURNAL_TTL (default 7 days); one
 //     that never rendered — a headless
-//     `claude -p` run fires the hooks but shows no bar — after DOOMBAR_UNRENDERED_TTL
+//     `claude -p` run fires the hooks but shows no bar — after GAMEBAR_UNRENDERED_TTL
 //     (default 1 hour), because nothing will ever read its files.
 // Orphaned `<checkpoint>.<pid>.tmp` files from interrupted atomic writes belong to their
 // session. So do the render daemon's payload and frame (and their `.tmp` leftovers), which always
 // live in the runtime directory: they are swept with their session when the checkpoint lives there
-// too (the normal case), not when MUGSHOT_STATE moves the checkpoint elsewhere. Failures are ignored per file: housekeeping must never cost a hook its exit 0.
+// too (the normal case), not when GAMEBAR_STATE moves the checkpoint elsewhere. Failures are ignored per file: housekeeping must never cost a hook its exit 0.
 
 import { readdirSync, statSync, unlinkSync } from "node:fs";
 import path from "node:path";
-import { statePaths, sessionPaths, sidKey, ROOT_HASH_LEN, envNum } from "./runtime.js";
+import { statePaths, sessionPaths, sidKey, ROOT_HASH_LEN, envNum, FILE_PREFIX, FACES_PREFIX } from "./runtime.js";
+import { envGet } from "./env.js";
 
-const JOURNAL_TTL = envNum(process.env.DOOMBAR_JOURNAL_TTL, 7 * 24 * 60 * 60 * 1000); // ms
-const UNRENDERED_TTL = envNum(process.env.DOOMBAR_UNRENDERED_TTL, 60 * 60 * 1000); // ms
+const JOURNAL_TTL = envNum(envGet("JOURNAL_TTL"), 7 * 24 * 60 * 60 * 1000); // ms
+const UNRENDERED_TTL = envNum(envGet("UNRENDERED_TTL"), 60 * 60 * 1000); // ms
+const P = FILE_PREFIX;
 
 // Fixed-name files shared across sessions — deleting these would lose real state.
 const SHARED_STATE = new Set([
-  "mugshot_ratehealth_global.json", "mugshot_ratelimits_global.json", "mugshot_cpu.json", "mugshot_reap_tick.json",
+  `${P}ratehealth_global.json`, `${P}ratelimits_global.json`, `${P}cpu.json`, `${P}reap_tick.json`,
 ]);
 
 // The render daemon's own files (daemonPaths in src/platform/runtime.js): one heartbeat and one
 // claim per install hash, shared by every session the daemon serves.
 const HASH_RE = `[0-9a-f]{${ROOT_HASH_LEN}}`;
-const DAEMON_FILE = new RegExp(`^mugshot_daemon_${HASH_RE}\\.(?:json|claim)(?:\\.\\d+\\.tmp)?$`);
+const DAEMON_FILE = new RegExp(`^${P}daemon_${HASH_RE}\\.(?:json|claim)(?:\\.\\d+\\.tmp)?$`);
 // Per-session payload and frame (sessionPaths in src/platform/runtime.js), with any install hash.
-const DAEMON_SESSION_FILE = new RegExp(`^mugshot_(?:payload|frame)_${HASH_RE}_(.+)\\.json(?:\\.\\d+\\.tmp)?$`);
+const DAEMON_SESSION_FILE = new RegExp(`^${P}(?:payload|frame)_${HASH_RE}_(.+)\\.json(?:\\.\\d+\\.tmp)?$`);
+const PROBE_FILE = new RegExp(`^${P}(?:git|msys|adv)_(.+)\\.json$`);
+const STATE_FILE = new RegExp(`^${P}(.+?)\\.json(?:\\.jsonl|\\.\\d+\\.tmp)?$`); // checkpoint, journal, .tmp
 
 // The session key a file belongs to (the names sessionPaths in src/platform/runtime.js writes),
 // or null when the name is not one of ours.
 function sessionKeyOf(name) {
-  let m = /^mugshot_(?:git|msys|adv)_(.+)\.json$/.exec(name) || /^savings_(.+)\.json$/.exec(name) ||
+  let m = PROBE_FILE.exec(name) || /^savings_(.+)\.json$/.exec(name) ||
     DAEMON_SESSION_FILE.exec(name);
   if (m) return m[1];
-  m = /^mugshot_(.+?)\.json(?:\.jsonl|\.\d+\.tmp)?$/.exec(name); // checkpoint, journal, .tmp
+  m = STATE_FILE.exec(name);
   return m ? m[1] : null;
 }
 
@@ -63,7 +68,7 @@ export function staleStateFiles(names, ageOf, { ttl = JOURNAL_TTL, unrenderedTtl
   const mine = new Set(keep.map((p) => path.basename(p)));
   const sessions = new Map(); // session key -> [{ name, age }]
   for (const n of all) {
-    if (SHARED_STATE.has(n) || DAEMON_FILE.test(n) || mine.has(n)) continue; // shared state; this session's own files
+    if (SHARED_STATE.has(n) || DAEMON_FILE.test(n) || n.startsWith(FACES_PREFIX) || mine.has(n)) continue; // shared state; this session's own files
     const key = sessionKeyOf(n);
     if (key === null) continue;                         // not ours
     if (!sessions.has(key)) sessions.set(key, []);
@@ -76,7 +81,7 @@ export function staleStateFiles(names, ageOf, { ttl = JOURNAL_TTL, unrenderedTtl
     const newest = Math.min(...known.map((f) => f.age));
     // Rendered = any file only the statusline writes is present. After end-of-session cleanup
     // the savings file is all that is left, and it must keep the long TTL for a later resume.
-    const rendered = [`mugshot_${key}.json`, `mugshot_adv_${key}.json`, `savings_${key}.json`]
+    const rendered = [`${P}${key}.json`, `${P}adv_${key}.json`, `savings_${key}.json`]
       .some((n) => listed.has(n));
     const limit = rendered ? ttl : unrenderedTtl;
     if (newest >= limit) stale.push(...known.map((f) => f.name));
@@ -85,12 +90,12 @@ export function staleStateFiles(names, ageOf, { ttl = JOURNAL_TTL, unrenderedTtl
 }
 
 export function sweepState(sid) {
-  if (process.env.DOOMBAR_JOURNAL_TTL === "off") return 0;
+  if (envGet("JOURNAL_TTL") === "off") return 0;
   const { checkpoint } = statePaths(sid);
   // Sweep the directory our state actually lives in, not the runtime directory blindly. They are the same
-  // in normal use, but MUGSHOT_STATE relocates the checkpoint — and a sweep that ignored it would
+  // in normal use, but GAMEBAR_STATE relocates the checkpoint — and a sweep that ignored it would
   // delete from the real temp dir while writing to a sandbox. That bit the test suite: firing a
-  // SessionStart with MUGSHOT_STATE set swept the developer's actual runtime directory.
+  // SessionStart with GAMEBAR_STATE set swept the developer's actual runtime directory.
   const dir = path.dirname(checkpoint);
   let names;
   try { names = readdirSync(dir); } catch { return 0; }

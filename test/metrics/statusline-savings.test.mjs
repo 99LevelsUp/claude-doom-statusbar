@@ -6,30 +6,30 @@ import { renderContext } from "../../src/kit/context.js";
 import { buildBar } from "../../src/games/doom/layout.js";
 import { vlen } from "../../src/kit/text.js";
 import { parse as parseToml } from "smol-toml";
-import { mkdtempSync, writeFileSync, appendFileSync, rmSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, appendFileSync, rmSync, readFileSync, existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Pin the DOOM theme so a theme saved on this machine (`theme minecraft`) can't change
 // what the statusline renders under test. Child processes inherit it via process.env.
-process.env.DOOMBAR_THEME = "doom";
+process.env.GAMEBAR_THEME = "doom";
 // Likewise keep the rate limits other live sessions shared on this machine out of the test.
-process.env.DOOMBAR_RATELIMITS_SHARE = "0";
+process.env.GAMEBAR_RATELIMITS_SHARE = "0";
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 
 const HERE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const tmp = mkdtempSync(path.join(os.tmpdir(), "doombar-savings-"));
+const tmp = mkdtempSync(path.join(os.tmpdir(), "gamebar-savings-"));
 const MISSING = path.join(tmp, "does-not-exist");
 
 // Each scenario gets an isolated events log + accumulator state file.
 let seq = 0;
 const scenario = () => {
   const ev = path.join(tmp, `events-${seq}.jsonl`);
-  process.env.DOOMBAR_EVENTS = ev;
-  process.env.DOOMBAR_SAVINGS_STATE = path.join(tmp, `state-${seq}.json`);
+  process.env.GAMEBAR_EVENTS = ev;
+  process.env.GAMEBAR_SAVINGS_STATE = path.join(tmp, `state-${seq}.json`);
   seq++;
   return ev;
 };
@@ -42,7 +42,7 @@ const SID = { session_id: "test" };
 
 try {
   // No llmlingua during lean tests.
-  process.env.DOOMBAR_LLMLINGUA = MISSING;
+  process.env.GAMEBAR_LLMLINGUA = MISSING;
 
   // --- init at EOF: events that predate the session are not counted ---
   let ev = scenario();
@@ -93,7 +93,7 @@ try {
   // --- log truncation/rotation (offset > size) resets without crashing ---
   ev = scenario();
   writeFileSync(ev, tc(800, 1000, `${CWD}/a.js`) + tc(800, 1000, `${CWD}/b.js`));
-  const statePath = process.env.DOOMBAR_SAVINGS_STATE;
+  const statePath = process.env.GAMEBAR_SAVINGS_STATE;
   writeFileSync(statePath, JSON.stringify({ offset: 999999, saved: 1234, original: 2000 })); // stale huge offset
   const after = statsValues(SID, CWD); // must not throw; offset clamps to 0/size
   ok(typeof (after["save.leanctx"]) === "string" || after["save.leanctx"] === undefined, "truncation/rotation handled without crash");
@@ -111,38 +111,38 @@ try {
   ok(statsValues(SID, CWD)["save.leanctx"] === "1.2M 60%", "k() millions: 1200000 -> 1.2M");
 
   // --- missing events log -> no key, no throw ---
-  process.env.DOOMBAR_EVENTS = MISSING;
-  process.env.DOOMBAR_SAVINGS_STATE = path.join(tmp, "state-missing.json");
+  process.env.GAMEBAR_EVENTS = MISSING;
+  process.env.GAMEBAR_SAVINGS_STATE = path.join(tmp, "state-missing.json");
   ok(!("save.leanctx" in statsValues(SID, CWD)), "missing events log -> save.leanctx omitted, no throw");
 
   // --- no cwd -> lean omitted (can't attribute) ---
   ok(!("save.leanctx" in statsValues(SID, undefined)), "no cwd -> save.leanctx omitted");
 
   // === llmlingua (per-session: smart-read keys sessions[sid] by CLAUDE_CODE_SESSION_ID) ===
-  process.env.DOOMBAR_EVENTS = MISSING; // keep lean out of the way (SID sanitizes to "test")
+  process.env.GAMEBAR_EVENTS = MISSING; // keep lean out of the way (SID sanitizes to "test")
 
-  process.env.DOOMBAR_LLMLINGUA = writeJson("ling-nested.json", { sessions: { test: { runs: 3, tokens_saved: 1234, last_ratio: 1.3 } } });
+  process.env.GAMEBAR_LLMLINGUA = writeJson("ling-nested.json", { sessions: { test: { runs: 3, tokens_saved: 1234, last_ratio: 1.3 } } });
   ok(statsValues(SID, CWD)["save.lingua"] === "1.2k 1.3x", `llmlingua sessions[sid] ratio -> "1.2k 1.3x" (got ${JSON.stringify(statsValues(SID, CWD)["save.lingua"])})`);
 
-  process.env.DOOMBAR_LLMLINGUA = writeJson("ling-pct.json", { sessions: { test: { tokens_saved: 2048, last_saved_pct: 75 } } });
+  process.env.GAMEBAR_LLMLINGUA = writeJson("ling-pct.json", { sessions: { test: { tokens_saved: 2048, last_saved_pct: 75 } } });
   ok(statsValues(SID, CWD)["save.lingua"] === "2.0k 75%", "llmlingua last_saved_pct wins");
 
-  process.env.DOOMBAR_LLMLINGUA = writeJson("ling-frac.json", { sessions: { test: { tokens_saved: 1234, last_ratio: 1.3333 } } });
+  process.env.GAMEBAR_LLMLINGUA = writeJson("ling-frac.json", { sessions: { test: { tokens_saved: 1234, last_ratio: 1.3333 } } });
   ok(statsValues(SID, CWD)["save.lingua"] === "1.2k 1.3x", "many-decimal ratio normalized to 1 decimal");
 
   // another session's block must NOT leak into this session's row
-  process.env.DOOMBAR_LLMLINGUA = writeJson("ling-other.json", { sessions: { "someone-else": { tokens_saved: 9999, last_ratio: 5.0 } } });
+  process.env.GAMEBAR_LLMLINGUA = writeJson("ling-other.json", { sessions: { "someone-else": { tokens_saved: 9999, last_ratio: 5.0 } } });
   ok(!("save.lingua" in statsValues(SID, CWD)), "only this session's sessions[sid] is shown, not another session's");
 
-  process.env.DOOMBAR_LLMLINGUA = writeJson("ling-flat.json", { runs: 5, tokens_saved_total: 4242, last_ratio: 2.1 });
+  process.env.GAMEBAR_LLMLINGUA = writeJson("ling-flat.json", { runs: 5, tokens_saved_total: 4242, last_ratio: 2.1 });
   ok(!("save.lingua" in statsValues(SID, CWD)), "flat lifetime-only llmlingua omitted (no sessions map)");
 
-  process.env.DOOMBAR_LLMLINGUA = writeJson("ling-bad.json", "{ not json ");
+  process.env.GAMEBAR_LLMLINGUA = writeJson("ling-bad.json", "{ not json ");
   ok(!("save.lingua" in statsValues(SID, CWD)), "malformed llmlingua JSON omitted, no throw");
 
   // lingua lookup uses the RAW session id (smart-read's key), not the filesystem-sanitized one
   const dotted = { session_id: "abc.def:99" }; // chars sanitize would mangle
-  process.env.DOOMBAR_LLMLINGUA = writeJson("ling-raw.json", { sessions: { "abc.def:99": { tokens_saved: 1500, last_ratio: 2.0 } } });
+  process.env.GAMEBAR_LLMLINGUA = writeJson("ling-raw.json", { sessions: { "abc.def:99": { tokens_saved: 1500, last_ratio: 2.0 } } });
   ok(statsValues(dotted, CWD)["save.lingua"] === "1.5k 2.0x", `raw session id used for lingua key (got ${JSON.stringify(statsValues(dotted, CWD)["save.lingua"])})`);
 
   // === presentation (src/kit/meters.js) ===
@@ -160,6 +160,27 @@ try {
 
   out = buildBar(cfg, 200, renderContext({ values: { ...SAMPLE } })).lines.join("\n");
   ok(out.includes("SAVE"), "savings present -> SAVE box renders");
+
+  // A session's totals from a release before 1.0.0 carry over. The file keeps its name, savings_<key>.json;
+  // on Linux and macOS it moves from the old runtime directory (<XDG_RUNTIME_DIR>/doombar) to the new one,
+  // so the old one is read while the new one is missing. On Windows both are the temp directory.
+  if (process.platform !== "win32") {
+    const rt = mkdtempSync(path.join(os.tmpdir(), "gamebar-savings-rt-"));
+    try {
+      for (const d of ["doombar", "gamebar"]) mkdirSync(path.join(rt, d), { mode: 0o700 });
+      const ev = path.join(rt, "events.jsonl");
+      writeFileSync(ev, "");
+      writeFileSync(path.join(rt, "doombar", "savings_resumed.json"), JSON.stringify({ offset: 0, saved: 8300, original: 10000 }));
+      const env = { XDG_RUNTIME_DIR: rt, GAMEBAR_EVENTS: ev, GAMEBAR_LLMLINGUA: MISSING };
+      const v = statsValues({ session_id: "resumed" }, CWD, env);
+      ok(v["save.leanctx"] === "8.3k 83%", `the old runtime directory's savings total carries over (got ${v["save.leanctx"]})`);
+      ok(existsSync(path.join(rt, "gamebar", "savings_resumed.json")), "and it is written to the new runtime directory");
+    } finally {
+      rmSync(rt, { recursive: true, force: true });
+    }
+  } else {
+    console.log("  skip  savings from the old runtime directory: on Windows the file keeps its name and place");
+  }
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }

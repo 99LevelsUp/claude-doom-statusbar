@@ -27,7 +27,7 @@ let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const SB = mkdtempSync(path.join(os.tmpdir(), "doombar-restart-"));
+const SB = mkdtempSync(path.join(os.tmpdir(), "gamebar-restart-"));
 const { sessionPaths, daemonPaths, rootHash } = await import("../../src/platform/runtime.js");
 const { claimRestart, idlePercent, isOurLinuxDaemon, isOurPsDaemon } = await import("../../src/platform/supervise.js");
 
@@ -108,14 +108,14 @@ function copyPackage({ fake = true } = {}) {
 }
 
 const baseEnv = (pkg) => ({
-  ...process.env, ...sandboxEnv(pkg.tmp), MUGSHOT_STATE: "",
-  DOOMBAR_MSYS_REAP: "0", DOOMBAR_JOURNAL_TTL: "off", DOOMBAR_DAEMON_IDLE_MS: "20000",
-  DOOMBAR_DAEMON_THROTTLE_MS: String(THROTTLE), DOOMBAR_DAEMON_GRACE_MS: String(GRACE),
+  ...process.env, ...sandboxEnv(pkg.tmp), GAMEBAR_STATE: "",
+  GAMEBAR_MSYS_REAP: "0", GAMEBAR_JOURNAL_TTL: "off", GAMEBAR_DAEMON_IDLE_MS: "20000",
+  GAMEBAR_DAEMON_THROTTLE_MS: String(THROTTLE), GAMEBAR_DAEMON_GRACE_MS: String(GRACE),
   // Never count the machine as busy unless a case says so, whatever else runs during the tests.
-  DOOMBAR_BUSY_IDLE_PCT: "0",
+  GAMEBAR_BUSY_IDLE_PCT: "0",
   FAKE_MODE: "", FAKE_VERSION: "",
 });
-delete process.env.MUGSHOT_STATE;
+delete process.env.GAMEBAR_STATE;
 
 // One hook process from the copy. Resolves with its exit code and stderr.
 function runHook(pkg, name = "PostToolUse", env = {}) {
@@ -146,7 +146,7 @@ const waitFor = async (cond, ms = 8000) => {
   return cond();
 };
 const exitWithin = (c, ms) => Promise.race([c.exited, sleep(ms).then(() => "timeout")]);
-const writePayload = (pkg) => writeFileSync(pkg.payload, "doombar-env\tCOLUMNS=120\n" + JSON.stringify({ session_id: SID }));
+const writePayload = (pkg) => writeFileSync(pkg.payload, "gamebar-env\tCOLUMNS=120\n" + JSON.stringify({ session_id: SID }));
 
 // Every node process whose command line points into the sandbox: the daemons and helpers here.
 function sandboxProcesses() {
@@ -163,8 +163,8 @@ function sandboxProcesses() {
   }
   const r = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
     "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -and " +
-    "$_.CommandLine.ToLower().Contains($env:DOOMBAR_TEST_SB) } | ForEach-Object { '{0}|{1}' -f $_.ProcessId, $_.CommandLine }"],
-  { encoding: "utf8", timeout: 15000, windowsHide: true, env: { ...process.env, DOOMBAR_TEST_SB: SB.toLowerCase() } });
+    "$_.CommandLine.ToLower().Contains($env:GAMEBAR_TEST_SB) } | ForEach-Object { '{0}|{1}' -f $_.ProcessId, $_.CommandLine }"],
+  { encoding: "utf8", timeout: 15000, windowsHide: true, env: { ...process.env, GAMEBAR_TEST_SB: SB.toLowerCase() } });
   return String(r.stdout || "").split(/\r?\n/).map((l) => /^(\d+)\|(.*)$/.exec(l.trim())).filter(Boolean)
     .map((m) => ({ pid: Number(m[1]), cmd: m[2] }));
 }
@@ -241,7 +241,7 @@ try {
     {
       const pkg = copyPackage();
       const t0 = Date.now();
-      const r = await runHook(pkg, "SessionStart", { DOOMBAR_PAYLOAD_WAIT_MS: "600" });
+      const r = await runHook(pkg, "SessionStart", { GAMEBAR_PAYLOAD_WAIT_MS: "600" });
       const waited = Date.now() - t0;
       const p = await runHook(pkg, "PostToolUse");
       await sleep(800);
@@ -254,7 +254,7 @@ try {
     // The hook waits for it and starts the daemon then, without a tool call or Stop.
     {
       const pkg = copyPackage();
-      const hook = runHook(pkg, "SessionStart", { DOOMBAR_PAYLOAD_WAIT_MS: "5000" });
+      const hook = runHook(pkg, "SessionStart", { GAMEBAR_PAYLOAD_WAIT_MS: "5000" });
       await sleep(700);
       writePayload(pkg);
       const r = await hook;
@@ -286,7 +286,7 @@ try {
       writePayload(pkg);
       writeFileSync(pkg.claim, JSON.stringify({ claimedAt: Date.now() - 120000 }));
       const runs = await Promise.all(Array.from({ length: 10 },
-        () => runHook(pkg, "PreToolUse", { DOOMBAR_DAEMON_THROTTLE_MS: "60000" })));
+        () => runHook(pkg, "PreToolUse", { GAMEBAR_DAEMON_THROTTLE_MS: "60000" })));
       await waitFor(() => lines(pkg, "bound").length > 0);
       await sleep(1000);
       ok(runs.every((r) => r.code === 0), "all ten hooks exit 0");
@@ -323,7 +323,7 @@ try {
       writePayload(pkg);
       const starved = startFake(pkg, { FAKE_MODE: "stale" });
       ok(await waitFor(() => readJson(pkg.heartbeat)?.pid === starved.pid), "the starved daemon holds the pipe with a stale heartbeat");
-      const busy = { DOOMBAR_BUSY_IDLE_PCT: "101" };
+      const busy = { GAMEBAR_BUSY_IDLE_PCT: "101" };
       const r1 = await runHook(pkg, "PostToolUse", busy);
       await sleep(GRACE + 200);
       const r2 = await runHook(pkg, "PostToolUse", busy);
@@ -425,11 +425,11 @@ try {
       const pkg = copyPackage();
       writePayload(pkg);
       writeFileSync(pkg.claim, JSON.stringify({ claimedAt: Date.now() }));
-      await runHook(pkg, "Stop", { DOOMBAR_DAEMON_THROTTLE_MS: "60000" });
+      await runHook(pkg, "Stop", { GAMEBAR_DAEMON_THROTTLE_MS: "60000" });
       await sleep(800);
       ok(lines(pkg, "spawn").length === 0, "a fresh claim blocks the start");
       writeFileSync(pkg.claim, JSON.stringify({ claimedAt: Date.now() - 120000 }));
-      await runHook(pkg, "Stop", { DOOMBAR_DAEMON_THROTTLE_MS: "60000" });
+      await runHook(pkg, "Stop", { GAMEBAR_DAEMON_THROTTLE_MS: "60000" });
       ok(await waitFor(() => lines(pkg, "bound").length === 1), "an expired claim is taken over and the daemon starts");
     }
 

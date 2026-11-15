@@ -6,13 +6,15 @@ import os from "node:os";
 import path from "node:path";
 import { foldBatch } from "../platform/journal.js";
 import { statePaths, writeAtomic } from "../platform/runtime.js";
+import { envGet } from "../platform/env.js";
 
 // Claude Code keeps each session's task list on disk (~/.claude/tasks/<list id>/<task id>.json),
 // and that survives a reboot and `claude --resume`; our journal in the runtime directory doesn't. The
-// list id is CLAUDE_CODE_TASK_LIST_ID when set, otherwise the session id. DOOMBAR_TASKS_DIR
+// list id is CLAUDE_CODE_TASK_LIST_ID when set, otherwise the session id. GAMEBAR_TASKS_DIR
 // overrides the whole directory (tests). Returns null when there is no list directory.
 export function tasksDir(sessionId, env = process.env) {
-  if (env.DOOMBAR_TASKS_DIR) return env.DOOMBAR_TASKS_DIR;
+  const set = envGet("TASKS_DIR", env);
+  if (set) return set;
   const listId = env.CLAUDE_CODE_TASK_LIST_ID || sessionId;
   if (!listId) return null;
   const home = env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude");

@@ -20,22 +20,22 @@ import { sandboxEnv } from "../_sandbox-env.mjs";
 
 // Pin the DOOM theme so a theme saved on this machine (`theme minecraft`) can't change
 // what the statusline renders under test. Child processes inherit it via process.env.
-process.env.DOOMBAR_THEME = "doom";
+process.env.GAMEBAR_THEME = "doom";
 // Likewise keep the rate limits other live sessions shared on this machine out of the test.
-process.env.DOOMBAR_RATELIMITS_SHARE = "0";
+process.env.GAMEBAR_RATELIMITS_SHARE = "0";
 
 const HERE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const HOOK = path.join(HERE, "..", "src", "hook.js");
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 
-const tmp = mkdtempSync(path.join(os.tmpdir(), "doombar-msys-"));
+const tmp = mkdtempSync(path.join(os.tmpdir(), "gamebar-msys-"));
 const checkpoint = path.join(tmp, "state.json");
 const journal = checkpoint + ".jsonl";
 
 try {
   // --- Pure path: synthetic msys line folds into state.msys and renders as sys.zombies. ---
-  process.env.MUGSHOT_STATE = checkpoint;
+  process.env.GAMEBAR_STATE = checkpoint;
   const sid = "msystest-" + process.pid;
   const now = Date.now() / 1000;
   writeFileSync(journal, JSON.stringify({ name: "msys", ev: { msys: { n: 11 } }, ts: now }) + "\n");
@@ -51,10 +51,10 @@ try {
 
   // --- Real hook path: win32 snapshots a count; other platforms emit nothing. ---
   const sid2 = "msyshook-" + process.pid;
-  // DOOMBAR_MSYS_REAP=0 throughout: these subprocesses are real hooks, and on a Windows dev box
+  // GAMEBAR_MSYS_REAP=0 throughout: these subprocesses are real hooks, and on a Windows dev box
   // with a pile already forming they would reap the developer's own live statusLine wrappers.
   // The reaper's selection rule is covered purely below instead.
-  const env = { ...process.env, MUGSHOT_STATE: checkpoint, DOOMBAR_GIT_TTL: "0", DOOMBAR_MSYS_REAP: "0" };
+  const env = { ...process.env, GAMEBAR_STATE: checkpoint, GAMEBAR_GIT_TTL: "0", GAMEBAR_MSYS_REAP: "0" };
   execFileSync(process.execPath, [HOOK], {
     input: JSON.stringify({ hook_event_name: "SessionStart", session_id: sid2, cwd: tmp }),
     encoding: "utf8", env,
@@ -77,7 +77,7 @@ try {
   const checkpoint2 = path.join(tmp, "state-rw.json");
   const journal2 = checkpoint2 + ".jsonl";
   const sid3 = "msysrw-" + process.pid;
-  const env0 = { ...process.env, MUGSHOT_STATE: checkpoint2, DOOMBAR_MSYS_TTL: "0", DOOMBAR_MSYS_REAP: "0" };
+  const env0 = { ...process.env, GAMEBAR_STATE: checkpoint2, GAMEBAR_MSYS_TTL: "0", GAMEBAR_MSYS_REAP: "0" };
   execFileSync(process.execPath, [HOOK], {
     input: JSON.stringify({ hook_event_name: "PostToolUse", session_id: sid3, tool_name: "PowerShell", cwd: tmp }),
     encoding: "utf8", env: env0,
@@ -113,14 +113,19 @@ try {
     "an unparsable age is treated as not-yet-stale");
 
   // Bash wrappers running the client are reaped like the renderer's; the node daemon never is.
+  // Settings written before 1.0.0 still run the client through its old path, src/doombar-client.sh.
   const clientProcs = [
     { pid: 201, ageMs: 30000, cmd: 'C:\\Program Files\\Git\\bin\\bash.exe -c "DOOMBAR_HASH=0123456789 . \\"C:/x/claude-doom-statusbar/src/doombar-client.sh\\""' },
     { pid: 203, ageMs: 200, cmd: 'C:\\Program Files\\Git\\bin\\bash.exe -c ". \\"C:/x/src/doombar-client.sh\\""' },
     { pid: 204, ageMs: 99999, cmd: '"C:\\Program Files\\nodejs\\node.exe" C:/x/src/daemon.js' },
+    { pid: 205, ageMs: 30000, cmd: 'C:\\Program Files\\Git\\bin\\bash.exe -c "GAMEBAR_ROOT_HASH=0123456789; f=\\"C:/x/claude-game-bar/src/gamebar-client.sh\\""' },
+    { pid: 206, ageMs: 200, cmd: 'C:\\Program Files\\Git\\bin\\bash.exe -c ". \\"C:/x/src/gamebar-client.sh\\""' },
   ];
   const clientPicked = stalePids(clientProcs, 10000);
-  ok(clientPicked.includes(201), "an old bash running doombar-client.sh is reaped");
+  ok(clientPicked.includes(201), "an old bash running the client's old path, doombar-client.sh, is reaped");
   ok(!clientPicked.includes(203), "a young bash running doombar-client.sh is left alone");
+  ok(clientPicked.includes(205), "an old bash running gamebar-client.sh is reaped");
+  ok(!clientPicked.includes(206), "a young bash running gamebar-client.sh is left alone");
   ok(!clientPicked.includes(204), "the node render daemon is never reaped");
 
   // --- Enumerator parse: only the first two "|" are structural. -------------------------
@@ -149,23 +154,23 @@ try {
       input: JSON.stringify({ session_id: "reaptick-" + process.pid, cwd: tmp,
         model: { id: "claude-opus-5" }, context_window: { context_window_size: 1000000, used_tokens: 1000 } }),
       encoding: "utf8",
-      env: { ...process.env, MUGSHOT_STATE: path.join(tmp, "rt.json"), COLUMNS: "120",
+      env: { ...process.env, GAMEBAR_STATE: path.join(tmp, "rt.json"), COLUMNS: "120",
         ...sandboxEnv(tmp), ...extraEnv },
     });
     return { ms: Date.now() - t0, out: r };
   };
 
-  const first = renderOnce({ DOOMBAR_REAP_TICK: "0" }); // throttle open -> a reap IS kicked off
+  const first = renderOnce({ GAMEBAR_REAP_TICK: "0" }); // throttle open -> a reap IS kicked off
   ok(first.out.trim().length > 0, "render still produces output with the reaper armed");
   ok(first.ms < 3000, `render did not wait for the reaper (${first.ms} ms, must stay well under 1 s tick)`);
 
   // Throttled: a huge tick means the second render must skip the kick entirely.
-  const second = renderOnce({ DOOMBAR_REAP_TICK: "999999" });
+  const second = renderOnce({ GAMEBAR_REAP_TICK: "999999" });
   ok(second.out.trim().length > 0, "render output unaffected when the reap throttle is closed");
 
   // And it must be switchable off outright.
-  const off = renderOnce({ DOOMBAR_MSYS_REAP: "0", DOOMBAR_REAP_TICK: "0" });
-  ok(off.out.trim().length > 0, "DOOMBAR_MSYS_REAP=0 leaves rendering intact");
+  const off = renderOnce({ GAMEBAR_MSYS_REAP: "0", GAMEBAR_REAP_TICK: "0" });
+  ok(off.out.trim().length > 0, "GAMEBAR_MSYS_REAP=0 leaves rendering intact");
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }

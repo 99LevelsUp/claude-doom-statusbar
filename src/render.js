@@ -12,6 +12,7 @@ import { currentTheme, themePreset, defaultPreset } from "./theme.js";
 import { layoutFor, presetFile } from "./games/index.js";
 import { collectValues } from "./metrics/index.js";
 import { buildReaction } from "./metrics/reaction.js";
+import { envGet } from "./platform/env.js";
 
 // Parsed presets by file path, re-parsed when the file's mtime or size changes. The builders
 // never modify a preset, so one parse serves every render.
@@ -35,11 +36,11 @@ export function renderSession({ data, env = process.env, now = Date.now() / 1000
   // that keeps the payload between renders must not see it change.
   if (data && typeof data === "object" && !Array.isArray(data)) data = { ...data };
 
-  // A theme with a preset of its own (see theme.js) swaps it in; the others follow DOOMBAR_PRESET,
+  // A theme with a preset of its own (see theme.js) swaps it in; the others follow GAMEBAR_PRESET,
   // then their default preset. A path that no longer exists but names a registered preset (an
   // installation from before the presets moved into their games) loads the registered file.
   const theme = currentTheme(env);
-  const preset = presetFile(themePreset(theme) || env.DOOMBAR_PRESET || defaultPreset(theme));
+  const preset = presetFile(themePreset(theme) || envGet("PRESET", env) || defaultPreset(theme));
   const cfg = loadPreset(preset);
 
   const { values, st, god_until } = collectValues(data, env, now);
@@ -68,8 +69,8 @@ export function renderSession({ data, env = process.env, now = Date.now() / 1000
     tick: Math.floor(now), // one marquee step per refresh (~1s); pure fn of time
     step: effectiveStep(env, mugshot.glyphs),
     background: rgbOf(mugshot.background ?? "#000000"),
-    overflow: env.DOOMBAR_TEXT_OVERFLOW || undefined, // set: wins over the presets' text_overflow
-    indent: Number(env.DOOMBAR_INDENT ?? 2), // Claude Code draws the status line 2 cols in
+    overflow: envGet("TEXT_OVERFLOW", env) || undefined, // set: wins over the presets' text_overflow
+    indent: Number(envGet("INDENT", env) ?? 2), // Claude Code draws the status line 2 cols in
     presetByName: (name) => {
       try { return loadPreset(path.join(presetDir, `${name}.toml`)); }
       catch { return null; }

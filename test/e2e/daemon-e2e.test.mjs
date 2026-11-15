@@ -39,8 +39,8 @@ if (!WIN && process.platform !== "linux") {
 
 const ROOT = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "..");
 // The shell Claude Code runs the statusLine with, and (Linux) the bash 5 the command execs.
-const SHELL = WIN ? (process.env.DOOMBAR_TEST_BASH || "C:/Program Files/Git/bin/bash.exe") : "/bin/sh";
-const POSIX_BASH = WIN ? null : (process.env.DOOMBAR_TEST_BASH || "/bin/bash");
+const SHELL = WIN ? (process.env.GAMEBAR_TEST_BASH || "C:/Program Files/Git/bin/bash.exe") : "/bin/sh";
+const POSIX_BASH = WIN ? null : (process.env.GAMEBAR_TEST_BASH || "/bin/bash");
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -52,13 +52,13 @@ const { OFFLINE_MARKER } = await import("../../src/platform/frame.js");
 
 const THROTTLE = 1000;
 const GRACE = 2000;
-const WINDOW = 3000; // the default validity window: DOOMBAR_FRAME_WINDOW is never set here
+const WINDOW = 3000; // the default validity window: GAMEBAR_FRAME_WINDOW is never set here
 const IDLE_MS = 180000; // backstop: a daemon that escaped cleanup still exits on its own
 const IDLE_RUN_MS = 60000; // how long the idle session is watched
 const SID = "e2e-session";
 const CAP = 64 * 1024; // bytes of client output kept per tick
 
-const SB = mkdtempSync(path.join(os.tmpdir(), "doombar-e2e-"));
+const SB = mkdtempSync(path.join(os.tmpdir(), "gamebar-e2e-"));
 const SB_NORM = SB.replace(/\\/g, "/").toLowerCase();
 const PKG = path.join(SB, "pkg");
 const TMP = path.join(SB, "tmp");
@@ -91,9 +91,9 @@ function sandboxProcesses() {
   }
   const r = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
     "Get-CimInstance Win32_Process -Filter \"Name='node.exe' OR Name='bash.exe'\" | Where-Object { $_.CommandLine -and " +
-    "$_.CommandLine.Replace('\\','/').ToLower().Contains($env:DOOMBAR_TEST_SB) } | " +
+    "$_.CommandLine.Replace('\\','/').ToLower().Contains($env:GAMEBAR_TEST_SB) } | " +
     "ForEach-Object { '{0}|{1}|{2}' -f $_.ProcessId, $_.Name, $_.CommandLine }"],
-  { encoding: "utf8", timeout: 20000, windowsHide: true, maxBuffer: 1 << 20, env: { ...process.env, DOOMBAR_TEST_SB: SB_NORM } });
+  { encoding: "utf8", timeout: 20000, windowsHide: true, maxBuffer: 1 << 20, env: { ...process.env, GAMEBAR_TEST_SB: SB_NORM } });
   return String(r.stdout || "").split(/\r?\n/).map((l) => /^(\d+)\|([^|]*)\|(.*)$/.exec(l.trim())).filter(Boolean)
     .map((m) => ({ pid: Number(m[1]), name: m[2].toLowerCase().replace(/\.exe$/, ""), cmd: m[3] }));
 }
@@ -199,24 +199,24 @@ const PAUSE_LOG = path.join(TMP, "e2e-daemon-pause.log");
 
 // The statusLine command exactly as the installer writes it (WIN_CLIENT_CMD and posixClientCmd
 // in src/install/shell.js): sourced into Git Bash on Windows, exec'd bash with the hash elsewhere.
-const CLIENT = path.join(PKG, "src", "doombar-client.sh").replace(/\\/g, "/");
+const CLIENT = path.join(PKG, "src", "gamebar-client.sh").replace(/\\/g, "/");
 const CLIENT_CMD = WIN
-  ? `DOOMBAR_ROOT_HASH=${HASH}; f="${CLIENT}"; if [ -r "$f" ]; then . "$f"; else echo 'doombar: offline'; fi`
+  ? `GAMEBAR_ROOT_HASH=${HASH}; f="${CLIENT}"; if [ -r "$f" ]; then . "$f"; else echo 'gamebar: offline'; fi`
   : `b='${POSIX_BASH}'; f='${CLIENT}'; if [ -r "$f" ] && [ -x "$b" ]; then unset BASH_ENV; ` +
-    `exec "$b" --norc --noprofile "$f" ${HASH}; else echo 'doombar: offline'; fi`;
-const SOCKET = daemonSocket(HASH, { DOOMBAR_RUNTIME_DIR: TMP });
+    `exec "$b" --norc --noprofile "$f" ${HASH}; else echo 'gamebar: offline'; fi`;
+const SOCKET = daemonSocket(HASH, { GAMEBAR_RUNTIME_DIR: TMP });
 
 // The developer's own bar settings must not leak in: they would reach the daemon through the
 // payload line (client) or the inherited environment (hook), and change every timing below.
 const scrubbed = { ...process.env };
 for (const k of Object.keys(scrubbed)) {
-  if (/^(DOOMBAR_|MUGSHOT_)/i.test(k) || /^(CLAUDE_CONFIG_DIR|CLAUDE_CODE_TASK_LIST_ID|COLUMNS)$/i.test(k)) delete scrubbed[k];
+  if (/^(GAMEBAR_|DOOMBAR_|MUGSHOT_)/i.test(k) || /^(CLAUDE_CONFIG_DIR|CLAUDE_CODE_TASK_LIST_ID|COLUMNS)$/i.test(k)) delete scrubbed[k];
 }
-const baseEnv = { ...scrubbed, ...sandboxEnv(TMP), DOOMBAR_MSYS_REAP: "0", DOOMBAR_JOURNAL_TTL: "off" };
-const hookEnv = { ...baseEnv, DOOMBAR_DAEMON_THROTTLE_MS: String(THROTTLE), DOOMBAR_DAEMON_GRACE_MS: String(GRACE),
-  DOOMBAR_DAEMON_IDLE_MS: String(IDLE_MS),
+const baseEnv = { ...scrubbed, ...sandboxEnv(TMP), GAMEBAR_MSYS_REAP: "0", GAMEBAR_JOURNAL_TTL: "off" };
+const hookEnv = { ...baseEnv, GAMEBAR_DAEMON_THROTTLE_MS: String(THROTTLE), GAMEBAR_DAEMON_GRACE_MS: String(GRACE),
+  GAMEBAR_DAEMON_IDLE_MS: String(IDLE_MS),
   // The hung-daemon case must restart it whatever else keeps this machine busy meanwhile.
-  DOOMBAR_BUSY_IDLE_PCT: "0" };
+  GAMEBAR_BUSY_IDLE_PCT: "0" };
 const clientEnv = { ...baseEnv, COLUMNS: "120" };
 
 // A realistic statusLine payload, the same on every tick: an idle session.
@@ -235,7 +235,7 @@ const STATUSLINE_JSON = JSON.stringify({
 
 const kindOf = (out) => {
   if (out.includes(OFFLINE_MARKER)) return "grey";
-  if (out === "doombar: offline\n") return "offline";
+  if (out === "gamebar: offline\n") return "offline";
   if (out.trim() === "") return "empty";
   return "live";
 };

@@ -10,14 +10,14 @@ const ok = (c, m) => { console.log((c?"  ok   ":"  FAIL ")+m); if(!c) fails++; }
 
 // The hook writes its journal and markers to the system temp dir; point that at a dir this
 // test owns so a run leaves nothing in the machine's real temp directory.
-const TMP = mkdtempSync(path.join(os.tmpdir(), "doombar-hooktasks-"));
+const TMP = mkdtempSync(path.join(os.tmpdir(), "gamebar-hooktasks-"));
 process.on("exit", () => rmSync(TMP, { recursive: true, force: true }));
 
 // Malformed event must not crash the hook (would block tools in a live session).
 function runHook(input, env = {}) {
   try {
     execFileSync(process.execPath, [HOOK], { input, encoding: "utf8",
-      env: { ...process.env, ...sandboxEnv(TMP), DOOMBAR_MSYS_REAP: "0", ...env } });
+      env: { ...process.env, ...sandboxEnv(TMP), GAMEBAR_MSYS_REAP: "0", ...env } });
     return 0;
   } catch (e) { return e.status ?? 1; }
 }

@@ -4,18 +4,19 @@
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { sessionPaths } from "./runtime.js";
+import { envGet } from "./env.js";
 import { base, WRITE_TOOLS } from "./journal.js";
 
-const GIT_TTL = Number.isFinite(Number(process.env.DOOMBAR_GIT_TTL))
-  ? Number(process.env.DOOMBAR_GIT_TTL)
-  : 4000; // ms; DOOMBAR_GIT_TTL=0 disables throttling (0 is a valid TTL)
+const GIT_TTL = Number.isFinite(Number(envGet("GIT_TTL")))
+  ? Number(envGet("GIT_TTL"))
+  : 4000; // ms; GAMEBAR_GIT_TTL=0 disables throttling (0 is a valid TTL)
 
 // The bash count is a VOLATILE signal (unlike git, which only changes on writes), so it can't
 // ride git's write-gated cadence — a captured spike would stick on the HUD until the next write
 // tool ran. It gets its own time-based gate that fires on ANY event, so the gauge tracks reality
-// within MSYS_TTL regardless of which tools run. DOOMBAR_MSYS_TTL=0 disables throttling.
-const MSYS_TTL = Number.isFinite(Number(process.env.DOOMBAR_MSYS_TTL))
-  ? Number(process.env.DOOMBAR_MSYS_TTL)
+// within MSYS_TTL regardless of which tools run. GAMEBAR_MSYS_TTL=0 disables throttling.
+const MSYS_TTL = Number.isFinite(Number(envGet("MSYS_TTL")))
+  ? Number(envGet("MSYS_TTL"))
   : 4000; // ms
 
 function gitCmd(cwd, ...args) {

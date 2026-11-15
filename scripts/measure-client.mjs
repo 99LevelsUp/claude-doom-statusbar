@@ -27,7 +27,7 @@ const bashMajor = (bash) => {
   const r = spawnSync(bash, ["--norc", "--noprofile", "-c", 'echo "${BASH_VERSINFO[0]}"'], { encoding: "utf8" });
   return r.status === 0 ? Number(r.stdout.trim()) : 0;
 };
-const bash = process.env.DOOMBAR_TEST_BASH || (WIN ? "C:/Program Files/Git/bin/bash.exe"
+const bash = process.env.GAMEBAR_TEST_BASH || (WIN ? "C:/Program Files/Git/bin/bash.exe"
   : ["/bin/bash", "/usr/bin/bash", "/usr/local/bin/bash", "/opt/homebrew/bin/bash"].find((b) => existsSync(b) && bashMajor(b) >= 5));
 if (!bash || !existsSync(bash)) {
   console.log(`platform ${process.platform} ${os.arch()}: no bash 5, so the installer keeps the one-shot renderer here`);
@@ -35,19 +35,19 @@ if (!bash || !existsSync(bash)) {
 }
 
 const hash = rootHash(ROOT);
-const client = path.join(ROOT, "src", "doombar-client.sh").replace(/\\/g, "/");
+const client = path.join(ROOT, "src", "gamebar-client.sh").replace(/\\/g, "/");
 const cmd = WIN
-  ? `DOOMBAR_ROOT_HASH=${hash}; f="${client}"; if [ -r "$f" ]; then . "$f"; else echo 'doombar: offline'; fi`
+  ? `GAMEBAR_ROOT_HASH=${hash}; f="${client}"; if [ -r "$f" ]; then . "$f"; else echo 'gamebar: offline'; fi`
   : `b='${bash}'; f='${client}'; if [ -r "$f" ] && [ -x "$b" ]; then unset BASH_ENV; ` +
-    `exec "$b" --norc --noprofile "$f" ${hash}; else echo 'doombar: offline'; fi`;
+    `exec "$b" --norc --noprofile "$f" ${hash}; else echo 'gamebar: offline'; fi`;
 const shell = WIN ? bash : "/bin/sh";
 
-const sandbox = mkdtempSync(path.join(os.tmpdir(), "doombar-client-cost-"));
+const sandbox = mkdtempSync(path.join(os.tmpdir(), "gamebar-client-cost-"));
 if (!WIN) chmodSync(sandbox, 0o700);
 const env = {
   ...process.env, ...sandboxEnv(sandbox), COLUMNS: "200",
-  DOOMBAR_GLYPHS: "octant", DOOMBAR_PRESET: path.join(ROOT, "src", "games", "doom", "presets", "full.toml"),
-  DOOMBAR_THEME: "doom", DOOMBAR_RATELIMITS_SHARE: "0", DOOMBAR_MSYS_REAP: "0",
+  GAMEBAR_GLYPHS: "octant", GAMEBAR_PRESET: path.join(ROOT, "src", "games", "doom", "presets", "full.toml"),
+  GAMEBAR_THEME: "doom", GAMEBAR_RATELIMITS_SHARE: "0", GAMEBAR_MSYS_REAP: "0",
 };
 const payload = JSON.stringify({
   session_id: "client-cost", cwd: ROOT, workspace: { current_dir: ROOT, project_dir: ROOT },
@@ -60,7 +60,7 @@ const tick = () => {
   const t = performance.now();
   const r = spawnSync(shell, ["-c", cmd], { input: payload, env, encoding: "utf8" });
   const out = String(r.stdout || "");
-  const kind = out === "doombar: offline\n" ? "offline" : out.includes(OFFLINE_MARKER) ? "grey" : out.trim() ? "live" : "empty";
+  const kind = out === "gamebar: offline\n" ? "offline" : out.includes(OFFLINE_MARKER) ? "grey" : out.trim() ? "live" : "empty";
   return { ms: performance.now() - t, kind };
 };
 const median = (xs) => { const s = [...xs].sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };

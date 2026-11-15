@@ -10,13 +10,14 @@ import {
   sessionPaths, daemonPaths, rootHash, daemonSocket, procStartTicks, addressBound,
   writeAtomic, envNum, packageVersion as readPackageVersion, runtimeDir,
 } from "./runtime.js";
+import { envGet } from "./env.js";
 
 const DAEMON_JS = path.join(SRC_DIR, "daemon.js");
-const DAEMON_THROTTLE_MS = envNum(process.env.DOOMBAR_DAEMON_THROTTLE_MS, 15000);
-const DAEMON_GRACE_MS = envNum(process.env.DOOMBAR_DAEMON_GRACE_MS, 20000);
-const PAYLOAD_WAIT_MS = envNum(process.env.DOOMBAR_PAYLOAD_WAIT_MS, 10000);
+const DAEMON_THROTTLE_MS = envNum(envGet("DAEMON_THROTTLE_MS"), 15000);
+const DAEMON_GRACE_MS = envNum(envGet("DAEMON_GRACE_MS"), 20000);
+const PAYLOAD_WAIT_MS = envNum(envGet("PAYLOAD_WAIT_MS"), 10000);
 const PAYLOAD_POLL_MS = 200;
-const BUSY_IDLE_PCT = envNum(process.env.DOOMBAR_BUSY_IDLE_PCT, 10);
+const BUSY_IDLE_PCT = envNum(envGet("BUSY_IDLE_PCT"), 10);
 const BUSY_SAMPLE_MS = 250;
 const PROBE_MS = 150;
 const LOCK_STALE_MS = 2000; // a lock holder does a few file operations; older means it died

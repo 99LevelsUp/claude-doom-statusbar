@@ -4,7 +4,7 @@
 // render daemon and prints the frame for the current moment, starting no process of its own.
 //
 // Every run goes through the real Git Bash (never cmd.exe) the way the statusLine command will:
-//   DOOMBAR_ROOT_HASH=<hash> . "<root>/src/doombar-client.sh"
+//   GAMEBAR_ROOT_HASH=<hash> . "<root>/src/gamebar-client.sh"
 // Frames are built with the node-side reference serializer, so client and daemon agree on the format.
 
 import { spawnSync } from "node:child_process";
@@ -17,25 +17,27 @@ import { sidKey, sessionPaths, runtimeDir } from "../../src/platform/runtime.js"
 import { sandboxEnv } from "../_sandbox-env.mjs";
 
 const HERE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const CLIENT = path.join(HERE, "..", "src", "doombar-client.sh").replace(/\\/g, "/");
+const CLIENT = path.join(HERE, "..", "src", "gamebar-client.sh").replace(/\\/g, "/");
 const WIN = process.platform === "win32";
 // Claude Code runs the statusLine through Git Bash on Windows; elsewhere (CI) the system bash.
-const BASH = process.env.DOOMBAR_TEST_BASH || (WIN ? "C:/Program Files/Git/bin/bash.exe" : "bash");
+const BASH = process.env.GAMEBAR_TEST_BASH || (WIN ? "C:/Program Files/Git/bin/bash.exe" : "bash");
 const HASH = "abc1234567";
-const OFFLINE = "doombar: offline\n";
-const FORWARDED = ["COLUMNS", "DOOMBAR_PRESET", "DOOMBAR_THEME", "DOOMBAR_TEXT_OVERFLOW",
-  "DOOMBAR_INDENT", "DOOMBAR_FRAME_WINDOW", "MUGSHOT_STATE", "CLAUDE_CODE_TASK_LIST_ID", "CLAUDE_CONFIG_DIR",
-  "WT_SESSION", "TERM_PROGRAM", "TMUX", "DOOMBAR_GLYPHS", "TERM", "VTE_VERSION"];
+const OFFLINE = "gamebar: offline\n";
+const FORWARDED = ["COLUMNS", "GAMEBAR_PRESET", "GAMEBAR_THEME", "GAMEBAR_TEXT_OVERFLOW",
+  "GAMEBAR_INDENT", "GAMEBAR_FRAME_WINDOW", "GAMEBAR_STATE", "CLAUDE_CODE_TASK_LIST_ID", "CLAUDE_CONFIG_DIR",
+  "WT_SESSION", "TERM_PROGRAM", "TMUX", "GAMEBAR_GLYPHS", "TERM", "VTE_VERSION"];
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 const show = (s) => JSON.stringify(s);
 
-const sandbox = mkdtempSync(path.join(os.tmpdir(), "doombar-client-"));
+const sandbox = mkdtempSync(path.join(os.tmpdir(), "gamebar-client-"));
 
-// The child sees only the sandbox as its temp dir, and none of the developer's own bar settings.
-const baseEnv = { ...process.env, ...sandboxEnv(sandbox) };
-for (const k of FORWARDED) delete baseEnv[k];
+// The child sees only the sandbox as its temp dir, and none of the developer's own bar settings,
+// under their new or their old names.
+const baseEnv = { ...process.env };
+for (const k of Object.keys(baseEnv)) if (FORWARDED.includes(k) || /^(GAMEBAR_|DOOMBAR_|MUGSHOT_)/i.test(k)) delete baseEnv[k];
+Object.assign(baseEnv, sandboxEnv(sandbox));
 
 // Git Bash sets TERM itself when the environment has none; drop that item where a test did not set TERM.
 const shellTermless = (line) => line.split("\t").filter((item) => !item.startsWith("TERM=")).join("\t");
@@ -49,10 +51,11 @@ const text = (lines) => lines.join("\n") + "\n";
 // prefix: shell text placed in front of the source (extra assignments, test hooks).
 // script: run the client as a script with the hash as its argument, as the Linux and macOS
 // statusLine command does, instead of sourcing it.
-function run({ sid, input, env = {}, prefix = "", hash = HASH, script = false } = {}) {
+// client, hashVar: another file to run and another name for the hash (the client's old path).
+function run({ sid, input, env = {}, prefix = "", hash = HASH, script = false, client = CLIENT, hashVar = "GAMEBAR_ROOT_HASH" } = {}) {
   const stdin = input ?? JSON.stringify({ session_id: sid, model: { id: "claude-opus-5" } });
-  const cmd = `${prefix}${hash ? `DOOMBAR_ROOT_HASH=${hash} ` : ""}. "${CLIENT}"`;
-  const args = script ? ["--norc", "--noprofile", CLIENT, hash] : ["-c", cmd];
+  const cmd = `${prefix}${hash ? `${hashVar}=${hash} ` : ""}. "${client}"`;
+  const args = script ? ["--norc", "--noprofile", client, hash] : ["-c", cmd];
   const t0 = process.hrtime.bigint();
   const r = spawnSync(BASH, args, { input: stdin, env: { ...baseEnv, ...env }, encoding: "utf8" });
   const ms = Number(process.hrtime.bigint() - t0) / 1e6;
@@ -176,12 +179,12 @@ try {
   {
     const sid = "payload-env";
     const json = JSON.stringify({ session_id: sid, cwd: "C:\\work", nested: { a: [1, 2] } }, null, 2) + "\n";
-    const r = run({ sid, input: json, env: { COLUMNS: "137", DOOMBAR_PRESET: "compact", DOOMBAR_THEME: "do\tom\nx", DOOMBAR_INDENT: "",
+    const r = run({ sid, input: json, env: { COLUMNS: "137", GAMEBAR_PRESET: "compact", GAMEBAR_THEME: "do\tom\nx", GAMEBAR_INDENT: "",
       CLAUDE_CODE_TASK_LIST_ID: "list-7", CLAUDE_CONFIG_DIR: "C:\\cfg\\claude" } });
     const payload = existsSync(inSandbox(sid, "payload")) ? readFileSync(inSandbox(sid, "payload"), "utf8") : "";
     const nl = payload.indexOf("\n");
     const envLine = shellTermless(payload.slice(0, nl));
-    ok(envLine === "doombar-env\tCOLUMNS=137\tDOOMBAR_PRESET=compact\tDOOMBAR_THEME=doomx\tDOOMBAR_INDENT=\tCLAUDE_CODE_TASK_LIST_ID=list-7\tCLAUDE_CONFIG_DIR=C:\\cfg\\claude",
+    ok(envLine === "gamebar-env\tCOLUMNS=137\tGAMEBAR_PRESET=compact\tGAMEBAR_THEME=doomx\tGAMEBAR_INDENT=\tCLAUDE_CODE_TASK_LIST_ID=list-7\tCLAUDE_CONFIG_DIR=C:\\cfg\\claude",
       `environment line forwards set variables, drops tabs and newlines in values (got ${show(envLine)})`);
     ok(payload.slice(nl + 1) === json, "the stdin JSON follows the environment line byte for byte");
 
@@ -189,15 +192,15 @@ try {
     const tsid = "payload-term";
     run({ sid: tsid, input: JSON.stringify({ session_id: tsid }), env: { WT_SESSION: "a1\tb2", TERM_PROGRAM: "vscode" } });
     const tline = shellTermless(existsSync(inSandbox(tsid, "payload")) ? readFileSync(inSandbox(tsid, "payload"), "utf8").split("\n")[0] : "");
-    ok(tline === "doombar-env\tWT_SESSION=a1b2\tTERM_PROGRAM=vscode", `WT_SESSION and TERM_PROGRAM are forwarded when set (got ${show(tline)})`);
+    ok(tline === "gamebar-env\tWT_SESSION=a1b2\tTERM_PROGRAM=vscode", `WT_SESSION and TERM_PROGRAM are forwarded when set (got ${show(tline)})`);
     const vsid = "payload-vte";
     run({ sid: vsid, input: JSON.stringify({ session_id: vsid }), env: { TERM: "xterm-256color", VTE_VERSION: "8001" } });
     const vline = existsSync(inSandbox(vsid, "payload")) ? readFileSync(inSandbox(vsid, "payload"), "utf8").split("\n")[0] : "";
-    ok(vline === "doombar-env\tTERM=xterm-256color\tVTE_VERSION=8001", `TERM and VTE_VERSION are forwarded when set (got ${show(vline)})`);
+    ok(vline === "gamebar-env\tTERM=xterm-256color\tVTE_VERSION=8001", `TERM and VTE_VERSION are forwarded when set (got ${show(vline)})`);
     ok(r.out === OFFLINE, "with no frame yet the payload is still written and the offline line printed");
   }
 
-  // --- MUGSHOT_STATE does not move the daemon files ----------------------------------------
+  // --- GAMEBAR_STATE does not move the daemon files ----------------------------------------
   {
     const sid = "relocated";
     const elsewhere = path.join(sandbox, "elsewhere");
@@ -205,13 +208,13 @@ try {
     const state = path.join(elsewhere, "state.json");
     const now = nowMicros();
     putFrame(sid, serializeFrame({ daemon: "0.14.0", deadline: now + 60e6, slots: [{ start: now, lines: ["temp-dir frame"] }] }));
-    const r = run({ sid, env: { MUGSHOT_STATE: state } });
-    ok(r.out === "temp-dir frame\n", `with MUGSHOT_STATE set the frame is still read from the temp dir (got ${show(r.out)})`);
+    const r = run({ sid, env: { GAMEBAR_STATE: state } });
+    ok(r.out === "temp-dir frame\n", `with GAMEBAR_STATE set the frame is still read from the temp dir (got ${show(r.out)})`);
     const p = inSandbox(sid, "payload");
-    ok(existsSync(p), "with MUGSHOT_STATE set the payload is still written to the temp dir under the install hash");
-    ok(!existsSync(path.join(elsewhere, fileName(sid, "payload"))), "nothing is written next to MUGSHOT_STATE");
+    ok(existsSync(p), "with GAMEBAR_STATE set the payload is still written to the temp dir under the install hash");
+    ok(!existsSync(path.join(elsewhere, fileName(sid, "payload"))), "nothing is written next to GAMEBAR_STATE");
     const envLine = existsSync(p) ? readFileSync(p, "utf8").split("\n")[0] : "";
-    ok(envLine.split("\t").includes(`MUGSHOT_STATE=${state}`), `the environment line carries MUGSHOT_STATE (got ${show(envLine)})`);
+    ok(envLine.split("\t").includes(`GAMEBAR_STATE=${state}`), `the environment line carries GAMEBAR_STATE (got ${show(envLine)})`);
   }
 
   // --- Windows spellings of the temp dir (Git Bash only) ----------------------------------
@@ -221,7 +224,7 @@ try {
     const now = nowMicros();
     putFrame(sid, serializeFrame({ daemon: "0.14.0", deadline: now + 60e6, slots: [{ start: now, lines: [label] }] }));
     // Set inside the shell: an environment value would be converted to a POSIX path by MSYS at startup.
-    const r = run({ sid, prefix: `unset DOOMBAR_RUNTIME_DIR; TMPDIR='${dir}' TEMP='${dir}' TMP='${dir}' ` });
+    const r = run({ sid, prefix: `unset GAMEBAR_RUNTIME_DIR DOOMBAR_RUNTIME_DIR; TMPDIR='${dir}' TEMP='${dir}' TMP='${dir}' ` });
     ok(r.out === label + "\n", `temp dir spelled ${label} (${dir}) finds the frame (got ${show(r.out)})`);
     ok(existsSync(inSandbox(sid, "payload")), `temp dir spelled ${label} receives the payload`);
   }
@@ -253,11 +256,52 @@ try {
     ok(run({ sid, script: true, hash: "" }).out === OFFLINE, "run as a script without a hash, the client prints the offline line");
   }
 
+  // --- Old names: the hash and the runtime directory override ------------------------------
+  {
+    const sid = "old-names";
+    const now = nowMicros();
+    putFrame(sid, serializeFrame({ daemon: "0.14.0", deadline: now + 60e6, slots: [{ start: now, lines: ["old names"] }] }));
+    ok(run({ sid, hashVar: "DOOMBAR_ROOT_HASH" }).out === "old names\n", "the hash under its old name, DOOMBAR_ROOT_HASH, is read");
+    ok(run({ sid, prefix: "DOOMBAR_ROOT_HASH=0000000000 " }).out === "old names\n", "GAMEBAR_ROOT_HASH wins over DOOMBAR_ROOT_HASH");
+    ok(run({ sid, prefix: "unset GAMEBAR_RUNTIME_DIR; " }).out === "old names\n",
+      "the runtime directory override under its old name, DOOMBAR_RUNTIME_DIR, is read");
+  }
+
+  // --- The client's old path: src/doombar-client.sh, which settings written before 1.0.0 name --
+  {
+    const SHIM = CLIENT.replace(/gamebar-client\.sh$/, "doombar-client.sh");
+    const sid = "shim";
+    const now = nowMicros();
+    putFrame(sid, serializeFrame({ daemon: "0.14.0", deadline: now + 60e6, slots: [{ start: now, lines: ["through the shim"] }] }));
+    const input = JSON.stringify({ session_id: sid });
+    // The Windows command 0.15.0 wrote, word for word.
+    const winCmd = `DOOMBAR_ROOT_HASH=${HASH}; f="${SHIM}"; if [ -r "$f" ]; then . "$f"; else echo 'doombar: offline'; fi`;
+    const w = spawnSync(BASH, ["-c", winCmd], { input, env: baseEnv, encoding: "utf8" });
+    ok(w.stdout === "through the shim\n" && w.stderr === "",
+      `sourced with DOOMBAR_ROOT_HASH (the Windows form), the old path prints the live frame (got ${show(w.stdout)} ${show(w.stderr)})`);
+    const p = run({ sid, client: SHIM, script: true });
+    ok(p.out === "through the shim\n", `exec'd with the hash as $1 (the POSIX form), the old path prints the live frame (got ${show(p.out)})`);
+    ok(existsSync(inSandbox(sid, "payload")), "through the old path the payload is written under the new name");
+
+    let src = "";
+    try { src = readFileSync(SHIM, "utf8"); } catch { /* missing file fails below */ }
+    const code = src.split("\n").filter((l) => l.trim() && !/^\s*#/.test(l));
+    ok(!src.includes("\r") && code.length === 1 && /^\. "\$\{BASH_SOURCE\[0\]%\/\*\}\/gamebar-client\.sh" "\$@"$/.test(code[0]),
+      `the old path only sources gamebar-client.sh in the same shell, with LF line endings (${show(code)})`);
+    const marker = path.join(sandbox, "shim-external-commands.txt").replace(/\\/g, "/");
+    const r = run({ sid, client: SHIM, hashVar: "DOOMBAR_ROOT_HASH",
+      prefix: `command_not_found_handle() { printf '%s\\n' "$1" >> '${marker}'; }; PATH=/no-such-dir; ` });
+    ok(r.out === "through the shim\n", `the old path works with an empty PATH (got ${show(r.out)})`);
+    ok(!existsSync(marker), `the old path starts no process (${existsSync(marker) ? show(readFileSync(marker, "utf8")) : "none"})`);
+  }
+
   // --- The runtime directory: the rule of runtimeDir, and only a private one (Linux, macOS) --
   if (!WIN) {
-    const unset = { DOOMBAR_RUNTIME_DIR: "" }; // empty counts as unset, for the client and for Node
+    // An empty GAMEBAR_RUNTIME_DIR means no override, for the client and for Node, and it wins over
+    // the old name the sandbox also sets.
+    const unset = { GAMEBAR_RUNTIME_DIR: "" };
     const xdg = path.join(sandbox, "xdg");
-    mkdirSync(path.join(xdg, "doombar"), { recursive: true, mode: 0o700 });
+    mkdirSync(path.join(xdg, "gamebar"), { recursive: true, mode: 0o700 });
     for (const [label, e] of [["an XDG runtime dir of this user", { XDG_RUNTIME_DIR: xdg }],
       ["an XDG runtime dir with a trailing slash", { XDG_RUNTIME_DIR: xdg + "/" }]]) {
       const env = { ...unset, ...e };
@@ -269,7 +313,7 @@ try {
 
     // A logged-out ssh session under tmux: the XDG runtime dir is gone. Same path, offline, nothing made.
     const gone = path.join(sandbox, "logged-out");
-    ok(runtimeDir({ ...unset, XDG_RUNTIME_DIR: gone }) === path.join(gone, "doombar"),
+    ok(runtimeDir({ ...unset, XDG_RUNTIME_DIR: gone }) === path.join(gone, "gamebar"),
       "runtimeDir keeps a missing XDG runtime dir's path");
     const m = run({ sid: "rt-missing", env: { ...unset, XDG_RUNTIME_DIR: gone } });
     ok(m.out === OFFLINE, `a missing XDG runtime dir prints the offline line (got ${show(m.out)})`);
@@ -283,11 +327,11 @@ try {
     const now = nowMicros();
     writeFileSync(path.join(real, fileName("rt-link", "frame")),
       serializeFrame({ daemon: "0.14.0", deadline: now + 60e6, slots: [{ start: now, lines: ["planted"] }] }));
-    const l = run({ sid: "rt-link", env: { DOOMBAR_RUNTIME_DIR: link } });
+    const l = run({ sid: "rt-link", env: { GAMEBAR_RUNTIME_DIR: link } });
     ok(l.out === OFFLINE, `a symlinked runtime dir prints the offline line, not its frame (got ${show(l.out)})`);
     // A directory of another user (root's /usr) is never used. Nothing to test as root.
     if (process.geteuid() !== 0) {
-      const o = run({ sid: "rt-other", env: { DOOMBAR_RUNTIME_DIR: "/usr" } });
+      const o = run({ sid: "rt-other", env: { GAMEBAR_RUNTIME_DIR: "/usr" } });
       ok(o.out === OFFLINE, `a runtime dir owned by another user prints the offline line (got ${show(o.out)})`);
     }
     ok(!existsSync(path.join(real, fileName("rt-link", "payload"))), "and no payload is written through the link");

@@ -1,18 +1,18 @@
 #!/usr/bin/env node
-// Wire claude-doom-statusbar into Claude Code, so you never touch settings.json by hand.
+// Wire claude-game-bar into Claude Code, so you never touch settings.json by hand.
 // Port of install.py.
 //
-//   claude-doom-statusbar install              # install into ~/.claude/settings.json
-//   claude-doom-statusbar install --preset full # pick a preset (full | standard | minimal)
-//   claude-doom-statusbar install --project     # install into ./.claude/settings.json instead
-//   claude-doom-statusbar install --local       # install into ./.claude/settings.local.json instead
-//   claude-doom-statusbar install --refresh 0   # events only; default is a 1s timer + events
-//   claude-doom-statusbar install --no-fonts    # don't check for / install an emoji font (Linux)
-//   claude-doom-statusbar uninstall             # remove everything this installer added
-//   claude-doom-statusbar theme minecraft       # switch game theme: doom | minecraft
-//   claude-doom-statusbar theme next            # cycle to the next theme
-//   claude-doom-statusbar theme                 # list themes, show the current one
-//   claude-doom-statusbar test-card             # show which glyphs this terminal draws
+//   claude-game-bar install              # install into ~/.claude/settings.json
+//   claude-game-bar install --preset full # pick a preset (full | standard | minimal)
+//   claude-game-bar install --project     # install into ./.claude/settings.json instead
+//   claude-game-bar install --local       # install into ./.claude/settings.local.json instead
+//   claude-game-bar install --refresh 0   # events only; default is a 1s timer + events
+//   claude-game-bar install --no-fonts    # don't check for / install an emoji font (Linux)
+//   claude-game-bar uninstall             # remove everything this installer added
+//   claude-game-bar theme minecraft       # switch game theme: doom | minecraft
+//   claude-game-bar theme next            # cycle to the next theme
+//   claude-game-bar theme                 # list themes, show the current one
+//   claude-game-bar test-card             # show which glyphs this terminal draws
 //
 // It merges into your existing settings (other hooks / statusline are preserved or
 // backed up), is safe to re-run, and prints what to do next.
@@ -21,7 +21,8 @@ import { readFileSync, existsSync, readdirSync, unlinkSync, lstatSync, rmdirSync
 import path from "node:path";
 import { PACKAGE_ROOT } from "../src/package-root.js";
 import { THEMES, THEME_NAMES, currentTheme, saveTheme, clearTheme, nextTheme, resolveTheme } from "../src/theme.js";
-import { rootHash, daemonPrefix, payloadPrefix, framePrefix, runtimeDir } from "../src/platform/runtime.js";
+import { rootHash, daemonPrefix, payloadPrefix, framePrefix, runtimeDir, RUNTIME_NAME } from "../src/platform/runtime.js";
+import { envGet, newName, oldName } from "../src/platform/env.js";
 import { confirmedDaemonPid } from "../src/platform/supervise.js";
 import { HOOK_EVENTS, die, settingsFile, load, save, install, uninstall } from "../src/install/settings.js";
 import { STATUSLINE, CLIENT, NODE_CMD, clientCommand } from "../src/install/shell.js";
@@ -64,14 +65,14 @@ const DEFAULT_REFRESH = 1;
 //
 // Where to look: the runtime directory. On Linux and macOS the shell running uninstall may see
 // another XDG_RUNTIME_DIR than Claude Code did (tmux, ssh), so every candidate directory is
-// tried, each only when it is a real directory of this user. With DOOMBAR_RUNTIME_DIR set, only
+// tried, each only when it is a real directory of this user. With GAMEBAR_RUNTIME_DIR set, only
 // that one, so a test never reaches the live bar.
 function runtimeCandidates(env = process.env) {
-  if (env.DOOMBAR_RUNTIME_DIR || process.platform === "win32") return [runtimeDir(env)];
+  if (envGet("RUNTIME_DIR", env) || process.platform === "win32") return [runtimeDir(env)];
   const dirs = new Set([runtimeDir(env)]);
-  if (String(env.XDG_RUNTIME_DIR || "").startsWith("/")) dirs.add(path.posix.join(env.XDG_RUNTIME_DIR, "doombar"));
-  if (process.platform === "darwin" && String(env.TMPDIR || "").startsWith("/")) dirs.add(path.posix.join(env.TMPDIR, "doombar"));
-  dirs.add(`/tmp/doombar-${process.geteuid()}`);
+  if (String(env.XDG_RUNTIME_DIR || "").startsWith("/")) dirs.add(path.posix.join(env.XDG_RUNTIME_DIR, RUNTIME_NAME));
+  if (process.platform === "darwin" && String(env.TMPDIR || "").startsWith("/")) dirs.add(path.posix.join(env.TMPDIR, RUNTIME_NAME));
+  dirs.add(`/tmp/${RUNTIME_NAME}-${process.geteuid()}`);
   return [...dirs];
 }
 
@@ -128,7 +129,7 @@ function stopDaemon() {
       try { unlinkSync(path.join(dir, n)); removed++; } catch {}
     }
     if (removed) notes.push(`removed ${removed} render daemon file(s) from ${dir}`);
-    if (posix && !process.env.DOOMBAR_RUNTIME_DIR) { try { rmdirSync(dir); } catch { /* not empty: other files */ } }
+    if (posix && !envGet("RUNTIME_DIR")) { try { rmdirSync(dir); } catch { /* not empty: other files */ } }
   }
   return notes;
 }
@@ -168,7 +169,7 @@ function theme(name) {
   if (!name) {
     console.log("themes:");
     for (const t of THEME_NAMES) console.log(`  ${t === cur ? "▶" : " "} ${t.padEnd(13)} ${THEMES[t].about}`);
-    console.log("\nswitch with:  claude-doom-statusbar theme <name>   (or: theme next)");
+    console.log("\nswitch with:  claude-game-bar theme <name>   (or: theme next)");
     return;
   }
   const want = name === "next" ? nextTheme(cur) : resolveTheme(name.toLowerCase());
@@ -176,8 +177,10 @@ function theme(name) {
   saveTheme(want);
   console.log(`✓ theme: ${want} — ${THEMES[want].about}`);
   console.log("  the status bar switches on its next refresh (no restart needed).");
-  if (process.env.DOOMBAR_THEME && process.env.DOOMBAR_THEME !== want) {
-    console.log(`  note: DOOMBAR_THEME=${process.env.DOOMBAR_THEME} is set in this environment and overrides the saved theme.`);
+  const forced = envGet("THEME");
+  if (forced && forced !== want) {
+    const setAs = process.env[newName("THEME")] !== undefined ? newName("THEME") : oldName("THEME");
+    console.log(`  note: ${setAs}=${forced} is set in this environment and overrides the saved theme.`);
   }
 }
 
@@ -203,7 +206,7 @@ function testCard() {
     }
   }
   console.log(`\nThis terminal gets the "${terminalStep(process.env)}" step.`);
-  console.log(`To choose another, set DOOMBAR_GLYPHS to one of: ${STEPS.join(", ")} (in the env block of settings.json).`);
+  console.log(`To choose another, set GAMEBAR_GLYPHS to one of: ${STEPS.join(", ")} (in the env block of settings.json).`);
 }
 
 async function main() {
@@ -218,7 +221,7 @@ async function main() {
     save(p, cfg);
     if (!args.project && !args.local) clearTheme(); // drop the saved theme choice too
     const notes = stopDaemon();
-    console.log(`✓ removed claude-doom-statusbar from ${p}`);
+    console.log(`✓ removed claude-game-bar from ${p}`);
     for (const n of notes) console.log(`  note       : ${n}`);
     console.log("  restart Claude Code to apply.");
     return;
@@ -231,7 +234,7 @@ async function main() {
   const notes = install(cfg, args.preset, args.refresh, command);
   save(p, cfg);
 
-  console.log(`✓ installed claude-doom-statusbar into ${p}`);
+  console.log(`✓ installed claude-game-bar into ${p}`);
   console.log(`  statusline : ${command}`);
   if (clientCmd) console.log("  renderer   : per-installation render daemon, started by the hooks");
   if (process.platform !== "win32") console.log(`  files      : ${runtimeDir()} (private to this user)`);
@@ -247,7 +250,7 @@ async function main() {
   console.log(font.status === "installed"
     ? "  1. restart your terminal (for the new emoji font), then Claude Code."
     : "  1. restart Claude Code.");
-  console.log("  2. (optional) run `claude-doom-statusbar test-card` to see which glyphs this terminal draws.");
+  console.log("  2. (optional) run `claude-game-bar test-card` to see which glyphs this terminal draws.");
   console.log("  Clickable links need FORCE_HYPERLINK=1 (set for you here; on Windows Terminal you may");
   console.log("  also need to launch with it:  $env:FORCE_HYPERLINK='1'; claude ).");
 }

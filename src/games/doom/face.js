@@ -9,10 +9,11 @@ import path from "node:path";
 import { RESET, sgrBg } from "../../kit/ansi.js";
 import { decodePng } from "../../kit/raster/png.js";
 import { convertImage } from "../../kit/raster/glyph-render.js";
-import { writeAtomic, packageVersion, runtimeDir } from "../../platform/runtime.js";
+import { writeAtomic, packageVersion, runtimeDir, FACES_PREFIX } from "../../platform/runtime.js";
 import { SRC_DIR } from "../../package-root.js";
 
 export const ALPHA_DIR = path.join(SRC_DIR, "games", "doom", "assets", "mugshot", "alpha"); // pre-baked transparent
+export const IDLE_FACE = path.join(ALPHA_DIR, "STFST01.png"); // the idle mugshot
 // The converter's sources: a change to any of them invalidates the faces cached on disk.
 const CONVERTER_FILES = ["glyphs.js", "glyph-render.js", "png.js"].map((f) => path.join(SRC_DIR, "kit", "raster", f));
 const TERM_BG = "term-bg";
@@ -44,7 +45,7 @@ function converterStamp() {
 // Named on first use, not at load, so the runtime directory in force when a face is first drawn
 // is the one used.
 let _diskFile = null;
-const diskFile = () => (_diskFile ||= path.join(runtimeDir(), `doombar_faces_${converterStamp()}.json`));
+const diskFile = () => (_diskFile ||= path.join(runtimeDir(), `${FACES_PREFIX}${converterStamp()}.json`));
 let _disk = null;
 function diskCache() {
   if (!_disk) {
@@ -71,6 +72,7 @@ function convertFace(key, name, rows, step, background) {
 // second installation (another version) uses its own file at the same time, and the two would
 // keep deleting each other's.
 const STALE_CACHE_MS = 24 * 3600 * 1000;
+const FACES_FILE = new RegExp(`^${FACES_PREFIX}[0-9a-f]{12}\\.json$`);
 let _pruned = false;
 function dropStaleCaches() {
   if (_pruned) return;
@@ -80,7 +82,7 @@ function dropStaleCaches() {
   try { names = readdirSync(dir); } catch { return; }
   const cutoff = Date.now() - STALE_CACHE_MS;
   for (const n of names) {
-    if (n === own || !/^doombar_faces_[0-9a-f]{12}\.json$/.test(n)) continue;
+    if (n === own || !FACES_FILE.test(n)) continue;
     const file = path.join(dir, n);
     try { if (statSync(file).mtimeMs < cutoff) unlinkSync(file); } catch { /* gone already, or not ours to remove */ }
   }

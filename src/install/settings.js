@@ -1,5 +1,5 @@
 // Claude Code settings for the installer: find, read, merge and write settings.json, and recognise
-// the entries this package wrote. Used by `claude-doom-statusbar install` and `uninstall`
+// the entries this package wrote. Used by `claude-game-bar install` and `uninstall`
 // (bin/cli.js).
 
 import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync } from "node:fs";
@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { SRC_DIR } from "../package-root.js";
 import { defaultGame, registeredPreset } from "../games/index.js";
+import { bothNames } from "../platform/env.js";
 
 // Normalise to forward slashes, like install.py's `.replace("\\", "/")`. The marker we
 // DETECT below must match the command we WRITE byte-for-byte, including slash direction —
@@ -15,7 +16,7 @@ export const slash = (p) => p.replace(/\\/g, "/");
 
 const HOOK = slash(path.join(SRC_DIR, "hook.js"));
 
-// Lifecycle events the mugshot hook understands (face reactions, geiger, subagents,
+// Lifecycle events the hook understands (face reactions, geiger, subagents,
 // tasks, permission mode, git snapshots). PreToolUse has no matcher -> fires for every tool.
 // SessionStart resets the journal and primes git so the HUD is populated from the first
 // render. All entries are installed async (see install()) so they never block a tool.
@@ -26,9 +27,10 @@ export const HOOK_EVENTS = [
 ];
 
 // How we recognise our own entries — current JS scripts plus legacy Python ones, so a
-// user who ran install.py earlier still gets cleaned up by `uninstall`.
+// user who ran install.py earlier still gets cleaned up by `uninstall`. The client's old path
+// is still ours too: settings written before 1.0.0 name it.
 const HOOK_MARKS = ["src/hook.js", "mugshot_hook.py"];
-const SL_MARKS = ["src/doombar-client.sh", "src/statusline.js", "statusline.py"];
+const SL_MARKS = ["src/gamebar-client.sh", "src/doombar-client.sh", "src/statusline.js", "statusline.py"];
 const hasMark = (s, marks) => marks.some((m) => slash(String(s || "")).includes(m));
 
 export function die(msg) {
@@ -90,7 +92,7 @@ export function install(cfg, preset, refresh, command) {
   // The registered preset of that name, in its game's folder. A name no game registers keeps the
   // shape it always had: a file of that name beside the default game's presets.
   const fallbackDir = path.dirname(defaultGame().presets[defaultGame().defaultPreset]);
-  env.DOOMBAR_PRESET = slash(registeredPreset(presetFile) || path.join(fallbackDir, presetFile));
+  env.GAMEBAR_PRESET = slash(registeredPreset(presetFile) || path.join(fallbackDir, presetFile));
   env.FORCE_HYPERLINK ??= "1"; // clickable links (Windows Terminal needs this)
 
   const hooks = (cfg.hooks ??= {});
@@ -132,7 +134,7 @@ export function uninstall(cfg) {
   if (hasMark(cfg.statusLine?.command, SL_MARKS)) delete cfg.statusLine;
 
   const env = cfg.env || {};
-  for (const k of ["DOOMBAR_PRESET", "FORCE_HYPERLINK"]) delete env[k];
+  for (const k of [...bothNames("PRESET"), "FORCE_HYPERLINK"]) delete env[k];
   if (Object.keys(env).length === 0) delete cfg.env;
 
   const hooks = cfg.hooks || {};

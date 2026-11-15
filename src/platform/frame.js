@@ -2,7 +2,7 @@
 //
 // Layout (LF only, the file ends with a newline):
 //
-//   doombar-frame v=<contract> daemon=<version> deadline=<µs> slots=<n>
+//   gamebar-frame v=<contract> daemon=<version> deadline=<µs> slots=<n>
 //   slot <start-µs> <lineCount>        (n times, in ascending start order)
 //   <lineCount body lines>
 //   grey <lineCount>
@@ -112,7 +112,7 @@ export function serializeFrame({ daemon, deadline, slots }) {
     .map((s) => ({ start: s.start, lines: normalise(s.lines || []) }))
     .sort((a, b) => a.start - b.start);
   if (!ordered.every((s) => isTime(s.start))) throw new Error("frame: slot start must be a non-negative integer (µs)");
-  const out = [`doombar-frame v=${FRAME_VERSION} daemon=${version} deadline=${deadline} slots=${ordered.length}`];
+  const out = [`gamebar-frame v=${FRAME_VERSION} daemon=${version} deadline=${deadline} slots=${ordered.length}`];
   for (const s of ordered) out.push(`slot ${s.start} ${s.lines.length}`, ...s.lines);
   const grey = greyLines(ordered[ordered.length - 1].lines);
   out.push(`grey ${grey.length}`, ...grey);
@@ -128,7 +128,7 @@ export function parseFrame(text) {
   const lines = text.split("\n");
   lines.pop(); // the empty string after the final newline
   const head = lines[0].split(" ");
-  if (head[0] !== "doombar-frame") return null;
+  if (head[0] !== "gamebar-frame") return null;
   const f = {};
   for (const kv of head.slice(1)) {
     const eq = kv.indexOf("=");

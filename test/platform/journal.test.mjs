@@ -15,22 +15,22 @@ import { foldBatch } from "../../src/platform/journal.js";
 
 // Pin the DOOM theme so a theme saved on this machine (`theme minecraft`) can't change
 // what the statusline renders under test. Child processes inherit it via process.env.
-process.env.DOOMBAR_THEME = "doom";
+process.env.GAMEBAR_THEME = "doom";
 // Likewise keep the rate limits other live sessions shared on this machine out of the test.
-process.env.DOOMBAR_RATELIMITS_SHARE = "0";
+process.env.GAMEBAR_RATELIMITS_SHARE = "0";
 
 const HERE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const HOOK = path.join(HERE, "..", "src", "hook.js");
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 
-const tmp = mkdtempSync(path.join(os.tmpdir(), "doombar-journal-"));
+const tmp = mkdtempSync(path.join(os.tmpdir(), "gamebar-journal-"));
 const checkpoint = path.join(tmp, "state.json");
 const journal = checkpoint + ".jsonl";
 // Both the hook subprocess (via env) and in-process loadState (via process.env) must point
 // at the same checkpoint/journal pair.
-process.env.MUGSHOT_STATE = checkpoint;
-const env = { ...process.env, MUGSHOT_STATE: checkpoint, DOOMBAR_GIT_TTL: "999999" };
+process.env.GAMEBAR_STATE = checkpoint;
+const env = { ...process.env, GAMEBAR_STATE: checkpoint, GAMEBAR_GIT_TTL: "999999" };
 const line = (o) => JSON.stringify(o) + "\n";
 
 try {
@@ -98,17 +98,17 @@ try {
 
 // --- corruption: a garbage checkpoint -> full recompute from journal, no double-count ---
 {
-  const tmp2 = mkdtempSync(path.join(os.tmpdir(), "doombar-journal2-"));
+  const tmp2 = mkdtempSync(path.join(os.tmpdir(), "gamebar-journal2-"));
   const cp2 = path.join(tmp2, "s.json");
   const j2 = cp2 + ".jsonl";
   try {
     appendFileSync(j2, line({ name: "PostToolUseFailure", ev: {}, ts: 10 }), { flag: "a" });
     appendFileSync(j2, line({ name: "PostToolUseFailure", ev: {}, ts: 20 }), { flag: "a" });
     writeFileSync(cp2, "{ this is not valid json");
-    const env2 = process.env.MUGSHOT_STATE;
-    process.env.MUGSHOT_STATE = cp2;
+    const env2 = process.env.GAMEBAR_STATE;
+    process.env.GAMEBAR_STATE = cp2;
     const st = loadState({ session_id: "y" });
-    if (env2 === undefined) delete process.env.MUGSHOT_STATE; else process.env.MUGSHOT_STATE = env2;
+    if (env2 === undefined) delete process.env.GAMEBAR_STATE; else process.env.GAMEBAR_STATE = env2;
     ok(st.errors === 2, `corrupt checkpoint -> full replay, errors=2 not doubled (got ${st.errors})`);
   } finally {
     rmSync(tmp2, { recursive: true, force: true });

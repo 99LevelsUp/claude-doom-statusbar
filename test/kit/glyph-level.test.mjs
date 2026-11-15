@@ -9,8 +9,8 @@ const is = (env, want, what) => { const got = terminalStep(env); ok(got === want
 is({}, "half", "nothing identifies the terminal (the Windows console host)");
 ok(effectiveStep({}, "octant") === "half", "an image allowed octants is drawn with half blocks in the console host");
 is({ WT_SESSION: "x" }, WINDOWS_TERMINAL_STEP, "Windows Terminal");
-is({ WT_SESSION: "x", DOOMBAR_GLYPHS: "sextant" }, "sextant", "DOOMBAR_GLYPHS overrides Windows Terminal");
-ok(effectiveStep({ WT_SESSION: "x", DOOMBAR_GLYPHS: "sextant" }, "octant") === "sextant", "an override caps an image allowed octants");
+is({ WT_SESSION: "x", GAMEBAR_GLYPHS: "sextant" }, "sextant", "GAMEBAR_GLYPHS overrides Windows Terminal");
+ok(effectiveStep({ WT_SESSION: "x", GAMEBAR_GLYPHS: "sextant" }, "octant") === "sextant", "an override caps an image allowed octants");
 is({ WT_SESSION: "x", TMUX: "/tmp/tmux-1/default,1,0" }, "half", "tmux inside Windows Terminal");
 is({ TERM: "screen-256color" }, "half", "GNU screen");
 is({ WT_SESSION: "x", TERM_PROGRAM: "vscode" }, "wedge", "VS Code started from a Windows Terminal tab");
@@ -19,8 +19,8 @@ is({ TERM_PROGRAM: "WezTerm" }, "wedge", "WezTerm");
 is({ TERM_PROGRAM: "ghostty" }, "octant", "Ghostty");
 is({ TERM: "xterm-kitty" }, "octant", "kitty");
 is({ VTE_VERSION: "7600" }, "wedge", "a VTE terminal");
-is({ DOOMBAR_GLYPHS: "huge", WT_SESSION: "x" }, WINDOWS_TERMINAL_STEP, "an unknown DOOMBAR_GLYPHS value is ignored");
-is({ DOOMBAR_GLYPHS: " Quadrant " }, "quadrant", "DOOMBAR_GLYPHS ignores case and spaces");
+is({ GAMEBAR_GLYPHS: "huge", WT_SESSION: "x" }, WINDOWS_TERMINAL_STEP, "an unknown GAMEBAR_GLYPHS value is ignored");
+is({ GAMEBAR_GLYPHS: " Quadrant " }, "quadrant", "GAMEBAR_GLYPHS ignores case and spaces");
 ok(effectiveStep({ TERM: "xterm-kitty" }, "quadrant") === "quadrant", "an image's own step below the terminal's is kept");
 ok(effectiveStep({ TERM: "xterm-kitty" }, undefined) === "octant", "an image without a step gets the terminal's step");
 

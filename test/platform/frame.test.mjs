@@ -17,13 +17,13 @@ let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-const sandbox = mkdtempSync(path.join(os.tmpdir(), "doombar-frame-"));
+const sandbox = mkdtempSync(path.join(os.tmpdir(), "gamebar-frame-"));
 
 // Lines that would break a sentinel-based format, plus real ANSI and an emoji.
 const TRICKY = [
   "slot 123 4",
   "grey 2",
-  "doombar-frame v=9 daemon=x deadline=1 slots=1",
+  "gamebar-frame v=9 daemon=x deadline=1 slots=1",
   "",
   "trailing spaces   ",
   "\x1b[1;38;2;224;84;64mHP 78%\x1b[22m \x1b[48;2;96;200;104m ✅ \x1b[0m",
@@ -52,7 +52,7 @@ try {
   // --- A one-slot frame round-trips -----------------------------------------------------------
   const one = { daemon: "0.14.0", deadline: 1762800003000000, slots: [{ start: 1762800000000000, lines: TRICKY }] };
   const text = serializeFrame(one);
-  ok(text.startsWith(`doombar-frame v=${FRAME_VERSION} daemon=0.14.0 deadline=1762800003000000 slots=1\n`),
+  ok(text.startsWith(`gamebar-frame v=${FRAME_VERSION} daemon=0.14.0 deadline=1762800003000000 slots=1\n`),
     "header line carries contract version, daemon version, deadline and slot count");
   ok(text.endsWith("\n") && !text.includes("\r"), "file is LF-only and ends with a newline");
   const parsed = parseFrame(text);
@@ -130,7 +130,7 @@ try {
   ok(same(greyLines([]), [OFFLINE_MARKER]), "an empty body greys to the marker alone");
 
   // --- Atomic write ---------------------------------------------------------------------------
-  const target = path.join(sandbox, "mugshot_frame_test.json");
+  const target = path.join(sandbox, "gamebar_frame_test.json");
   ok(writeFrame(target, one) === true, "a frame write reports success");
   ok(readFileSync(target, "utf8") === text, "the written file holds the serialised frame");
   ok(!readdirSync(sandbox).some((n) => n.endsWith(".tmp")), "a successful write leaves no temp file");
