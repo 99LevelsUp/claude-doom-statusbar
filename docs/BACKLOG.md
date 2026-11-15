@@ -9,7 +9,7 @@ when the owner decides against something (move it to *Won't do*, with the reason
 Status: `next` = agreed, do soon · `open` = agreed direction, not scheduled · `idea` = not decided ·
 `blocked` = waiting on something outside the project.
 
-Last reviewed: 13.11.2026 (0.15.0).
+Last reviewed: 15.11.2026 (1.0.0).
 
 ## Render daemon, glyph renderer, minimap
 Source: [ideation/2026-11-09-render-daemon-and-minimap.md](ideation/2026-11-09-render-daemon-and-minimap.md)
@@ -49,17 +49,11 @@ Requirements: [plans/2026-11-13-1359-refactor-claude-game-bar-1-0-plan.md](plans
 
 Owner, 2026-11-13: rename on GitHub and npm together with 1.0.0; the bar becomes a platform with one general rendering part and game parts (DOOM, Minecraft, Warcraft III next).
 
+R-0, R-1, R-2 and R-4 to R-8 shipped in 1.0.0, see *Done*. What is left:
+
 | ID | Item | Status |
 |---|---|---|
-| R-0 | Agree the rename and the refactor with the contributor | done (2026-11-13) |
-| R-5 | Test runner that runs every file and summarises (audit step 1) | done (PR #6) |
-| R-6 | Move files into `platform/` · `metrics/` · `kit/` · `games/<game>/`, entry paths kept; split `statusline.js`, `render.js`, `hook.js`, `fold.js` (audit steps 2–3) | done (PR #7, #8) |
-| R-2 | Neutral reaction state `{expr, hp, god, dead}` instead of DOOM sprite names between engine and layouts (audit step 4) | done (1.0 plan step 4) |
-| R-7 | Render context instead of module-level `VALUES` / face options (audit step 5) | done (1.0 plan step 4) |
-| R-8 | Game registry `games/index.js` replaces `THEMES`; presets and assets under their game (audit step 6) | done (PR #10) |
-| R-1 | Rename package, bin (only `claude-game-bar`; owner decision 2026-11-15), repo, env vars `DOOMBAR_*` → `GAMEBAR_*` (with fallback), theme file, file prefixes, client name; DOOM-specific code keeps `doom` (audit step 7) | done in code (1.0 plan step 7); repo rename with the release |
-| R-4 | `install` migrates settings in place (paths, env names, theme file) | done (1.0 plan step 7) |
-| R-3 | npm: set up trusted publishing for the new package, last `claude-doom-statusbar` release with a notice, `npm deprecate` (audit step 8) | next |
+| R-3 | npm: trusted publishing for the new package and the last `claude-doom-statusbar` release with a notice (0.16.0) are part of the 1.0.0 release; `npm deprecate claude-doom-statusbar` follows once 1.0.0 is on npm (audit step 8) | next |
 
 ## Shared game layout engine
 Source: [ideation/2026-10-31-shared-game-layout-engine.md](ideation/2026-10-31-shared-game-layout-engine.md)
@@ -138,6 +132,7 @@ Source: [ideation/2026-06-06-doom-statusbar-ideation.md](ideation/2026-06-06-doo
 | Render daemon and bash client on Linux and macOS with bash 5 (D-15): `exec bash` from dash, socket singleton with stale-socket takeover, `/proc` identity check, all files in a private 0700 runtime directory, `install --local`, e2e on Linux CI, live on the Raspberry Pi 5 since 2026-11-13 (about 4 ms per tick). Findings: [ideation/2026-11-11-render-daemon-on-linux.md](ideation/2026-11-11-render-daemon-on-linux.md), plan: [plans/2026-11-11-2301-feat-linux-render-daemon-plan.md](plans/2026-11-11-2301-feat-linux-render-daemon-plan.md) | done in 0.15.0 |
 | Built-in bitmap → glyph renderer for the mugshot: smooth sampling, chafa-style shape shortlist, glyph step per image capped by the terminal type, disk cache for the one-shot status line (D-3; [plan](plans/2026-11-11-1150-feat-builtin-glyph-renderer-plan.md)) | 0.14.0 |
 | Glyph truth on the real terminal: `test-card` command, fallback ladder half → quadrant → sextant → wedge → octant, OKLab render-back score in `scripts/compare-faces.mjs` (D-8). Owner's check 11.11.2026: Windows Terminal draws every step, so it gets octants; the console host could not be started on the owner's PC and gets half blocks. On the Raspberry Pi 5 (LXTerminal, VTE 0.80.1) every step looked clean too. Noto Color Emoji was installed there for the emoji first, but fontconfig reported no installed font covering U+1FB00 (sextant), U+1FB3C (wedge) or U+1CD00 (octant), only the U+2580 block elements; so VTE most likely draws them itself (not confirmed against VTE's source). VTE gets wedges; octants for VTE 0.80+ would need that confirmed | 0.14.0 |
+| Rename to `claude-game-bar` and restructure (R-0, R-1, R-2, R-4 to R-8): the contributor agreed (R-0); the test runner that runs every file (R-5); `src/` split into `platform/`, `metrics/`, `kit/` and `games/<game>/` with stable entry paths (R-6); a game-neutral reaction between the metrics and the games (R-2); a render context per session (R-7); the game registry, with presets and images under their game (R-8); package, command (`claude-game-bar` only), repository, `GAMEBAR_*` settings with `DOOMBAR_*` fallbacks, theme file, file prefixes and client renamed (R-1); `install` takes over an old installation in place and removes the old global package (R-4). Plan: [plans/2026-11-13-1359-refactor-claude-game-bar-1-0-plan.md](plans/2026-11-13-1359-refactor-claude-game-bar-1-0-plan.md) | 1.0.0 |
 | chafa dropped (D-4). Owner's verdict 11.11.2026 from the side-by-side faces: the built-in conversion is better than chafa at the same step and than the set the bar used before. The one-shot cost is lower too: 62.8 vs 81.0 ms on ubuntu-latest, 98.2 vs 130.1 ms on macos-latest (median of 21). On a Raspberry Pi 5 the one-shot with the face from the disk cache costs 255–261 ms against 251 ms for the pre-rendered faces; the first conversion adds about 250 ms once per version | 0.14.0 |
 
 ## Won't do
