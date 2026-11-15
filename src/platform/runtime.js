@@ -183,10 +183,13 @@ export const OLD_FILE_PREFIX = "mugshot_";
 // The disk cache of a game that draws faces from images: it is not a session's file, and the
 // sweep leaves it alone.
 export const FACES_PREFIX = `${FILE_PREFIX}faces_`;
+// The face cache's name before 1.0.0. Only the sweep and uninstall name it, to clean it up.
+export const OLD_FACES_PREFIX = "doombar_faces_";
 
-export const payloadPrefix = (hash) => `${FILE_PREFIX}payload_${hash}_`;
-export const framePrefix = (hash) => `${FILE_PREFIX}frame_${hash}_`;
-export const daemonPrefix = (hash) => `${FILE_PREFIX}daemon_${hash}.`;
+// `prefix` is OLD_FILE_PREFIX only where files a release before 1.0.0 left are cleaned up.
+export const payloadPrefix = (hash, prefix = FILE_PREFIX) => `${prefix}payload_${hash}_`;
+export const framePrefix = (hash, prefix = FILE_PREFIX) => `${prefix}frame_${hash}_`;
+export const daemonPrefix = (hash, prefix = FILE_PREFIX) => `${prefix}daemon_${hash}.`;
 
 // Every per-session file. Most sit next to the checkpoint, so GAMEBAR_STATE relocates them and
 // the sweep (which scans the checkpoint's directory) sees them. The render daemon's payload and

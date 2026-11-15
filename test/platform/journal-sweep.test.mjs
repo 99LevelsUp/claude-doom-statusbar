@@ -8,11 +8,11 @@
 // still fresh — a merely idle or concurrent session must survive untouched.
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, readdirSync, rmSync, utimesSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, rmSync, utimesSync, existsSync, symlinkSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { staleStateFiles } from "../../src/platform/sweep.js";
+import { staleStateFiles, sweepDirs } from "../../src/platform/sweep.js";
 import { sessionPaths, daemonPaths, rootHash, runtimeDir } from "../../src/platform/runtime.js";
 import { sandboxEnv } from "../_sandbox-env.mjs";
 
@@ -163,6 +163,72 @@ const TTL = 7 * DAY;
   ok(rootHash("C:\\Users\\dev\\other") !== h, "a different install root gives a different hash");
 }
 
+// --- Files a release before 1.0.0 left: the same rules under the old prefix --------------------
+{
+  const HOUR = 60 * 60 * 1000;
+  const H1 = "0123456789";
+  const sweep = (ages) => staleStateFiles(Object.keys(ages), (n) => ages[n]);
+  const all = (names, stale) => names.every((n) => stale.includes(n));
+  const none = (names, stale) => names.every((n) => !stale.includes(n));
+
+  const cold = ["mugshot_old.json", "mugshot_old.json.jsonl", "mugshot_git_old.json", "mugshot_msys_old.json",
+    "mugshot_adv_old.json", "mugshot_old.json.4242.tmp", `mugshot_payload_${H1}_old.json`, `mugshot_frame_${H1}_old.json`];
+  ok(all(cold, sweep(Object.fromEntries(cold.map((n) => [n, 8 * DAY])))),
+    "old-prefix session files older than the TTL are swept like gamebar_ ones");
+  ok(none(cold, sweep(Object.fromEntries(cold.map((n) => [n, 2 * HOUR])))),
+    "a rendered old-prefix session inside the TTL is kept");
+  const headless = ["mugshot_h.json.jsonl", "mugshot_git_h.json"];
+  ok(all(headless, sweep(Object.fromEntries(headless.map((n) => [n, 2 * HOUR])))),
+    "an old-prefix session that never rendered goes after the unrendered TTL");
+  ok(none(["mugshot_s.json.jsonl"], sweep({ "mugshot_s.json.jsonl": 8 * DAY, "gamebar_s.json": 60 * 1000 })),
+    "a session's files under both prefixes are one session: a fresh new file keeps the old one");
+
+  const shared = ["mugshot_ratehealth_global.json", "mugshot_ratelimits_global.json", "mugshot_cpu.json", "mugshot_reap_tick.json",
+    `mugshot_daemon_${H1}.json`, `mugshot_daemon_${H1}.claim`];
+  ok(sweep(Object.fromEntries(shared.map((n) => [n, 99 * DAY]))).length === 0,
+    "old-prefix shared state and any installation's old daemon files are never swept");
+
+  ok(all(["doombar_faces_0123456789ab.json", "doombar_faces_0123456789ab.json.4242.tmp"],
+    sweep({ "doombar_faces_0123456789ab.json": 8 * DAY, "doombar_faces_0123456789ab.json.4242.tmp": 8 * DAY })),
+  "an old face cache older than the TTL is swept");
+  ok(sweep({ "doombar_faces_0123456789ab.json": 2 * HOUR }).length === 0, "an old face cache inside the TTL is kept");
+  ok(sweep({ "doombar_faces_0123456789ab.json": null }).length === 0, "an old face cache whose age is unknown is kept");
+  ok(sweep({ "gamebar_faces_0123456789ab.json": 99 * DAY }).length === 0, "the current face cache is still left to its game");
+}
+
+// --- The old runtime directory is swept only when it is a real directory of this user ---------
+{
+  const euid = 1000;
+  const env = { XDG_RUNTIME_DIR: "/run/user/1000" };
+  const opts = (st) => ({ platform: "linux", euid, ownerOf: () => euid, lstat: (p) => {
+    if (p === "/run/user/1000/doombar") return st;
+    throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+  } });
+  const dirs = (st, e = env) => sweepDirs("s", e, opts(st)).map((d) => d.replace(/\\/g, "/"));
+  ok(dirs({ isDirectory: () => true, uid: euid }).includes("/run/user/1000/doombar"),
+    "an old runtime directory of this user is swept too");
+  ok(!dirs({ isDirectory: () => true, uid: euid + 1 }).includes("/run/user/1000/doombar"),
+    "one owned by another uid is not");
+  ok(!dirs({ isDirectory: () => false, isSymbolicLink: () => true, uid: euid }).includes("/run/user/1000/doombar"),
+    "a symlink in its place is not");
+  ok(dirs({ isDirectory: () => true, uid: euid }, { ...env, GAMEBAR_STATE: "/sandbox/gamebar_s.json" }).length === 1,
+    "with GAMEBAR_STATE set only the state's own directory is swept");
+  ok(sweepDirs("s", { GAMEBAR_RUNTIME_DIR: "/rt" }, { platform: "linux", euid, lstat: () => ({ isDirectory: () => true, uid: euid }) }).length === 1,
+    "with the runtime directory overridden the old directory is that one, swept once");
+}
+if (process.platform !== "win32") {
+  const tmp = mkdtempSync(path.join(os.tmpdir(), "gamebar-sweep-link-"));
+  const xdg = path.join(tmp, "xdg"), target = path.join(tmp, "target");
+  mkdirSync(path.join(xdg, "gamebar"), { recursive: true, mode: 0o700 });
+  mkdirSync(target, { recursive: true });
+  symlinkSync(target, path.join(xdg, "doombar"));
+  ok(sweepDirs("s", { XDG_RUNTIME_DIR: xdg }).length === 1, "a real symlink in the old directory's place is not swept");
+  rmSync(path.join(xdg, "doombar"), { force: true });
+  mkdirSync(path.join(xdg, "doombar"), { mode: 0o700 });
+  ok(sweepDirs("s", { XDG_RUNTIME_DIR: xdg }).length === 2, "a real old directory of this user is");
+  rmSync(tmp, { recursive: true, force: true });
+}
+
 // --- End to end: the real hook sweeps its own temp dir on SessionStart ----------------------
 {
   const tmp = mkdtempSync(path.join(os.tmpdir(), "gamebar-sweep-"));
@@ -188,6 +254,15 @@ const TTL = 7 * DAY;
   stamp("gamebar_frame_0123456789_gone.json.4242.tmp", 2 * 60 * 60 * 1000);
   stamp("gamebar_daemon_0123456789.json", 30 * DAY);
   stamp("gamebar_daemon_0123456789.claim", 30 * DAY);
+  // Left by a release before 1.0.0.
+  stamp("mugshot_olddead.json", 30 * DAY);
+  stamp("mugshot_olddead.json.jsonl", 30 * DAY);
+  stamp("mugshot_frame_0123456789_olddead.json", 30 * DAY);
+  stamp("mugshot_oldfresh.json", 1000);
+  stamp("mugshot_ratehealth_global.json", 30 * DAY);
+  stamp("mugshot_daemon_0123456789.json", 30 * DAY);
+  stamp("doombar_faces_0123456789ab.json", 30 * DAY);
+  stamp("doombar_faces_ba9876543210.json", 1000);
 
   // sandboxEnv points the hook's runtime directory at our sandbox; GAMEBAR_STATE keeps its own checkpoint
   // there too, so `keep` covers a real path inside the swept directory.
@@ -215,6 +290,12 @@ const TTL = 7 * DAY;
     "the daemon heartbeat and claim survive the sweep");
   ok(existsSync(path.join(tmp, `gamebar_${sid}.json.jsonl`)),
      "this session's own journal exists and was not swept");
+  ok(!left.includes("mugshot_olddead.json") && !left.includes("mugshot_olddead.json.jsonl") &&
+     !left.includes("mugshot_frame_0123456789_olddead.json") && !left.includes("doombar_faces_0123456789ab.json"),
+    "cold mugshot_ and doombar_faces_ files are swept like gamebar_ ones");
+  ok(left.includes("mugshot_oldfresh.json") && left.includes("doombar_faces_ba9876543210.json") &&
+     left.includes("mugshot_ratehealth_global.json") && left.includes("mugshot_daemon_0123456789.json"),
+    "fresh old-prefix files, the old shared state and an old daemon heartbeat survive");
 
   // The sweep must be switchable off.
   stamp("gamebar_dead2.json", 30 * DAY);

@@ -163,22 +163,25 @@ export function isOurPsDaemon(row, start, daemonJs = DAEMON_JS) {
   return Number.isFinite(start) && Number.isFinite(created) && Math.abs(created - start) <= START_SLACK_MS + 1000;
 }
 
-export function confirmedDaemonPid(hb, platform = process.platform) {
+// The heartbeat's pid when the process list confirms it is node running `daemonJs` (this
+// installation's src/daemon.js unless another installation's is named), started when the
+// heartbeat says; else null.
+export function confirmedDaemonPid(hb, platform = process.platform, daemonJs = DAEMON_JS) {
   const pid = hb && hb.pid;
   if (!Number.isInteger(pid) || pid <= 0 || pid === process.pid) return null;
   try {
     if (platform === "win32") {
       const r = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", PROCESS_PS(pid)],
         { encoding: "utf8", timeout: 5000, windowsHide: true });
-      return r.status === 0 && isOurDaemon(r.stdout, hb.start) ? pid : null;
+      return r.status === 0 && isOurDaemon(r.stdout, hb.start, daemonJs) ? pid : null;
     }
     if (platform === "linux") {
       const read = (f) => readFileSync(f, "utf8");
-      return isOurLinuxDaemon({ stat: read(`/proc/${pid}/stat`), cmdline: read(`/proc/${pid}/cmdline`) }, hb.startTicks)
+      return isOurLinuxDaemon({ stat: read(`/proc/${pid}/stat`), cmdline: read(`/proc/${pid}/cmdline`) }, hb.startTicks, daemonJs)
         ? pid : null;
     }
     const r = spawnSync("ps", ["-o", "lstart=,command=", "-p", String(pid)], { encoding: "utf8", timeout: 5000 });
-    return r.status === 0 && isOurPsDaemon(r.stdout, hb.start) ? pid : null;
+    return r.status === 0 && isOurPsDaemon(r.stdout, hb.start, daemonJs) ? pid : null;
   } catch { return null; }
 }
 

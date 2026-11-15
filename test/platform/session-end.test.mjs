@@ -82,6 +82,24 @@ const hook = (event, env) => {
   rmSync(tmp, { recursive: true, force: true });
 }
 
+// --- A session that started before 1.0.0 left its files under the old prefix: they go too -------
+{
+  const tmp = mkdtempSync(path.join(os.tmpdir(), "gamebar-end-old-"));
+  const env = { ...sandboxEnv(tmp) };
+  const old = (sid) => [`mugshot_${sid}.json`, `mugshot_${sid}.json.jsonl`, `mugshot_${sid}.json.4242.tmp`,
+    `mugshot_git_${sid}.json`, `mugshot_msys_${sid}.json`, `mugshot_adv_${sid}.json`,
+    `mugshot_payload_0123456789_${sid}.json`, `mugshot_frame_0123456789_${sid}.json`];
+  [...old("ending"), ...old("other"), "mugshot_daemon_0123456789.json", "mugshot_ratehealth_global.json", "savings_ending.json"]
+    .forEach((n) => writeFileSync(path.join(tmp, n), "{}"));
+  ok(hook({ hook_event_name: "SessionEnd", session_id: "ending" }, env) === 0, "SessionEnd exits 0");
+  const left = readdirSync(tmp);
+  ok(old("ending").every((n) => !left.includes(n)), `the ending session's old-prefix files are gone (left: ${left.join(", ")})`);
+  ok(old("other").every((n) => left.includes(n)), "another session's old-prefix files are untouched");
+  ok(["mugshot_daemon_0123456789.json", "mugshot_ratehealth_global.json", "savings_ending.json"].every((n) => left.includes(n)),
+    "an old daemon heartbeat, the old shared state and the savings file stay");
+  rmSync(tmp, { recursive: true, force: true });
+}
+
 // --- GAMEBAR_STATE relocates the cleanup with the files ----------------------------------------
 {
   const sandbox = mkdtempSync(path.join(os.tmpdir(), "gamebar-end-sandbox-"));

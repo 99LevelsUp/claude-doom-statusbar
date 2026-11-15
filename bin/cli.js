@@ -8,6 +8,8 @@
 //   claude-game-bar install --local       # install into ./.claude/settings.local.json instead
 //   claude-game-bar install --refresh 0   # events only; default is a 1s timer + events
 //   claude-game-bar install --no-fonts    # don't check for / install an emoji font (Linux)
+//   claude-game-bar install --keep-old    # leave a global claude-doom-statusbar installed
+//   claude-game-bar install --help        # the install options
 //   claude-game-bar uninstall             # remove everything this installer added
 //   claude-game-bar theme minecraft       # switch game theme: doom | minecraft
 //   claude-game-bar theme next            # cycle to the next theme
@@ -15,16 +17,19 @@
 //   claude-game-bar test-card             # show which glyphs this terminal draws
 //
 // It merges into your existing settings (other hooks / statusline are preserved or
-// backed up), is safe to re-run, and prints what to do next.
+// backed up), is safe to re-run, and prints what to do next. It also takes over an installation
+// of claude-doom-statusbar, the package this one replaces: its entries are re-pointed here, its
+// DOOMBAR_ settings renamed, its saved theme kept, and the global package removed.
 
-import { readFileSync, existsSync, readdirSync, unlinkSync, lstatSync, rmdirSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
-import { PACKAGE_ROOT } from "../src/package-root.js";
-import { THEMES, THEME_NAMES, currentTheme, saveTheme, clearTheme, nextTheme, resolveTheme } from "../src/theme.js";
-import { rootHash, daemonPrefix, payloadPrefix, framePrefix, runtimeDir, RUNTIME_NAME } from "../src/platform/runtime.js";
+import { PACKAGE_ROOT, SRC_DIR } from "../src/package-root.js";
+import { THEMES, THEME_NAMES, currentTheme, saveTheme, clearTheme, nextTheme, resolveTheme, migrateTheme, themeFile } from "../src/theme.js";
+import { rootHash, runtimeDir } from "../src/platform/runtime.js";
 import { envGet, newName, oldName } from "../src/platform/env.js";
-import { confirmedDaemonPid } from "../src/platform/supervise.js";
 import { HOOK_EVENTS, die, settingsFile, load, save, install, uninstall } from "../src/install/settings.js";
+import { stopDaemon } from "../src/install/daemons.js";
+import { removeOldPackage } from "../src/install/old-package.js";
 import { STATUSLINE, CLIENT, NODE_CMD, clientCommand } from "../src/install/shell.js";
 import { STEPS, testCardLines } from "../src/kit/raster/glyphs.js";
 import { convertImage } from "../src/kit/raster/glyph-render.js";
@@ -56,94 +61,37 @@ const HASH = rootHash(PACKAGE_ROOT); // this installation's daemon and its files
 // wants a strictly event-driven HUD.
 const DEFAULT_REFRESH = 1;
 
-// Stop this installation's render daemon and delete its temp files: heartbeat, claim (and the
-// claim's lock and temp copies), and every session's payload and frame. Only this install's hash,
-// so another installation's daemon (a global copy next to a checkout) is never touched. A pid is
-// stopped only when the process list confirms it is node running this package's src/daemon.js,
-// started when the heartbeat says; a stale heartbeat may name a pid reused by anything.
-// The kill comes first, or the daemon would rewrite its files on its next pass.
-//
-// Where to look: the runtime directory. On Linux and macOS the shell running uninstall may see
-// another XDG_RUNTIME_DIR than Claude Code did (tmux, ssh), so every candidate directory is
-// tried, each only when it is a real directory of this user. With GAMEBAR_RUNTIME_DIR set, only
-// that one, so a test never reaches the live bar.
-function runtimeCandidates(env = process.env) {
-  if (envGet("RUNTIME_DIR", env) || process.platform === "win32") return [runtimeDir(env)];
-  const dirs = new Set([runtimeDir(env)]);
-  if (String(env.XDG_RUNTIME_DIR || "").startsWith("/")) dirs.add(path.posix.join(env.XDG_RUNTIME_DIR, RUNTIME_NAME));
-  if (process.platform === "darwin" && String(env.TMPDIR || "").startsWith("/")) dirs.add(path.posix.join(env.TMPDIR, RUNTIME_NAME));
-  dirs.add(`/tmp/${RUNTIME_NAME}-${process.geteuid()}`);
-  return [...dirs];
-}
+const INSTALL_HELP = `usage: claude-game-bar install [options]
 
-// SIGTERM lets the daemon close its socket and drop its heartbeat; it exits on its own within 2 s
-// (STOP_WAIT_MS leaves room). One still running then is killed. True when the pid is gone.
-const STOP_WAIT_MS = 3000;
-// A zombie (exited, not yet reaped by its parent) still answers kill(pid, 0) but is gone.
-function pidAlive(pid) {
-  try { process.kill(pid, 0); } catch (e) { return e.code === "EPERM"; }
-  if (process.platform !== "linux") return true;
-  try {
-    const stat = readFileSync(`/proc/${pid}/stat`, "utf-8");
-    return stat.slice(stat.lastIndexOf(")") + 2, stat.lastIndexOf(")") + 3) !== "Z";
-  } catch { return false; }
-}
-const sleepSync = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-function stopPid(pid) {
-  try { process.kill(pid); } catch { return !pidAlive(pid); }
-  for (let waited = 0; pidAlive(pid) && waited < STOP_WAIT_MS; waited += 50) sleepSync(50);
-  if (pidAlive(pid)) {
-    try { process.kill(pid, "SIGKILL"); } catch {}
-    for (let waited = 0; pidAlive(pid) && waited < 1000; waited += 50) sleepSync(50);
-  }
-  return !pidAlive(pid);
-}
+Wires the bar into Claude Code's settings. Safe to re-run. It also takes over an installation of
+claude-doom-statusbar, the package this one replaces: its entries point here afterwards, its
+DOOMBAR_ settings are renamed to GAMEBAR_, its saved theme is kept, and the global
+claude-doom-statusbar package is removed with npm.
 
-function stopDaemon() {
-  const notes = [];
-  const posix = process.platform !== "win32";
-  const prefixes = [daemonPrefix(HASH), payloadPrefix(HASH), framePrefix(HASH)];
-  for (const dir of runtimeCandidates()) {
-    if (posix) {
-      try {
-        const st = lstatSync(dir);
-        if (!st.isDirectory() || st.uid !== process.geteuid()) continue;
-      } catch { continue; }
-    }
-    let hb = null;
-    try { hb = JSON.parse(readFileSync(path.join(dir, `${daemonPrefix(HASH)}json`), "utf-8")); } catch {}
-    if (hb && Number.isInteger(hb.pid) && hb.pid > 0) {
-      const pid = confirmedDaemonPid(hb);
-      if (pid !== null) {
-        notes.push(stopPid(pid) ? `stopped the render daemon (pid ${pid})`
-          : `could not stop the render daemon (pid ${pid}); its files are removed, and it exits after its idle time`);
-      } else {
-        notes.push(`left pid ${hb.pid} running: not confirmed as this installation's render daemon`);
-      }
-    }
-    let removed = 0;
-    let names = [];
-    try { names = readdirSync(dir); } catch {}
-    for (const n of names) {
-      if (!prefixes.some((p) => n.startsWith(p))) continue;
-      try { unlinkSync(path.join(dir, n)); removed++; } catch {}
-    }
-    if (removed) notes.push(`removed ${removed} render daemon file(s) from ${dir}`);
-    if (posix && !envGet("RUNTIME_DIR")) { try { rmdirSync(dir); } catch { /* not empty: other files */ } }
-  }
-  return notes;
-}
+options:
+  --preset <name>  full | standard | minimal (default: keep the current one, else full)
+  --project        install into ./.claude/settings.json instead of ~/.claude/settings.json
+  --local          install into ./.claude/settings.local.json instead
+  --refresh <s>    redraw every <s> seconds as well as on events (default 1; 0 = events only)
+  --no-fonts       do not check for or install an emoji font (Linux)
+  --keep-old       leave a global claude-doom-statusbar installed
+
+The old package is removed only by an install into ~/.claude/settings.json, the settings it was
+wired into. If npm cannot remove it, the install still succeeds and prints the command to run.`;
 
 function parseArgs(argv) {
-  const out = { cmd: "install", preset: "full", project: false, local: false, refresh: DEFAULT_REFRESH, theme: null, fonts: true };
+  const out = { cmd: "install", preset: null, project: false, local: false, refresh: DEFAULT_REFRESH, theme: null,
+    fonts: true, keepOld: false, help: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "install" || a === "uninstall") out.cmd = a;
     else if (a === "theme" || a === "themes") { out.cmd = "theme"; out.theme = argv[++i] ?? null; }
     else if (a === "test-card") out.cmd = "test-card";
     else if (a === "--uninstall") out.cmd = "uninstall";
+    else if (a === "--help" || a === "-h") out.help = true;
     else if (a === "--project") out.project = true;
     else if (a === "--local") out.local = true;
+    else if (a === "--keep-old") out.keepOld = true;
     else if (a === "--no-fonts") out.fonts = false;
     else if (a === "--preset") out.preset = argv[++i];
     else if (a.startsWith("--preset=")) out.preset = a.slice("--preset=".length);
@@ -151,7 +99,7 @@ function parseArgs(argv) {
     else if (a.startsWith("--refresh=")) out.refresh = refreshValue(a.slice("--refresh=".length));
     else die(`! unknown argument: ${a}`);
   }
-  if (out.cmd === "install" && !out.preset) die("! --preset needs a value (full | standard | minimal)");
+  if (out.cmd === "install" && out.preset !== null && !out.preset) die("! --preset needs a value (full | standard | minimal)");
   return out;
 }
 
@@ -211,6 +159,7 @@ function testCard() {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  if (args.help) { console.log(INSTALL_HELP); return; }
   if (args.cmd === "theme") return theme(args.theme);
   if (args.cmd === "test-card") return testCard();
   const p = settingsFile(args.project, args.local);
@@ -220,7 +169,7 @@ async function main() {
     uninstall(cfg);
     save(p, cfg);
     if (!args.project && !args.local) clearTheme(); // drop the saved theme choice too
-    const notes = stopDaemon();
+    const notes = stopDaemon({ hash: HASH, daemonJs: path.join(SRC_DIR, "daemon.js") });
     console.log(`✓ removed claude-game-bar from ${p}`);
     for (const n of notes) console.log(`  note       : ${n}`);
     console.log("  restart Claude Code to apply.");
@@ -234,14 +183,28 @@ async function main() {
   const notes = install(cfg, args.preset, args.refresh, command);
   save(p, cfg);
 
+  // Taking over an installation of the old package: only from the user settings, the ones its
+  // global install was wired into. A project or local install leaves them as they are, so the old
+  // package may still be in use there, and it stays, with its saved theme.
+  let old = { line: null, notes: [] };
+  if (!args.project && !args.local) {
+    if (!args.keepOld) {
+      const moved = migrateTheme();
+      if (moved) notes.push(`kept the saved theme (${moved}), now in ${themeFile()}`);
+    }
+    old = removeOldPackage({ keepOld: args.keepOld });
+  }
+
+  const preset = cfg.env[newName("PRESET")];
   console.log(`✓ installed claude-game-bar into ${p}`);
   console.log(`  statusline : ${command}`);
   if (clientCmd) console.log("  renderer   : per-installation render daemon, started by the hooks");
   if (process.platform !== "win32") console.log(`  files      : ${runtimeDir()} (private to this user)`);
   console.log(`  refresh    : ${args.refresh > 0 ? `every ${args.refresh}s + events` : "events only"}`);
-  console.log(`  preset     : ${args.preset}`);
+  console.log(`  preset     : ${args.preset || preset}`);
   console.log(`  hooks      : ${HOOK_EVENTS.join(", ")}`);
-  for (const n of notes) console.log(`  note       : ${n}`);
+  for (const n of [...notes, ...old.notes]) console.log(`  note       : ${n}`);
+  if (old.line) console.log(`  old package: ${old.line}`);
   // Linux only: a desktop without a colour emoji font shows boxes in place of the bar's emoji.
   const font = await ensureEmojiFont({ skip: !args.fonts });
   for (const n of font.notes) console.log(n.startsWith("emoji font :") ? `  ${n}` : `  note       : ${n}`);

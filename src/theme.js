@@ -85,6 +85,25 @@ export function saveTheme(theme, env = process.env) {
   if (old) rmSync(old, { force: true });
 }
 
+// The installer's move of a choice saved before 1.0.0: the old file's theme goes into the new file,
+// and the old file goes. A new file that already exists wins and is not touched. An old file that
+// cannot be read or names no theme is left as it is. Returns the theme moved, or null.
+export function migrateTheme(env = process.env) {
+  const old = oldThemeFile(env);
+  if (!old) return null;
+  let theme;
+  try { theme = JSON.parse(readFileSync(old, "utf8")).theme; } catch { return null; }
+  try {
+    readFileSync(themeFile(env));
+    rmSync(old, { force: true });
+    return null;
+  } catch { /* no new file yet */ }
+  const want = resolveTheme(theme);
+  if (!want) return null;
+  saveTheme(want, env); // removes the old file; the default theme leaves no file at all
+  return want;
+}
+
 export function nextTheme(theme) {
   const names = GAMES.map((g) => g.name);
   return names[(names.indexOf(theme) + 1) % names.length];
