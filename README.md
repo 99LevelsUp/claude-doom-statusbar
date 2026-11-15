@@ -1,5 +1,14 @@
 # claude-doom-statusbar
 
+> [!IMPORTANT]
+> **This package has moved to [`claude-game-bar`](https://www.npmjs.com/package/claude-game-bar).** 0.16.0 is the last release of `claude-doom-statusbar`, and its bar shows a row saying so. To switch:
+>
+> ```sh
+> npm i -g claude-game-bar && claude-game-bar install
+> ```
+>
+> `claude-game-bar install` takes over this package's settings and removes the old global package. The bar looks the same.
+
 A DOOM-inspired status bar for the [Claude Code](https://docs.claude.com/en/docs/claude-code) CLI. Your session, read off the Doomguy HUD: a mugshot whose face tracks your health, boxes for usage, model, project and system, and live lists of running agents and tasks.
 
 <p align="center">

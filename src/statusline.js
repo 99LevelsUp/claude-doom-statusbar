@@ -25,6 +25,7 @@ import { effectiveStep } from "./glyph-level.js";
 import { foldBatch, statePaths, sessionPaths, writeAtomic, TASK_LINGER, runtimeDir, ensureRuntimeDir } from "./fold.js";
 import { currentTheme, themePreset } from "./theme.js";
 import { buildHotbar } from "./hotbar.js";
+import { MOVED_TEXT } from "./moved.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.dirname(HERE);
@@ -750,9 +751,20 @@ function loadPreset(file) {
   return cfg;
 }
 
-// Returns the bar's lines, without trailing newlines. Sessions must render one at a time:
-// render.js keeps the values in one module-level slot (setValues).
-export function renderSession({ data, env = process.env, now = Date.now() / 1000 }) {
+// The last release of this package: the bar has moved to claude-game-bar. One dim row after
+// the bar, in every theme. The one-shot render and the daemon frame both come from
+// renderSession, so both carry it. `claude-game-bar install` takes over this installation's
+// settings and prints how to remove this package.
+export const MOVED_NOTICE = `\x1b[2m${MOVED_TEXT}\x1b[0m`;
+
+// Returns the bar's lines followed by the move notice, without trailing newlines. Sessions
+// must render one at a time: render.js keeps the values in one module-level slot (setValues).
+export function renderSession(args) {
+  return [...renderBar(args), MOVED_NOTICE];
+}
+
+// The bar alone, exactly as 0.15.0 rendered it.
+export function renderBar({ data, env = process.env, now = Date.now() / 1000 }) {
   // A shallow copy: the rate-limit merge below rewrites data.rate_limits, and a caller that
   // keeps the payload between renders must not see it change.
   if (data && typeof data === "object" && !Array.isArray(data)) data = { ...data };
