@@ -42,7 +42,7 @@ mkdirSync(TMPDIR, { recursive: true });
 Object.assign(process.env, { ...sandboxEnv(TMPDIR), PATH: "", DOOMBAR_MSYS_REAP: "0",
   DOOMBAR_THEME: "doom", DOOMBAR_RATELIMITS_SHARE: "0", DOOMBAR_PRESET: path.join(PRESETS, "minimal.toml") });
 for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "DOOMBAR_GLYPHS"]) delete process.env[k];
-const { renderSession } = await import("../src/statusline.js");
+const { renderSession, renderBar, movedNotice } = await import("../src/statusline.js");
 
 const NOW_MS = 1793500000123;
 const NOW = NOW_MS / 1000;
@@ -149,6 +149,44 @@ try {
     ok(render(s, { DOOMBAR_PRESET: capped, DOOMBAR_GLYPHS: "octant" }) === half,
       "a preset that caps the mugshot at half blocks wins over a terminal that draws octants");
     ok(render(s, { WT_SESSION: "x" }) === octant, "a Windows Terminal session gets octants without any setting");
+  }
+
+  // 0.16.0: every theme ends with the move notice, and every line above it is the bar exactly
+  // as 0.15.0 drew it.
+  {
+    const FULL = "claude-doom-statusbar has moved: npm i -g claude-game-bar && claude-game-bar install";
+    const MOVED_NOTICE = movedNotice(200);
+    ok(MOVED_NOTICE === `\x1b[2m${FULL}\x1b[0m`, "a wide terminal gets the whole notice, dim");
+    // A narrow terminal gets the longest wording that fits its COLUMNS, as the bar shrinks too.
+    ok(movedNotice(FULL.length) === MOVED_NOTICE, `the whole notice still at exactly ${FULL.length} columns`);
+    ok(strip(movedNotice(83)) === "moved: npm i -g claude-game-bar && claude-game-bar install",
+      "one column less drops the old name but keeps both commands");
+    ok(strip(movedNotice(57)) === "moved to claude-game-bar", "too narrow for the commands: just where it went");
+    ok(strip(movedNotice(10)) === "moved to claude-game-bar", "narrower still keeps the shortest wording");
+    {
+      const s = session("moved-narrow", "moved");
+      const lines = renderSession({ data: s.data, env: { ...s.env, COLUMNS: "60" }, now: NOW });
+      ok(lines.at(-1) === movedNotice(60) && strip(lines.at(-1)).length <= 60,
+        "the render's notice follows the session's own COLUMNS");
+    }
+    for (const [name, over] of [
+      ["full", { DOOMBAR_PRESET: path.join(PRESETS, "full.toml"), COLUMNS: "250" }],
+      ["minimal", { DOOMBAR_PRESET: path.join(PRESETS, "minimal.toml") }],
+      ["minecraft", { DOOMBAR_THEME: "minecraft", COLUMNS: "160" }],
+    ]) {
+      const s = session(`moved-${name}`, "moved");
+      const args = { data: s.data, env: { ...s.env, ...over }, now: NOW };
+      const bar = renderBar(args);
+      const lines = renderSession(args);
+      ok(bar.length > 0 && lines.length === bar.length + 1 && lines.at(-1) === MOVED_NOTICE,
+        `${name}: the render ends with the move notice, after ${bar.length} bar lines`);
+      ok(lines.slice(0, -1).every((l, i) => l === bar[i]), `${name}: every line above the notice is the bar unchanged`);
+    }
+    const s = session("moved-main", "moved");
+    const out = execFileSync(process.execPath, ["--import", pathToFileURL(PIN).href, STATUSLINE],
+      { input: JSON.stringify(s.data), env: { ...s.env, SystemRoot: process.env.SystemRoot, PATH: "",
+        ...sandboxEnv(TMPDIR), DOOMBAR_MSYS_REAP: "0" } }).toString("utf8");
+    ok(out.endsWith(MOVED_NOTICE + "\n"), "the one-shot command prints the notice as its last line");
   }
 
   // MUGSHOT_STATE in the passed env decides where the checkpoint is read and written.

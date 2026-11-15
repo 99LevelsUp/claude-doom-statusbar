@@ -33,6 +33,7 @@ import { terminalStep } from "../src/glyph-level.js";
 import { decodePng } from "../src/png.js";
 import { sgrFg, sgrBg } from "../src/ansi.js";
 import { ensureEmojiFont } from "../src/emoji-font.js";
+import { MOVED_TEXT } from "../src/moved.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url)); // bin/
 const ROOT = path.dirname(HERE); // package root
@@ -420,6 +421,7 @@ async function main() {
     console.log(`✓ removed claude-doom-statusbar from ${p}`);
     for (const n of notes) console.log(`  note       : ${n}`);
     console.log("  restart Claude Code to apply.");
+    console.log(`\n${MOVED_TEXT}`);
     return;
   }
 
@@ -449,6 +451,7 @@ async function main() {
   console.log("  2. (optional) run `claude-doom-statusbar test-card` to see which glyphs this terminal draws.");
   console.log("  Clickable links need FORCE_HYPERLINK=1 (set for you here; on Windows Terminal you may");
   console.log("  also need to launch with it:  $env:FORCE_HYPERLINK='1'; claude ).");
+  console.log(`\n${MOVED_TEXT}`);
 }
 
 await main();
