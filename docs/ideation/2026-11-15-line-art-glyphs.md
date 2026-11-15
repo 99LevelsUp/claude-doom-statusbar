@@ -126,6 +126,56 @@ CP437. Lines therefore need a level of their own, next to the glyph step:
 - **Ambiguous width:** box-drawing characters have East Asian Width "Ambiguous". Under a CJK locale
   some terminals draw them two cells wide, which would break layouts. The test card should show it.
 
+## 4a. Owner direction (2026-11-15): detect what can be detected, let the user choose the rest
+
+The owner's rule:
+- the test-card app stays available and working;
+- the set of glyphs is picked automatically where the terminal can be identified;
+- otherwise the user picks it at install or in configuration.
+
+This applies to the fill step as well as the line level.
+
+**What can be detected, and where.** The status line itself has no terminal to ask: Claude Code
+runs it without a TTY. Detection can only run where the user's terminal is attached, in
+`claude-game-bar install` and `claude-game-bar test-card`. There:
+- **Glyph width:** print a glyph and ask for the cursor position (DSR, `ESC[6n`). The column moves by
+  1 or 2 cells, or not at all, which catches the ambiguous-width case reliably. Windows Terminal,
+  the console host in VT mode, VTE, kitty and xterm all answer.
+- **Terminal identity:** the environment the bar already reads, plus the terminal's own answer to
+  XTVERSION (`ESC[>0q`) or DA2 (`ESC[>c`) where supported. A terminal known to draw box and legacy
+  glyphs itself (Windows Terminal, kitty, Ghostty, WezTerm, VTE) gets the matching level whatever
+  its font.
+- **Font coverage:**
+  - Linux: fontconfig answers whether any installed font covers a code point
+    (`fc-list ':charset=…'`, as the emoji-font check in the installer already does);
+  - Windows and macOS: no cheap check.
+- **What cannot be detected:** whether a glyph is drawn *right*. A missing glyph usually still
+  advances one cell, as a box, a question mark or a fallback font's look-alike. Only the user's eyes
+  catch that, which is what the test card is for.
+
+**Flow.**
+1. `install` and `test-card` run the detection first and propose a fill step and a line level.
+2. When the answer is uncertain and the terminal is interactive, they show the test card's sample
+   for each level and ask the user for the highest one that looks right.
+3. A non-interactive install takes the detected or safe default. It prints the command that changes
+   it, for example `claude-game-bar glyphs <step>` / `claude-game-bar lines <level>`, or the
+   `GAMEBAR_GLYPHS` / `GAMEBAR_LINES` settings.
+
+**One catch: the terminal at install time may not be the one Claude Code runs in.** The user may
+install in Windows Terminal and use Claude Code in VS Code. So the result is stored per terminal
+identity, not as one global value. One way is a small file in `~/.claude/` mapping an identity (the
+same variables `glyph-level.js` reads) to a fill step and a line level. The bar looks up the
+session's own identity in it, then falls back to the built-in table. Running `test-card` in a new
+terminal adds its entry.
+
+**What this adds to section 5:**
+- terminal queries (DSR, XTVERSION) with a short timeout and raw-mode stdin;
+- the per-terminal file, its reader in `glyph-level.js` and its writer in `bin/cli.js`;
+- an interactive prompt in `install`;
+- tests with a fake terminal answering the queries.
+
+The built-in terminal table for the fill step (D-8) moves onto the same mechanism.
+
 ## 5. What it touches
 
 | Area | Files | Change |
@@ -151,3 +201,5 @@ CP437. Lines therefore need a level of their own, next to the glyph step:
    behind the top line level, or leave it out until terminals catch up?
 4. **The existing hotbar and DOOM separators:** move them onto the primitive, which brings the
    fallback and may change bytes, or leave them as they are?
+
+Settled: how the glyph set is chosen (section 4a; owner, 2026-11-15).
