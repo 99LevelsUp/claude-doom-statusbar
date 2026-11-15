@@ -1,4 +1,9 @@
-# Contributing
+# Contributing to claude-game-bar
+
+The repository is [99LevelsUp/claude-game-bar](https://github.com/99LevelsUp/claude-game-bar), and
+the npm package and its command are both `claude-game-bar`. Settings from the environment are named
+`GAMEBAR_*`; the code reads them through `src/platform/env.js`, which falls back to the `DOOMBAR_*`
+names of releases before 1.0.0.
 
 ## Changes go through a pull request
 
@@ -42,7 +47,7 @@ field; these are the main ones:
   names that still choose the game.
 - `layout`: the drawing function. `layoutKey`: the preset `[bar] layout` value that selects it.
   The preset decides the layout, not the theme, so a preset of one game named through
-  `DOOMBAR_PRESET` still draws with its own game's layout.
+  `GAMEBAR_PRESET` still draws with its own game's layout.
 - `presets` (name to absolute path) and `defaultPreset`: the preset the theme renders.
 - `sample`: an optional image the glyph test card draws at every glyph step.
 
@@ -86,7 +91,7 @@ already on `master`, so the version bump goes through a pull request first:
    ```
 
 6. Check the outcome: `gh run watch` on the `Publish to npm` run, then
-   `npm view claude-doom-statusbar version --prefer-online`.
+   `npm view claude-game-bar version --prefer-online`.
 
 If the publish run fails (for example a test that only fails in CI), nothing reaches npm. Fix it
 through a pull request, then move the tag to the fixed commit on `master`:

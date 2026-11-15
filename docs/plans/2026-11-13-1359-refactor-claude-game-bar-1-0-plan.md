@@ -290,7 +290,7 @@ flowchart TB
 The structure as of 1.0.0. The per-unit Files lists are authoritative.
 
 ```
-bin/cli.js                       claude-game-bar CLI (bins: claude-game-bar, claude-doom-statusbar)
+bin/cli.js                       claude-game-bar CLI (bin: claude-game-bar)
 src/
   hook.js  statusline.js  daemon.js        entry files, stable paths
   gamebar-client.sh                        client

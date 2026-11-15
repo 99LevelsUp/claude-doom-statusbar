@@ -1,7 +1,7 @@
 {
   "name": "claude-game-bar",
   "version": "0.15.0",
-  "description": "DOOM-inspired status bar for the Claude Code CLI — a mugshot that tracks session health, plus usage, model, project, system, and a live subagent list.",
+  "description": "A status bar for the Claude Code CLI that draws the session as a game HUD: usage, rate limits, model, project, agents, tasks and system, as DOOM or Minecraft.",
   "type": "module",
   "bin": {
     "claude-game-bar": "bin/cli.js"
@@ -30,11 +30,16 @@
   },
   "keywords": [
     "claude-code",
+    "claude",
     "statusline",
-    "doom",
-    "terminal",
+    "statusbar",
+    "status-bar",
     "hud",
-    "tui"
+    "terminal",
+    "tui",
+    "game",
+    "doom",
+    "minecraft"
   ],
   "repository": {
     "type": "git",

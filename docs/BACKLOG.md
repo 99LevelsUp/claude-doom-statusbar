@@ -57,8 +57,8 @@ Owner, 2026-11-13: rename on GitHub and npm together with 1.0.0; the bar becomes
 | R-2 | Neutral reaction state `{expr, hp, god, dead}` instead of DOOM sprite names between engine and layouts (audit step 4) | done (1.0 plan step 4) |
 | R-7 | Render context instead of module-level `VALUES` / face options (audit step 5) | done (1.0 plan step 4) |
 | R-8 | Game registry `games/index.js` replaces `THEMES`; presets and assets under their game (audit step 6) | done (PR #10) |
-| R-1 | Rename package, bin (old bin as alias), repo, env vars `DOOMBAR_*` → `GAMEBAR_*` (with fallback), theme file, file prefixes, client name; DOOM-specific code keeps `doom` (audit step 7) | next |
-| R-4 | `install` migrates settings in place (paths, env names, theme file) | next |
+| R-1 | Rename package, bin (only `claude-game-bar`; owner decision 2026-11-15), repo, env vars `DOOMBAR_*` → `GAMEBAR_*` (with fallback), theme file, file prefixes, client name; DOOM-specific code keeps `doom` (audit step 7) | done in code (1.0 plan step 7); repo rename with the release |
+| R-4 | `install` migrates settings in place (paths, env names, theme file) | done (1.0 plan step 7) |
 | R-3 | npm: set up trusted publishing for the new package, last `claude-doom-statusbar` release with a notice, `npm deprecate` (audit step 8) | next |
 
 ## Shared game layout engine
