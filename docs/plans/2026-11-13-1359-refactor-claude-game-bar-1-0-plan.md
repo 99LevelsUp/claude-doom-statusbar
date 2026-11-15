@@ -23,7 +23,7 @@ execution: code
 - **Who finishes:** this session builds and merges every PR and publishes through CI. The owner runs the npm account steps (runbook B–D) and confirms the Pi switch.
 - **Open blockers:** none for implementation.
   - The owner reserves the npm name early (runbook B1) and sets up the trusted publisher just before the 1.0.0 tag (R15; runbook B2).
-  - How the two packages' `claude-doom-statusbar` command coexist (Open Questions) must be decided before PR6 is built.
+  - The shared `claude-doom-statusbar` command is resolved (2026-11-15): 1.0.0 ships only `claude-game-bar`, and its `install` removes the old global package (Key Decisions).
 
 ---
 
@@ -33,6 +33,7 @@ execution: code
 - **Changed:** R9 now also covers the internal protocol names: the runtime directory, the daemon pipe, the frame and payload tags and the client's function names. The owner decided this on 2026-11-13.
 - **Added Key Decisions:** that one, the accepted grey window, and the release order.
 - **Resolved:** the four Outstanding Questions went into KTD2, KTD12, KTD13 and U16.
+- **Changed 2026-11-15 (owner):** R8 drops the old command name, and R10 removes the old global package instead of only printing how to (Key Decisions; the Open Question on the shared command name is closed).
 
 ### Summary
 
@@ -63,6 +64,8 @@ The full findings, with file-level evidence, are in `docs/ideation/2026-11-13-re
 - **The old package gets a final release, then `npm deprecate`. That release ships before the GitHub repository is renamed.** Governs R16. (session-settled: user-approved — chosen over a deprecation message alone, and over publishing after the rename, which the old package's trusted publisher would refuse.)
 - **That final release shows the move notice permanently in the bar.** Governs R16. (session-settled: user-directed — chosen over a temporary notice and over notices in npm and the CLI only: most users never run the CLI again and only ever see the bar.)
 - **The README is rewritten in full for the new project.** Governs R13. (session-settled: user-directed — the owner added it to the scope.)
+- **1.0.0 ships only the `claude-game-bar` command.** The old command keeps working until the old package is removed. Governs R8. (session-settled: user-directed, 2026-11-15 — chosen over keeping `claude-doom-statusbar` as an alias, which makes `npm i -g claude-game-bar` fail with `EEXIST` wherever the old package is installed, and over `--force`.)
+- **`claude-game-bar install` removes the old global package itself.** `claude-game-bar` is logically the next version of the same program, so the user is not asked to clean up after it. A manual command is printed only when the removal fails. Governs R10. (session-settled: user-directed, 2026-11-15 — chosen over printing the removal command only. `--keep-old` stays as an edge-case escape hatch.)
 
 ### Requirements
 
@@ -81,7 +84,7 @@ The full findings, with file-level evidence, are in `docs/ideation/2026-11-13-re
 
 **Rename**
 
-- R8. The package, the CLI and the GitHub repository are named `claude-game-bar`. The old CLI name still works as an alias.
+- R8. The package, the CLI and the GitHub repository are named `claude-game-bar`. The new package ships no `claude-doom-statusbar` command; the old one works until the old package is removed (R10).
 - R9. These carry game-neutral names:
   - the environment variables;
   - the theme choice file;
@@ -95,7 +98,7 @@ The full findings, with file-level evidence, are in `docs/ideation/2026-11-13-re
 - R10. `claude-game-bar install` moves an existing installation over in place:
   - it rewrites the settings entries, the environment variable names, the preset path and the theme file;
   - it never registers a second set of hooks;
-  - it leaves the old global package installed and prints how to remove it.
+  - it removes a globally installed `claude-doom-statusbar` once the settings are saved, and prints the manual command only if that fails. `--keep-old` skips the removal.
 - R11. The stale-file sweep and `uninstall` recognise both old and new file names during the fallback period, including the old runtime directory.
 - R12. The local working directory is renamed with 1.0.0. This repo's own live wiring and the Claude auto-memory move with it, so neither breaks. The Raspberry Pi's clone and its global settings change only with the owner's explicit OK.
 
@@ -132,7 +135,7 @@ The full findings, with file-level evidence, are in `docs/ideation/2026-11-13-re
     - the variable is renamed and its preset path is the new one;
     - exactly one set of hooks remains;
     - the Minecraft theme is still selected;
-    - the output says how to remove the old global package.
+    - the old global package is removed, or, if npm refuses, the output says how to remove it.
 - AE2. **Covers R9.** **Given** a user who still sets only the old variable for the theme or preset, or whose settings still name an old preset path, **when** the bar renders under 1.0.0, **then** it honours that setting exactly as 0.15.0 did.
 - AE3. **Covers R7.** **Given** the Pi running its live bar from master, **when** it pulls any merged 1.0.0 step, **then** the bar is live again within a daemon restart and exactly one daemon runs.
 - AE4. **Covers R16.**
@@ -604,7 +607,7 @@ Waits on: nothing to build. Publishing waits for the release sitting in Sequenci
 - **Dependencies:**
   - built from tag `v0.15.0`;
   - published only in the release sitting (Sequencing), after runbook B1;
-  - the notice's command waits on the Open Question about the shared command name.
+  - the notice's command follows the 2026-11-15 decisions: no shared command name, and `claude-game-bar install` removes the old package, so the notice does not mention the removal.
 - **Files:**
   - `src/statusline.js` (`renderSession` appends the notice line, KTD13);
   - `bin/cli.js` (`install` and `uninstall` print the notice);
@@ -614,7 +617,7 @@ Waits on: nothing to build. Publishing waits for the release sitting in Sequenci
   - `test/snapshots/*` regenerated on this branch only;
   - `test/render-session.test.mjs`.
 - **Approach:**
-  1. One dim line after the bar: `claude-doom-statusbar has moved to claude-game-bar: npm i -g claude-game-bar && claude-game-bar install`. Every layout returns it, and so does the daemon frame.
+  1. One dim line after the bar: `claude-doom-statusbar has moved: npm i -g claude-game-bar && claude-game-bar install` (84 columns, so it fits a 100-column terminal). Every layout returns it, and so does the daemon frame.
   2. A pull request into `release/0.16` with the checks green.
   3. Tag `v0.16.0` on that branch, as KTD11 describes. `publish.yml` publishes it.
 - **Test scenarios:**
@@ -649,7 +652,7 @@ Waits on: PR5 (merge order only). It is a separate PR because each step is verif
     - the offline line reads `gamebar: offline`.
   - Learned state is read under the old name when the new one is missing.
   - The theme file becomes `~/.claude/gamebar-theme.json`, read from the old file when the new one is missing.
-  - Binaries: `claude-game-bar`, plus `claude-doom-statusbar` as an alias.
+  - Binaries: `claude-game-bar` only (Key Decisions, 2026-11-15).
 - **Test scenarios:**
   - Covers AE2: with only `DOOMBAR_THEME=minecraft` set, the bar renders Minecraft. With both names set, `GAMEBAR_THEME` wins.
   - `DOOMBAR_INDENT=""` and `GAMEBAR_INDENT=""` keep the `??` semantics, and `DOOMBAR_RATELIMITS_SHARE=0` still turns sharing off.
@@ -678,7 +681,13 @@ Waits on: PR5 (merge order only). It is a separate PR because each step is verif
   - Old hook entries are re-pointed, never duplicated.
   - `env.DOOMBAR_*` is renamed to `GAMEBAR_*`, and the old preset path is rewritten.
   - The old theme file is migrated.
-  - When a `claude-doom-statusbar` global package is found, the installer prints `npm uninstall -g claude-doom-statusbar`.
+  - Old global package (Key Decisions, 2026-11-15):
+    - after the settings are saved, the installer looks for a global `claude-doom-statusbar` (`npm ls -g --json`);
+    - if found, it first stops that package's daemon, with the same identity check the hooks apply, so nothing holds the package folder open (Windows);
+    - then it runs `npm uninstall -g claude-doom-statusbar`;
+    - if npm fails (for example a global prefix that needs `sudo`), it prints that command, and the install still succeeds;
+    - `--keep-old` skips the removal;
+    - a checkout or `npx` run with no global old package changes nothing here.
   - The sweep and `uninstall` match old and new prefixes.
   - In each old runtime directory candidate that passes the KTD10 check, `uninstall` removes this installation's hash-prefixed daemon, payload and frame files, and old-prefix session files and `doombar_faces_*` older than the sweep TTL. It removes the directory only when it is empty, as `stopDaemon` does today. The old global package may still be running from the same directory (R10).
   - The reaper matches both client names.
@@ -688,7 +697,12 @@ Waits on: PR5 (merge order only). It is a separate PR because each step is verif
     - exactly one hook set per event;
     - `GAMEBAR_PRESET` at the new path;
     - Minecraft still selected;
-    - the removal hint printed.
+    - the old global package removed.
+  - With a stub `npm` on `PATH`:
+    - a global old package is uninstalled only after the settings file is written;
+    - a failing uninstall prints the manual command and `install` exits 0;
+    - `--keep-old` never calls the uninstall;
+    - no global old package means no uninstall call.
   - Re-running `install` changes nothing.
   - Covers AE5: `mugshot_*` and `doombar_faces_*` files older than the TTL are swept like `gamebar_*` files, and `uninstall` removes the old-prefix daemon files.
   - `uninstall` after the migration removes every entry and the env names.
@@ -719,7 +733,7 @@ Waits on: PR5 (merge order only). It is a separate PR because each step is verif
 - **Test scenarios:**
   - Test expectation: none. This is documentation only.
   - Check every command in the README against the CLI's actual commands and flags.
-- **Verification:** the README contains no `claude-doom-statusbar` except in the migration section and the alias note. Every command it shows exists.
+- **Verification:** the README contains no `claude-doom-statusbar` except in the migration section. Every command it shows exists.
 
 ### PR8: Release 1.0.0
 
@@ -756,8 +770,8 @@ Waits on: PR7. The merge waits for U15's GitHub rename and runbook B2 in the rel
   - outside the repo: `~/.claude/settings.json`, this repo's `.claude/settings.local.json`, and the Claude auto-memory directory for this project;
   - in the repo: none.
 - **Approach:** the order below keeps the bar on this PC from ever pointing at a missing path.
-  1. `npm i -g claude-game-bar`, then `claude-game-bar install` for the global wiring.
-  2. Verify the bar, then `npm uninstall -g claude-doom-statusbar`.
+  1. `npm i -g claude-game-bar`, then `claude-game-bar install` for the global wiring. It removes the global `claude-doom-statusbar` itself (U13).
+  2. Verify the bar, and that `npm ls -g claude-doom-statusbar` finds nothing.
   3. Close the sessions that run from this checkout. The owner does this.
   4. Rename `D:\Smeti\Dev\Claude\claude-doom-statusbar` to `D:\Smeti\Dev\Claude\claude-game-bar`.
   5. Run `node bin/cli.js install --local` from the new path.
@@ -776,6 +790,7 @@ Waits on: PR7. The merge waits for U15's GitHub rename and runbook B2 in the rel
 
 ### From 2026-11-13 review
 
+- **Resolved 2026-11-15 (owner): option (a), and `install` removes the old package itself** (Key Decisions; R8, R10, U12, U13). The original question follows for the record.
 - [Affects R8, R10, R16][User decision, before PR6 is built] **Both packages would ship a `claude-doom-statusbar` command.**
   - npm refuses a global install whose command file belongs to another installed package (`EEXIST`, unless `--force`). So `npm i -g claude-game-bar` fails on every machine that still has `claude-doom-statusbar`, including in U16, and the 0.16.0 notice text is frozen once published.
   - Options:
