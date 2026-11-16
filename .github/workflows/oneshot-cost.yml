@@ -13,6 +13,7 @@ on:
       - src/kit/raster/glyph-render.js
       - src/kit/raster/png.js
       - src/games/doom/face.js
+      - src/platform/assets.js
       - scripts/measure-oneshot.mjs
       - scripts/measure-client.mjs
       - src/gamebar-client.sh

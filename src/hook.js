@@ -135,5 +135,17 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
     try { reapStaleShells(); } catch { /* best effort */ }
     process.exit(0);
   }
-  main();
+  // `node hook.js --assets <game folder>` installs that game's pinned asset package, started
+  // detached by a render that found it missing (startInstall in src/platform/assets.js), which
+  // hands it the store's install lock. Loaded only here, so a hook event never pays for it.
+  const at = process.argv.indexOf("--assets");
+  if (at >= 0) {
+    const dir = process.argv[at + 1];
+    import("./platform/assets.js")
+      .then((m) => (dir ? m.installInBackground(dir) : null))
+      .catch(() => { /* the next render reports what is still missing */ })
+      .finally(() => process.exit(0));
+  } else {
+    main();
+  }
 }

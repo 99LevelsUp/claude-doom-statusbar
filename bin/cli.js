@@ -46,6 +46,7 @@ import { decodePng } from "../src/kit/raster/png.js";
 import { sgrFg, sgrBg } from "../src/kit/ansi.js";
 import { ensureEmojiFont } from "../src/install/emoji-font.js";
 import { sampleImage } from "../src/games/index.js";
+import { installSkinAssets, removeUnused, skinPackages } from "../src/platform/assets.js";
 
 const HASH = rootHash(PACKAGE_ROOT); // this installation's daemon and its files
 
@@ -74,7 +75,8 @@ const INSTALL_HELP = `usage: claude-game-bar install [options]
 Wires the bar into Claude Code's settings. Safe to re-run. It also takes over an installation of
 claude-doom-statusbar, the package this one replaces: its entries point here afterwards, its
 DOOMBAR_ settings are renamed to GAMEBAR_, its saved theme is kept, and the global
-claude-doom-statusbar package is removed with npm.
+claude-doom-statusbar package is removed with npm. The asset packages the chosen skin needs are
+installed, and those no skin drawn within 30 days uses are removed.
 
 options:
   --skin <name>    the skin to draw (see: claude-game-bar skin list); default: keep the skin the bar
@@ -174,9 +176,10 @@ function shadowNotes(want) {
   return notes;
 }
 
-// `skin` with no name (or "list") lists the skins; with a name (or "next") switches. The bar reads
-// the choice on every render, so it takes effect on the next refresh.
-function skin(name) {
+// `skin` with no name (or "list") lists the skins; with a name (or "next") switches, and installs
+// the asset packages the skin's chain needs and does not have yet. The bar reads the choice on every
+// render, so it takes effect on the next refresh.
+async function skin(name) {
   const current = selectSkin().name;
   if (!name || name === "list") {
     const all = listSkins();
@@ -197,7 +200,21 @@ function skin(name) {
   saveSkin(found.name);
   console.log(`✓ skin: ${found.name}${found.game ? ` — ${found.game.about}` : ""}`);
   console.log("  the status bar switches on its next refresh (no restart needed).");
+  for (const l of await installSkinAssets(found.name)) console.log(`  assets: ${l}`);
   for (const n of shadowNotes(found.name)) console.log(`  note: ${n}`);
+}
+
+// The asset store after an install: the packages the chosen skin's chain needs are installed, and
+// those that neither it, the saved skin's chain nor a skin any session drew within 30 days uses
+// are removed. Returns the lines for the output.
+async function tidyAssets(chosen) {
+  const lines = await installSkinAssets(chosen);
+  const saved = savedSkin();
+  const keep = [...skinPackages(chosen), ...(saved ? skinPackages(saved) : [])];
+  const swept = removeUnused({ keep });
+  if (swept.removed.length) lines.push(`removed unused assets: ${swept.removed.join(", ")}`);
+  if (swept.skipped) lines.push(`removed no unused assets: ${swept.skipped}`);
+  return lines;
 }
 
 // The skin an install into the settings `cfg` chooses: --skin, else the size --preset names of the
@@ -283,6 +300,7 @@ async function main() {
   for (const w of chosen.warnings) notes.push(w.message);
   save(p, cfg, { firstBackup: notes.migrated });
   if (user) saveSkin(chosen.name);
+  const assetLines = await tidyAssets(chosen.name);
 
   // Taking over an installation of the old package: only from the user settings, the ones its
   // global install was wired into. A project or local install leaves them as they are, so the old
@@ -305,6 +323,7 @@ async function main() {
   console.log(`  refresh    : ${args.refresh > 0 ? `every ${args.refresh}s + events` : "events only"}`);
   console.log(`  skin       : ${chosen.name} (${user ? `saved in ${savedSkinFile()}` : `${newName("SKIN")} in ${p}`})`);
   console.log(`  hooks      : ${HOOK_EVENTS.join(", ")}`);
+  for (const l of assetLines) console.log(`  assets     : ${l}`);
   for (const n of [...notes, ...old.notes]) console.log(`  note       : ${n}`);
   if (old.line) console.log(`  old package: ${old.line}`);
   // Settings of a project the old package was wired into (its `install --project` or `--local`)

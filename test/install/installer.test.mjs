@@ -446,5 +446,32 @@ if (!WIN) {
   rmSync(tmp, { recursive: true, force: true });
 }
 
+// 13. install removes from the asset store what no skin in use references: a package whose skin a
+// session last drew 31 days ago goes, one drawn 29 days ago stays, and so does a temporary folder
+// of an install whose process still runs, while one whose process is gone is removed.
+{
+  const tmp = tmpdir();
+  const store = path.join(tmp, "user", "assets");
+  const day = 24 * 3600 * 1000, now = Date.now();
+  for (const n of ["fixold@1.0.0", "fixrecent@1.0.0"]) mkdirSync(path.join(store, n), { recursive: true });
+  writeFileSync(path.join(tmp, "user", "usage-cccccccccc.json"), JSON.stringify({ skins: {
+    a: { time: now - 31 * day, packages: ["fixold@1.0.0"] }, b: { time: now - 29 * day, packages: ["fixrecent@1.0.0"] },
+  } }));
+  const sleeper = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+  const dead = spawnSync(process.execPath, ["-e", ""]).pid;
+  const deadTmp = path.join(store, `.tmp-${dead}-x`), liveTmp = path.join(store, `.tmp-${sleeper.pid}-x`);
+  try {
+    for (const d of [deadTmp, liveTmp]) mkdirSync(d, { recursive: true });
+    const out = run(tmp, "install", "--project");
+    ok(!existsSync(path.join(store, "fixold@1.0.0")), "install removes assets whose skin was last drawn 31 days ago");
+    ok(existsSync(path.join(store, "fixrecent@1.0.0")), "and keeps those drawn 29 days ago");
+    ok(/removed unused assets: fixold@1\.0\.0/.test(out), `and says what it removed (${out.match(/.*assets.*/g)})`);
+    ok(!existsSync(deadTmp) && existsSync(liveTmp), "a temporary install folder goes once its process is gone, not before");
+  } finally {
+    try { sleeper.kill(); } catch { /* already gone */ }
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

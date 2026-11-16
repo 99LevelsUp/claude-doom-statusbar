@@ -15,6 +15,7 @@ import { fitSkin } from "./kit/skin/fit.js";
 import { drawFit } from "./kit/skin/draw.js";
 import { runScripts } from "./kit/skin/scripts.js";
 import { warningLine, memoryStore } from "./kit/skin/warnings.js";
+import { createAssetResolver, chainGames, recordUsage } from "./platform/assets.js";
 import { currentTheme, themePreset, defaultPreset } from "./theme.js";
 import { layoutFor, presetFile, defaultGame } from "./games/index.js";
 import { selectSkin, findSkin } from "./skin-select.js";
@@ -88,8 +89,8 @@ export function renderSession({ data, env = process.env, now = Date.now() / 1000
 }
 
 // The selected skin, fitted, its scripts run and drawn, or null when nothing of it (nor of the
-// default skin) can be drawn. Assets are not resolved here yet: an element that needs one draws its
-// default.
+// default skin) can be drawn. An element whose asset is missing draws its default, and the warning
+// line names the missing package (src/platform/assets.js).
 function renderSkin(selected, data, env, now, warningStore, scripts) {
   // The folder each skin's own script paths are read from: a user skin's folder, a bundled skin's
   // game folder.
@@ -118,7 +119,13 @@ function renderSkin(selected, data, env, now, warningStore, scripts) {
   };
   const fitted = fitSkin(loaded.skin, { values, width, loadSmaller });
   warnings.push(...fitted.warnings);
-  const ctx = { tick: Math.floor(now), step: effectiveStep(env), resolveAsset: () => null, reaction, now };
+  // Assets come through the asset store: the drawn skin's own references from its folder, a game's
+  // from the checkout or the installed package. Every game the whole smaller chain uses is looked
+  // up now, so a missing package starts installing before a narrower terminal needs it.
+  const drawn = fitted.skin || loaded.skin;
+  const assets = createAssetResolver({ env, now: now * 1000, folder: folders.get(drawn.file) ?? path.dirname(drawn.file) });
+  for (const game of chainGames(loaded.skin, env)) assets.need(game);
+  const ctx = { tick: Math.floor(now), step: effectiveStep(env), resolveAsset: assets.resolve, reaction, now };
   let fit = fitted, outputs = {};
   if (scripts !== false) {
     const run = runScripts(fitted, {
@@ -130,6 +137,8 @@ function renderSkin(selected, data, env, now, warningStore, scripts) {
     warnings.push(...run.warnings);
   }
   const lines = drawFit(fit, { values, width, ctx, scripts: outputs });
+  warnings.push(...assets.warnings());
+  recordUsage(selected.name, assets.packages(), { env, now: now * 1000 });
   const line = warningLine(warnings, { store: warningStore, now, width });
   return line ? [...lines, line] : lines;
 }
