@@ -32,8 +32,9 @@
 # Payload file layout (what the daemon parses):
 #   line 1  "gamebar-env", then for each forwarded variable that is set: a TAB and NAME=value.
 #           Forwarded, in this order: COLUMNS, then GAMEBAR_PRESET GAMEBAR_THEME
-#           GAMEBAR_TEXT_OVERFLOW GAMEBAR_INDENT GAMEBAR_FRAME_WINDOW GAMEBAR_STATE, each followed
-#           by its old name (DOOMBAR_PRESET and so on, MUGSHOT_STATE for GAMEBAR_STATE), then
+#           GAMEBAR_TEXT_OVERFLOW GAMEBAR_INDENT GAMEBAR_FRAME_WINDOW GAMEBAR_STATE GAMEBAR_EVENTS
+#           GAMEBAR_LLMLINGUA GAMEBAR_SAVINGS_STATE, each followed by its old name (DOOMBAR_PRESET
+#           and so on, MUGSHOT_STATE for GAMEBAR_STATE), then
 #           CLAUDE_CODE_TASK_LIST_ID CLAUDE_CONFIG_DIR WT_SESSION TERM_PROGRAM TMUX
 #           GAMEBAR_GLYPHS DOOMBAR_GLYPHS TERM VTE_VERSION (the terminal's identity picks the face's
 #           glyphs). Both names go, so the daemon reads them the way src/platform/env.js does.
@@ -178,6 +179,8 @@ __gamebar_client() {
   for name in COLUMNS GAMEBAR_PRESET DOOMBAR_PRESET GAMEBAR_THEME DOOMBAR_THEME \
     GAMEBAR_TEXT_OVERFLOW DOOMBAR_TEXT_OVERFLOW GAMEBAR_INDENT DOOMBAR_INDENT \
     GAMEBAR_FRAME_WINDOW DOOMBAR_FRAME_WINDOW GAMEBAR_STATE MUGSHOT_STATE \
+    GAMEBAR_EVENTS DOOMBAR_EVENTS GAMEBAR_LLMLINGUA DOOMBAR_LLMLINGUA \
+    GAMEBAR_SAVINGS_STATE DOOMBAR_SAVINGS_STATE \
     CLAUDE_CODE_TASK_LIST_ID CLAUDE_CONFIG_DIR WT_SESSION TERM_PROGRAM TMUX \
     GAMEBAR_GLYPHS DOOMBAR_GLYPHS TERM VTE_VERSION; do
     [[ -n ${!name+set} ]] || continue
