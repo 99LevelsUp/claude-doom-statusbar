@@ -7,8 +7,13 @@
 // backstop: the host reads which call was running and since when, disables that script when it
 // has run past its budget, and replaces the worker without waiting for the old one to stop.
 //
-// A script that throws or runs past its budget is disabled until its file changes (size or
-// mtime) or it is called for another skin. Scripts are trusted like any code the user installs;
+// A script that throws, fails to load or returns a promise is disabled until its file changes
+// (size or mtime) or it is called for another skin. A script that runs past its budget (stopped by
+// the vm timeout or pinned by the backstop) is disabled only for a cooldown, since one spike of
+// load on the machine is enough to make it late: 30 s, doubling each time it runs past its budget
+// again (1, 2, 4 ... min) up to 10 min. A call that returns resets the cooldown to 30 s; a change
+// of its file or skin ends it at once. While it cools down it is not called at all, so it costs
+// nothing per frame. Scripts are trusted like any code the user installs;
 // the vm context keeps timers, `require` and `eval` out of reach, but it is not a security
 // boundary.
 import { Worker, MessageChannel, receiveMessageOnPort } from "node:worker_threads";
@@ -27,16 +32,33 @@ const stamp = (file) => {
 //                 fires late on a coarse system timer, stops ordinary loops first (default 40)
 //   startupMs     how long a batch waits for a new worker to signal it is ready (default 500)
 //   maxHeapMb     the worker's old-generation heap limit (default 64)
+//   now           the clock cooldowns are measured on, in ms (default: the monotonic
+//                 performance.now(), so a change of the wall clock cannot stretch one)
 //   simulateNativeHang  test hook: a script path whose calls block outside the vm timeout
-export function createScriptHost({ callBudgetMs = 20, graceMs = 40, startupMs = 500, maxHeapMb = 64, simulateNativeHang } = {}) {
+const COOLDOWN_MS = 30_000;
+const COOLDOWN_MAX_MS = 600_000;
+
+export function createScriptHost({ callBudgetMs = 20, graceMs = 40, startupMs = 500, maxHeapMb = 64, now = () => performance.now(), simulateNativeHang } = {}) {
   let w = null; // { worker, port, i32, start, dead }
   let seq = 0;
   let abandoned = 0; // the last batch the host gave up on while its worker was still running it
   let spawns = 0;
   const pending = new Map(); // batch seq -> the calls sent in it, for the current worker
-  const disabled = new Map(); // skin + script -> the file stamp it failed with
+  // skin + script -> { stamp, kind, streak, until }: the file stamp it failed with; "error" (off
+  // until the stamp changes) or "timeout" (off until `until`, `streak` timeouts in a row)
+  const disabled = new Map();
 
   const keyOf = (script, skin) => `${skin ?? ""}\n${script}`;
+
+  // The entry that keeps a script off right now, or null. An entry whose file changed is dropped;
+  // a timeout whose cooldown is over stays, so the next timeout knows its streak.
+  function offEntry(script, skin) {
+    const key = keyOf(script, skin);
+    const e = disabled.get(key);
+    if (!e) return null;
+    if (e.stamp !== stamp(script)) { disabled.delete(key); return null; }
+    return e.kind === "error" || now() < e.until ? e : null;
+  }
 
   function spawn() {
     const buffer = new SharedArrayBuffer(BUFFER_BYTES);
@@ -85,12 +107,24 @@ export function createScriptHost({ callBudgetMs = 20, graceMs = 40, startupMs = 
     }
   }
 
-  function disable(call) {
-    disabled.set(keyOf(call.script, call.skin), stamp(call.script));
+  // Turns a failed script off: for good after an error, for a cooldown after a timeout. Returns
+  // the cooldown in ms (Infinity after an error).
+  function disable(call, kind) {
+    const key = keyOf(call.script, call.skin);
+    const st = stamp(call.script);
+    if (kind !== "timeout") {
+      disabled.set(key, { stamp: st, kind: "error", streak: 0, until: Infinity });
+      return Infinity;
+    }
+    const prev = disabled.get(key);
+    const streak = prev && prev.kind === "timeout" && prev.stamp === st ? prev.streak + 1 : 1;
+    const ms = Math.min(COOLDOWN_MS * 2 ** (streak - 1), COOLDOWN_MAX_MS);
+    disabled.set(key, { stamp: st, kind: "timeout", streak, until: now() + ms });
+    return ms;
   }
 
-  // Reads the worker's replies; disables the scripts that failed in them and returns the reply
-  // to batch `want`, if it is there.
+  // Reads the worker's replies; disables the scripts that failed in them, clears the cooldown of
+  // those that returned, and returns the reply to batch `want`, if it is there.
   function receive(want) {
     let found = null;
     for (let m; (m = receiveMessageOnPort(w.port));) {
@@ -98,7 +132,15 @@ export function createScriptHost({ callBudgetMs = 20, graceMs = 40, startupMs = 
       const calls = pending.get(s);
       pending.delete(s);
       if (!calls) continue;
-      results.forEach((r, i) => { if (r.status === "error" || r.status === "timeout") disable(calls[i]); });
+      results.forEach((r, i) => {
+        if (r.status === "error" || r.status === "timeout") {
+          const ms = disable(calls[i], r.status);
+          if (r.status === "timeout") r.retryMs = ms;
+        } else if (r.status === "ok") {
+          const key = keyOf(calls[i].script, calls[i].skin);
+          if (disabled.get(key)?.kind === "timeout") disabled.delete(key);
+        }
+      });
       if (s === want) found = { calls, results };
     }
     return found;
@@ -113,14 +155,22 @@ export function createScriptHost({ callBudgetMs = 20, graceMs = 40, startupMs = 
   }
 
   // The call the worker is stuck in, if it has run past its budget plus the grace: that script
-  // is disabled and the worker replaced. Returns { seq, index, elapsed, script }, or null.
+  // is disabled for a cooldown and the worker replaced. Returns { seq, index, elapsed, script,
+  // retryMs }, or null.
   function pinHang(grace) {
     const r = running();
     const calls = r && pending.get(r.seq);
     if (!calls || r.elapsed <= callBudgetMs + grace) return null;
-    disable(calls[r.index]);
+    const retryMs = disable(calls[r.index], "timeout");
     replace();
-    return { ...r, script: calls[r.index].script };
+    return { ...r, script: calls[r.index].script, retryMs };
+  }
+
+  // What a call to a script that is off returns.
+  function offResult(script, e) {
+    if (e.kind === "error") return { status: "disabled", message: `${script}: disabled after an earlier failure` };
+    const s = Math.max(1, Math.ceil((e.until - now()) / 1000));
+    return { status: "disabled", message: `${script}: stopped after running past its budget; retried in ${s} s` };
   }
 
   // Before a new batch: let a batch the host gave up on finish its current call, for at most one
@@ -138,15 +188,9 @@ export function createScriptHost({ callBudgetMs = 20, graceMs = 40, startupMs = 
     if (w && !w.dead) receive(0);
     const send = [];
     calls.forEach((c, i) => {
-      const key = keyOf(c.script, c.skin);
-      if (disabled.has(key)) {
-        if (disabled.get(key) === stamp(c.script)) {
-          out[i] = { status: "disabled", message: `${c.script}: disabled after an earlier failure` };
-          return;
-        }
-        disabled.delete(key);
-      }
-      send.push(i);
+      const off = offEntry(c.script, c.skin);
+      if (off) out[i] = offResult(c.script, off);
+      else send.push(i);
     });
     const rest = () => { for (const i of send) if (!out[i]) out[i] = { status: "skipped" }; return out; };
     if (!send.length) return out;
@@ -177,7 +221,9 @@ export function createScriptHost({ callBudgetMs = 20, graceMs = 40, startupMs = 
             ? { status: "ok", output: JSON.parse(r.output) }
             : r.status === "disabled"
               ? { status: "disabled", message: `${c.script}: disabled after an earlier failure` }
-              : { status: r.status, message: `${c.script}: ${r.message}` };
+              : r.status === "timeout"
+                ? { status: "timeout", message: `${c.script}: ${r.message}`, retryMs: r.retryMs }
+                : { status: r.status, message: `${c.script}: ${r.message}` };
         });
       }
       return rest();
@@ -189,7 +235,8 @@ export function createScriptHost({ callBudgetMs = 20, graceMs = 40, startupMs = 
       if (hang.seq === s) {
         out[send[hang.index]] = {
           status: "timeout",
-          message: `${hang.script}: did not return within ${Math.round(hang.elapsed)} ms; the script worker was restarted`,
+          message: `${hang.script}: did not return within ${Math.round(hang.elapsed)} ms and was stopped; the script worker was restarted`,
+          retryMs: hang.retryMs,
         };
       }
     } else if (Atomics.load(w.i32, SLOT.RUN_INDEX) < 0 && Atomics.load(w.i32, SLOT.DONE) < s) {
@@ -206,10 +253,7 @@ export function createScriptHost({ callBudgetMs = 20, graceMs = 40, startupMs = 
 
   return {
     runBatch,
-    isDisabled: (script, skin) => {
-      const key = keyOf(script, skin);
-      return disabled.has(key) && disabled.get(key) === stamp(script);
-    },
+    isDisabled: (script, skin) => offEntry(script, skin) !== null,
     get spawns() { return spawns; },
     close() {
       if (!w) return;

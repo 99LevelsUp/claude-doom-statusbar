@@ -112,7 +112,7 @@ The diagram shows part of today's DOOM bar as an element tree: the bar is a cont
 - R17. Every visual element can run a script before it is drawn, and the script can change that element's visual.
 - R18. An element type may require a script (an animation needs one to pick the frame or model from its inputs) or come with a default script that a skin can replace with its own.
 - R19. Scripts may come from any game folder or skin folder, bundled or the user's own.
-- R20. A script that throws or exceeds its time budget does not break the bar or any other element: the bar stops it, its element falls back to its default visual, the bar shows a warning, and the script does not run again until it or its skin changes.
+- R20. A script that throws or exceeds its time budget does not break the bar or any other element: the bar stops it, its element falls back to its default visual, the bar shows a warning. A script that throws does not run again until it or its skin changes; one that exceeds its time budget does not run again until a cooldown ends that grows while it keeps exceeding it, or until it or its skin changes.
 - R21. The bar runs scripts only from folders installed on the machine; it never downloads code from anywhere but the project's own npm packages.
 
 **Chat**
@@ -212,7 +212,7 @@ This plan covers the element model, skins, scripts, conversation libraries and a
 
 ## Planning Contract
 
-Product Contract preservation: changed: R28 — "in use" now means the saved choice or drawn by any session of any installation within 30 days, and removal runs only in `claude-game-bar install`, because the installer can see neither a daemon's memory nor every project's settings; F2 and AE4 follow R28. Changed: R2 — a container decides only how its children shrink, and the drop order is the skin's (R9), to remove a contradiction between R2 and R9. Changed: R27 — a skin may lower the glyph step for one element, never raise it, so the mugshot's glyph ceiling stays possible. Changed wording only: R15 and R29 say "asset package" instead of "asset batch". All changes were confirmed by the owner on 2026-11-16. The brainstorm's Outstanding Questions are answered by KTD1–KTD16 and were removed.
+Product Contract preservation: changed: R28 — "in use" now means the saved choice or drawn by any session of any installation within 30 days, and removal runs only in `claude-game-bar install`, because the installer can see neither a daemon's memory nor every project's settings; F2 and AE4 follow R28. Changed: R2 — a container decides only how its children shrink, and the drop order is the skin's (R9), to remove a contradiction between R2 and R9. Changed: R27 — a skin may lower the glyph step for one element, never raise it, so the mugshot's glyph ceiling stays possible. Changed: R20 — a script that exceeds its time budget is off only for a growing cooldown, not until it or its skin changes, because under full CPU load even a trivial script exceeds the budget and would stay off for the daemon's life (KTD4). Changed wording only: R15 and R29 say "asset package" instead of "asset batch". All changes were confirmed by the owner on 2026-11-16. The brainstorm's Outstanding Questions are answered by KTD1–KTD16 and were removed.
 
 ### Key Technical Decisions
 
@@ -224,8 +224,9 @@ Product Contract preservation: changed: R28 — "in use" now means the saved cho
   - The render pass posts one batch per session and waits with `Atomics.wait`. The worker writes the index and start time of the script it is running into the shared buffer, so when the backstop fires (a hang `timeout` cannot stop), the host disables exactly that script, terminates and respawns the worker, and the batch's other elements draw their defaults for that pass only.
   - A respawned worker signals ready under its own startup deadline before the next batch, so start-up cost is never charged to a script.
   - The budget belongs to the daemon pass, shared by all sessions: each batch gets the smaller of what is left of the pass and the per-element budget times its elements, and the order in which sessions get their batches rotates from pass to pass so no session is always last. Defaults are 20 ms per element and 200 ms per pass, tuned from U1.
-  - A script is disabled only when its own elapsed time, read from the shared buffer, exceeds its per-script budget, or when it throws. When a batch's deadline was cut short by what is left of the pass, or no budget is left for a session, that session's elements draw their defaults for this pass and nothing is disabled.
-  - A disabled script stays disabled until its file's size or mtime or its skin changes.
+  - A script is disabled only when its own elapsed time, read from the shared buffer, exceeds its per-script budget, or when it throws, fails to load or returns a promise. When a batch's deadline was cut short by what is left of the pass, or no budget is left for a session, that session's elements draw their defaults for this pass and nothing is disabled.
+  - A script disabled by an error stays disabled until its file's size or mtime or its skin changes.
+  - A script disabled by a timeout (its vm timeout, or the batch backstop pinning it) stays disabled only for a cooldown: 30 s, doubled by each further timeout in a row (1, 2, 4 … min) up to 10 min. A call that returns resets the cooldown to 30 s; a change of its file or skin ends it at once. While it cools down its element draws its default visual and the script is not called. Its warning keeps one key, so a retry that times out again does not restart the 60 s the warning shows. (session-settled: user-directed, 2026-11-16 — chosen over disabling a timed-out script until its file or skin changes: a load test with every CPU thread busy showed even a trivial script running past its 20 ms budget, so one spike of load disabled a script for the daemon's life and froze the DOOM mugshot or the Minecraft hotbar highlight.)
   - Scripts are trusted like any code the user installs: `vm` is not a security boundary, and the README says so.
   - The one-shot status line runs no scripts. (session-settled: user-approved — chosen over running scripts in the one-shot renderer with disable markers on disk: a fresh process per tick would pay a worker start and a full timeout every tick.)
 
@@ -313,9 +314,13 @@ The life of one script:
 ```mermaid
 stateDiagram-v2
   [*] --> enabled: skin loaded
-  enabled --> enabled: returns within its timeout
-  enabled --> disabled: throws, or its vm timeout fires
-  enabled --> disabled: batch backstop fires while it runs (worker respawned)
+  enabled --> enabled: returns within its timeout (cooldown back to 30 s)
+  enabled --> disabled: throws, fails to load or returns a promise
+  enabled --> cooling: its vm timeout fires
+  enabled --> cooling: batch backstop fires while it runs (worker respawned)
+  cooling --> cooling: element draws its default visual, script not called
+  cooling --> enabled: cooldown over (30 s, doubled per timeout in a row, at most 10 min)
+  cooling --> enabled: script file or skin changes
   disabled --> enabled: script file or skin changes (size or mtime)
   disabled --> disabled: element draws its default visual
 ```
@@ -419,7 +424,7 @@ Each unit leaves `npm test` green. Old modules and the tests that import them ar
 
 ### U1. Script runtime
 
-**Goal:** a host that runs batches of script calls synchronously from the render pass, stops any call past its deadline, pins a hang on the script that caused it, and keeps disabled scripts disabled until their file changes.
+**Goal:** a host that runs batches of script calls synchronously from the render pass, stops any call past its deadline, pins a hang on the script that caused it, and keeps disabled scripts disabled until their file changes, or, for a script disabled by a timeout, until its cooldown ends.
 
 **Requirements:** R17, R19, R20, R21; KTD4.
 

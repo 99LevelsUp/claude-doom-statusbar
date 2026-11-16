@@ -40,10 +40,12 @@
 // libraries return reaches the chat as `conversations`, in the order the skin names them. A library
 // that fails is left out of the chat, with a warning naming it.
 //
-// A script that throws or runs past its budget leaves its element on its default visual and puts a
-// warning under the bar, and the host keeps it off until its file or its skin changes. When the pass
-// has no time left for a session, that session's elements draw their defaults for this render only:
-// no warning, nothing turned off.
+// A script that throws leaves its element on its default visual and puts a warning under the bar,
+// and the host keeps it off until its file or its skin changes. A script that runs past its budget
+// does the same, but the host keeps it off only for a cooldown (30 s, doubling while it keeps
+// running late, up to 10 min) and then tries it again; the warning says so, under the same key, so
+// a retry that runs late again does not show it anew. When the pass has no time left for a session,
+// that session's elements draw their defaults for this render only: no warning, nothing turned off.
 
 import { statSync } from "node:fs";
 import path from "node:path";
@@ -134,6 +136,9 @@ function rebuild(t, nodes) {
 
 // Why each failed script failed, by its warning's key, for as long as this process lives.
 const reasons = new Map();
+
+// A cooldown as the warning says it: "30 s", "2 min".
+const duration = (ms) => (ms < 60_000 ? `${Math.round(ms / 1000)} s` : `${Math.round(ms / 60_000)} min`);
 
 // The conversation libraries a drawn element names (a chat's), or none.
 const librariesOf = (node) => (!node.container && typeof node.descriptor.libraries === "function" ? node.descriptor.libraries(node.params) : []);
@@ -236,13 +241,18 @@ export function runScripts(fit, { host, pass = createScriptPass(), state = new M
         if (Object.hasOwn(out, "state")) state.set(t.id, { stamp, state: isPlainObject(out.state) ? out.state : {} });
       } else if (r.status !== "skipped") {
         const msg = String(r.message || "").replace(`${file}: `, "");
-        const why = r.status === "error" ? `failed: ${msg}` : msg;
+        const without = library ? "the chat plays without it" : "drawn without it";
+        // A timeout turns the script off for a while only (the host's cooldown); anything else
+        // until its file or skin changes.
+        const why = r.status === "timeout"
+          ? `${msg}; ${without}${Number.isFinite(r.retryMs) ? ` for ${duration(r.retryMs)}` : ""}, then ${library ? "the library is " : ""}retried`
+          : `${r.status === "error" ? `failed: ${msg}` : msg}; ${without}`;
         const key = [skin.file, t.id, "script-failed", ref].join("|");
         // Once the host has turned the script off it only says so; the warning keeps naming why.
         if (r.status !== "disabled") reasons.set(key, why);
         warn(t, "script-failed", ref, library
-          ? `${t.id}: conversation library ${ref} ${reasons.get(key) ?? why}; the chat plays without it`
-          : `${t.id}: script ${ref} ${reasons.get(key) ?? why}; drawn without it`);
+          ? `${t.id}: conversation library ${ref} ${reasons.get(key) ?? why}`
+          : `${t.id}: script ${ref} ${reasons.get(key) ?? why}`);
       }
     });
   }

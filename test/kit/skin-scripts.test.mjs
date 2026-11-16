@@ -2,8 +2,13 @@
 // Scripts in the render pass: after the fit, every drawn element with a script is run in one batch
 // through the script host, and what the scripts return changes how those elements look, never
 // their size. A script that fails or runs past its budget leaves its element on its default
-// visual, shows a warning, and is not run again until it or its skin changes. The one-shot status
-// line runs no scripts at all.
+// visual and shows a warning; one that fails is not run again until it or its skin changes, one
+// that runs past its budget not until a cooldown ends (src/platform/scripts/host.js) or it or its
+// skin changes. The one-shot status line runs no scripts at all.
+//
+// Checks that need a script to run, not to be timed, give the host a per-call budget and the pass
+// a budget no loaded machine uses up; checks that need a script to run past its budget use one
+// that loops, which no budget lets finish.
 
 import { TEMP_SANDBOX } from "../_temp-sandbox.mjs";
 import { mkdirSync, writeFileSync, utimesSync } from "node:fs";
@@ -107,7 +112,16 @@ const nodeWidth = (fit, id) => {
   return find(fit.tree).width;
 };
 
-const host = createScriptHost({ startupMs: 10000 });
+const host = createScriptHost({ callBudgetMs: 2000, graceMs: 2000, startupMs: 10000 });
+// The product's per-call budget, for the scripts that loop: they run past any budget, so the
+// shortest keeps the checks quick. The pass's deadline is long, so the vm timeout, not the
+// backstop, stops them however late it fires.
+const loopHost = createScriptHost({ startupMs: 10000 });
+// The host as runScripts uses it, recording each batch's result statuses.
+const spied = (h) => {
+  const statuses = [];
+  return { statuses, runBatch: (calls, opts) => { const r = h.runBatch(calls, opts); statuses.push(r.map((x) => x.status)); return r; } };
+};
 // Checks that time the pass give their own; every other check needs its scripts to run.
 const run = (fit, opts = {}) => runScripts(fit, {
   host, pass: createScriptPass({ budgetMs: 60000, callBudgetMs: 10000 }), values: VALUES, reaction: null, now: NOW, tick: NOW,
@@ -117,7 +131,7 @@ const draw = (r) => drawFit(r.fit, { values: VALUES, width: WIDTH, ctx: CTX, scr
 // A pass and a worker start a loaded machine cannot exhaust, so a slow start never turns a
 // pass into "skipped".
 const roomyPass = () => createScriptPass({ budgetMs: 60000, callBudgetMs: 10000 });
-const roomyHost = () => createScriptHost({ startupMs: 10000 });
+const roomyHost = () => createScriptHost({ callBudgetMs: 2000, graceMs: 2000, startupMs: 10000 });
 
 try {
   console.log("a script of an element kept without its value");
@@ -171,25 +185,27 @@ min_width = 6
     const skin = load(userSkin("hotbar-loop", hotbar("loop.js"), { "loop.js": "function render() { for (;;) {} }" }));
     const fit = fitOf(skin);
     const bare = drawFit(fit, { values: VALUES, width: WIDTH, ctx: CTX });
-    const r = run(fit);
+    const spy = spied(loopHost);
+    const last = () => spy.statuses[spy.statuses.length - 1];
+    const r = run(fit, { host: spy });
+    ok(same(last(), ["timeout"]), `the script runs past its budget (${last()})`);
     ok(same(draw(r), bare), "the hotbar draws without a highlighted cell and every other element is unchanged");
     ok(r.warnings.length === 1 && r.warnings[0].element === "hotbar" && /loop\.js/.test(r.warnings[0].message)
       && typeof r.warnings[0].key === "string", `one warning naming the element's script (${r.warnings[0]?.message})`);
-    const t = performance.now();
-    const again = run(fit);
-    const took = performance.now() - t;
+    ok(/stopped/.test(r.warnings[0].message) && /for 30 s, then retried/.test(r.warnings[0].message),
+      "it says the script was stopped and will be tried again in 30 s");
+    const again = run(fit, { host: spy });
     ok(same(draw(again), bare), "on the next pass it still draws its default");
-    ok(took < 15, `on the next pass the script is not called (${took.toFixed(1)} ms)`);
+    ok(same(last(), ["disabled"]), `on the next pass the script is not called (${last()})`);
     ok(again.warnings.length === 1 && again.warnings[0].key === r.warnings[0].key,
       "the warning stays the same cause, so it is not shown anew");
     ok(again.warnings[0].message === r.warnings[0].message, `and still says why it failed (${again.warnings[0].message})`);
-    // The skin changes: the script runs again (and fails again).
+    // The skin changes: the script runs again (and runs past its budget again).
     const t2 = new Date(Date.now() + 5000);
     utimesSync(skin.file, t2, t2);
     const reloaded = load(skin.file);
-    const t3 = performance.now();
-    run(fitOf(reloaded));
-    ok(performance.now() - t3 >= 15, "once the skin changes, the script is run again");
+    run(fitOf(reloaded), { host: spy });
+    ok(same(last(), ["timeout"]), `once the skin changes, the script is run again (${last()})`);
   }
 
   console.log("a script that returns a frame name");
@@ -312,11 +328,11 @@ script = "face.js"
     run(fit, { pass: roomyPass() }); // the worker is up
     // A budget a loaded machine cannot use up on one trivial call, and more time than that spent
     // outside the scripts: only the second may not count.
-    const pass = createScriptPass({ budgetMs: 300 });
+    const pass = createScriptPass({ budgetMs: 1000, callBudgetMs: 1000 });
     const t = performance.now();
-    while (performance.now() - t < 400) { /* the rest of a render, outside the scripts */ }
+    while (performance.now() - t < 1100) { /* the rest of a render, outside the scripts */ }
     const r = run(fit, { pass });
-    ok(plain(draw(r)[0]).includes("RAN") && pass.left() > 0 && pass.left() <= 300,
+    ok(plain(draw(r)[0]).includes("RAN") && pass.left() > 0 && pass.left() <= 1000,
       `the rest of the render does not use up the scripts' time (${pass.left().toFixed(1)} ms left)`);
   }
 
@@ -341,7 +357,7 @@ script = "face.js"
     const skipped = renderSession({ data, env, now: NOW, scripts: false });
     ok(!skipped.some((l) => plain(l).includes("SCRIPTED")), "with scripts turned off nothing runs");
     const loopEnv = { ...env, GAMEBAR_SKIN: "session-loop" };
-    const failed = renderSession({ data, env: loopEnv, now: NOW, scripts: { host, pass: roomyPass(), state: new Map() } });
+    const failed = renderSession({ data, env: loopEnv, now: NOW, scripts: { host: loopHost, pass: roomyPass(), state: new Map() } });
     ok(failed.some((l) => /gamebar: .*loop\.js/.test(plain(l))), "a failed script shows on the warning line");
 
     // The one-shot status line, a new process each render: no script runs and no warning shows.
@@ -359,6 +375,7 @@ script = "face.js"
   }
 } finally {
   host.close();
+  loopHost.close();
 }
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILED`);

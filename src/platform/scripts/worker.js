@@ -76,7 +76,7 @@ function runCall({ script, fn, input }, timeout) {
   } catch (e) {
     // A failed script's context may be left half-run; a later load starts it fresh.
     loaded.delete(script);
-    if (e && e.code === "ERR_SCRIPT_EXECUTION_TIMEOUT") return { status: "timeout", message: `ran past its ${timeout} ms budget` };
+    if (e && e.code === "ERR_SCRIPT_EXECUTION_TIMEOUT") return { status: "timeout", message: `ran past its ${timeout} ms budget and was stopped` };
     return { status: "error", message: describe(e) };
   }
 }

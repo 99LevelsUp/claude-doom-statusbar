@@ -20,7 +20,7 @@ const { findSkin, selectSkin } = await import("../../src/skin-select.js");
 const { loadSkin } = await import("../../src/kit/skin/load.js");
 const { fitSkin } = await import("../../src/kit/skin/fit.js");
 const { drawFit } = await import("../../src/kit/skin/draw.js");
-const { runScripts } = await import("../../src/kit/skin/scripts.js");
+const { runScripts, createScriptPass } = await import("../../src/kit/skin/scripts.js");
 const { createScriptHost } = await import("../../src/platform/scripts/host.js");
 const { createAssetResolver } = await import("../../src/platform/assets.js");
 const { renderSession } = await import("../../src/render.js");
@@ -58,7 +58,9 @@ function draw(file, { width = 200, reaction = CALM, now = NOW, step = "octant", 
   const ctx = { tick: 0, step, resolveAsset: assets.resolve, reaction, now };
   let drawn = fit, outputs = frames ?? {};
   if (scripts && !frames) {
-    const run = runScripts(fit, { host, values: RAW_SAMPLE, reaction, now, tick: 0, folderOf: () => doom.dir, resolveAsset: assets.resolve });
+    // A pass no loaded machine uses up: these checks need the mugshot script to run, not to be timed.
+    const pass = createScriptPass({ budgetMs: 60000, callBudgetMs: 10000 });
+    const run = runScripts(fit, { host, pass, values: RAW_SAMPLE, reaction, now, tick: 0, folderOf: () => doom.dir, resolveAsset: assets.resolve });
     drawn = run.fit;
     outputs = run.scripts;
   }

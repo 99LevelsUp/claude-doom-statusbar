@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // The script host: skin scripts run in one persistent worker thread, called synchronously from
 // the render pass. A call past its budget is stopped, a hang the vm timeout cannot reach is
-// pinned on the script that was running, and a failed script stays disabled until its file
-// changes. Prints the measured spawn, round-trip and per-call times.
+// pinned on the script that was running. A script that fails stays disabled until its file
+// changes; one that runs past its budget only for a cooldown that doubles while it keeps doing
+// so. Prints the measured spawn, round-trip and per-call times.
 
 import { TEMP_SANDBOX } from "../_temp-sandbox.mjs";
 import { writeFileSync, utimesSync } from "node:fs";
@@ -12,6 +13,7 @@ import { createScriptHost } from "../../src/platform/scripts/host.js";
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 const ms = (t) => Number(process.hrtime.bigint() - t) / 1e6;
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const fmt = (n) => n.toFixed(2);
 
 let n = 0;
@@ -68,7 +70,11 @@ console.log("a script that never returns:");
   const took = ms(t);
   console.log(`  batch with a ${BUDGET} ms loop took ${fmt(took)} ms (the vm timeout fires ${fmt(took - BUDGET)} ms late at most)`);
   ok(r[1].status === "timeout", `the looping call returns a timeout result (${r[1].status})`);
-  ok(took < BUDGET + GRACE, `within its budget plus the ${GRACE} ms grace`);
+  // What the render pass relies on is the host's own promise, not the vm timer's precision: a
+  // batch waits for its deadline (the call budget per call) plus the grace, and a call already
+  // past its budget then gets at most its budget plus the grace more.
+  const deadline = BUDGET * 3;
+  ok(took < deadline + GRACE + BUDGET + GRACE, `the batch returns within its ${deadline} ms deadline, the ${GRACE} ms grace and one overdue call's budget plus grace (${fmt(took)} ms)`);
   ok(host.isDisabled(LOOP), "the looping script is disabled");
   ok(r[0].status === "ok" && r[2].status === "ok" && r[2].output.width === 7, "the other calls in the batch return normally");
   ok(host.spawns === spawns, "the worker was not replaced");
@@ -84,6 +90,7 @@ console.log("a hang the vm timeout cannot reach:");
   console.log(`  backstop fired after ${fmt(ms(t))} ms`);
   ok(r[1].status === "timeout", `the hanging call returns a timeout result (${r[1].status})`);
   ok(host.isDisabled(HANG), "the script whose index was in the buffer is disabled");
+  ok(r[1].retryMs === 30000 && /stopped/.test(r[1].message), `for 30 s, as for any timeout (${r[1].retryMs}: ${r[1].message})`);
   ok(!host.isDisabled(FRAME) && !host.isDisabled(ECHO), "no other script is disabled");
   ok(r[0].status === "skipped" && r[2].status === "skipped", "the other calls draw their defaults this pass");
   ok(host.spawns === spawns + 1, "the worker was replaced");
@@ -161,6 +168,72 @@ console.log("a failed script is disabled per skin:");
   ok(again.status === "disabled", "stays disabled for that skin");
   const [b] = host.runBatch([{ script: SKINNED, skin: "my-skin", input: {} }]);
   ok(b.status === "error", `runs again when the skin changes (${b.status})`);
+}
+
+console.log("a script that runs past its budget is off for a while, then retried:");
+{
+  // The host's clock is the test's, so a cooldown passes without waiting for it. These checks
+  // need the plain call to return and the loop to time out, not to be timed: a budget a loaded
+  // machine does not run a trivial call past, and a grace that lets the vm timeout, not the
+  // backstop, stop the loop.
+  let clock = 1000;
+  const cool = createScriptHost({ callBudgetMs: 250, graceMs: 5000, startupMs: 10000, now: () => clock });
+  const FLAKY = script(`function render(input) { if (input.loop) for (;;) {} return { ran: true }; }`);
+  const loops = call(FLAKY, { loop: true });
+  const returns = call(FLAKY, {});
+  const SECOND = 1000, MINUTE = 60 * SECOND;
+
+  const [first] = cool.runBatch([loops]);
+  ok(first.status === "timeout" && first.retryMs === 30 * SECOND, `a timeout turns it off for 30 s (${first.status}, ${first.retryMs})`);
+  ok(/stopped/.test(first.message), `the result says it was stopped (${first.message})`);
+  ok(cool.isDisabled(FLAKY), "it is off");
+  clock += 30 * SECOND - 1;
+  const [cooling] = cool.runBatch([returns]);
+  ok(cooling.status === "disabled" && !cooling.output, `while it cools down it is not called, even with an input it would return for (${cooling.status})`);
+  clock += 1;
+  ok(!cool.isDisabled(FLAKY), "after 30 s it is no longer off");
+  const [back] = cool.runBatch([returns]);
+  ok(back.status === "ok" && back.output.ran === true, `and it runs again (${JSON.stringify(back)})`);
+
+  // It keeps timing out: each time the cooldown doubles, up to 10 minutes.
+  const want = [30 * SECOND, MINUTE, 2 * MINUTE, 4 * MINUTE, 8 * MINUTE, 10 * MINUTE, 10 * MINUTE];
+  const got = [];
+  let heldOff = true;
+  for (const _ of want) {
+    const [r] = cool.runBatch([loops]);
+    got.push(r.retryMs);
+    clock += r.retryMs - 1;
+    if (cool.runBatch([returns])[0].status !== "disabled") heldOff = false;
+    clock += 1;
+  }
+  ok(same(got, want), `the cooldown doubles and stops at 10 min (${got.map((x) => x / SECOND).join(", ")} s)`);
+  ok(heldOff, "and the script is not called before each cooldown ends");
+
+  // A call that completes resets the backoff.
+  const [fine] = cool.runBatch([returns]);
+  const [again] = cool.runBatch([loops]);
+  ok(fine.status === "ok" && again.status === "timeout" && again.retryMs === 30 * SECOND,
+    `a call that completes starts the cooldown at 30 s again (${again.retryMs})`);
+
+  // A file change ends the cooldown at once.
+  writeFileSync(FLAKY, `function render(input) { return { ran: "rewritten" }; }`);
+  const later = new Date(Date.now() + 5000);
+  utimesSync(FLAKY, later, later);
+  const [rewritten] = cool.runBatch([returns]);
+  ok(rewritten.status === "ok" && rewritten.output.ran === "rewritten", `a file change ends the cooldown at once (${rewritten.status})`);
+
+  // An error is not a timeout: it stays off until the file changes, however long it waits.
+  const BREAKS = script(`function render() { throw new Error("broken for good"); }`);
+  const [broken] = cool.runBatch([call(BREAKS)]);
+  clock += 60 * MINUTE;
+  const [still] = cool.runBatch([call(BREAKS)]);
+  ok(broken.status === "error" && still.status === "disabled" && cool.isDisabled(BREAKS),
+    `a script that throws stays off after an hour (${broken.status}, ${still.status})`);
+  writeFileSync(BREAKS, `function render() { return { fixed: true }; }`);
+  utimesSync(BREAKS, later, later);
+  const [fixed] = cool.runBatch([call(BREAKS)]);
+  ok(fixed.status === "ok" && fixed.output.fixed === true, `and runs once its file changes (${fixed.status})`);
+  cool.close();
 }
 
 console.log("a script that allocates without bound:");
