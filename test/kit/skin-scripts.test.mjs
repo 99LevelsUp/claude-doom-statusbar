@@ -26,7 +26,7 @@ const plain = (s) => s.replace(/\x1b\[[0-9;]*m|\x1b\]8;[^\x07\x1b]*(?:\x1b\\|\x0
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const WAD = path.join(ROOT, "src", "games", "doom", "assets", "mugshot", "wad");
+const WAD = path.join(ROOT, "games", "doom", "assets", "images", "mugshot-wad");
 const USER = path.join(TEMP_SANDBOX, "user");
 
 // A skin folder of the user's: the skin file and the scripts beside it.

@@ -2,11 +2,10 @@
 // The element and visual descriptors: every parameter a draw reads is declared with a default, a
 // visual takes only the value types it declares, and the visuals draw what today's renderers draw.
 
-import { mkdtempSync, readFileSync, rmSync, copyFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, copyFileSync, mkdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parse as parseToml } from "smol-toml";
 import { sandboxEnv } from "../_sandbox-env.mjs";
 
 let fails = 0;
@@ -18,11 +17,10 @@ Object.assign(process.env, { ...sandboxEnv(SB) });
 
 const { VISUALS, CONTAINERS, FRAMES, elementKind, canShow, accepts } = await import("../../src/kit/elements/index.js");
 const { VALUE_TYPES, CATALOGUE } = await import("../../src/metrics/catalogue.js");
-const { renderValue } = await import("../../src/kit/meters.js");
 const { vlen } = await import("../../src/kit/text.js");
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const SPRITES = path.join(ROOT, "src", "games", "doom", "assets", "mugshot", "alpha");
+const SPRITES = path.join(ROOT, "games", "doom", "assets", "images", "mugshot");
 const plain = (s) => s.replace(/\x1b\[[0-9;]*m|\x1b\]8;[^\x07\x1b]*(?:\x1b\\|\x07)/g, "");
 const defaults = (d) => d.validate({}).params;
 
@@ -137,12 +135,13 @@ try {
   console.log("progress bar:");
   {
     const p = defaults(VISUALS.progress);
-    const oracle = renderValue({ values: { x: 42 } }, { id: "x", render: "bar" }, 14, [0, 0, 0]);
+    // What the box layout's bar drew before skins, byte for byte.
+    const oracle = "\x1b[48;2;0;0;0m\x1b[38;2;204;187;70m█████▉        \x1b[49m\x1b[38;2;204;187;70m  42%";
     const drawn = VISUALS.progress.draw({ value: 42, params: p, width: VISUALS.progress.widths(p).natural });
     ok(drawn.length === 1 && drawn[0] === oracle, `42 % at 14 cells draws what the old bar draws (${JSON.stringify(drawn[0])})`);
     const boxRgb = [28, 32, 54];
     const inBox = VISUALS.progress.draw({ value: 77, params: { ...p, icon: "🧠" }, width: 3 + 9 + 5, surface: boxRgb });
-    ok(inBox[0] === renderValue({ values: { x: 77 } }, { id: "x", render: "bar", icon: "🧠" }, 9, boxRgb),
+    ok(inBox[0] === "🧠 \x1b[48;2;14;16;27m\x1b[38;2;224;130;64m██████▉  \x1b[48;2;28;32;54m\x1b[38;2;224;130;64m  77%",
       "with an icon, at 9 cells on a box background it still draws what the old bar draws");
     const xp = VISUALS.progress.validate({ fill: "━", partials: "", empty: "━", empty_color: "#1f3a12", track: "none", percent: "middle", color: "#80ff20" }).params;
     ok(plain(VISUALS.progress.draw({ value: 31, params: xp, width: 20 })[0]) === "━━━━━━━━ 31 ━━━━━━━━", "an XP-style bar has its level cut into its middle");
@@ -224,15 +223,8 @@ try {
     ok(a3.draw({ params: bare, width: w, height: 4, ctx: CTX }).every((l) => l === " ".repeat(w)), "and without one a blank");
   }
 
-  console.log("coverage of today's bars:");
+  console.log("coverage of the games' bars:");
   {
-    // Today's render types and the visuals that take their place.
-    const OLD = { text: "text", number: "number", bar: "progress", spark: "sparkline", equalizer: "equalizer", scroll: "scroll-list", icons: "icon-row" };
-    const presets = ["doom/presets/full.toml", "doom/presets/standard.toml", "doom/presets/minimal.toml"]
-      .map((f) => parseToml(readFileSync(path.join(ROOT, "src", "games", f), "utf8")));
-    const used = new Set(presets.flatMap((p) => p.segment.flatMap((s) => (s.metric || []).map((m) => m.render || "text"))));
-    const missing = [...used].filter((r) => !(OLD[r] && VISUALS[OLD[r]]));
-    ok(missing.length === 0, `every render type of the box presets has a visual (${[...used].join(", ")})`);
     ok(["box", "grid"].every((f) => FRAMES[f]) && VISUALS.animation && VISUALS["icon-row"] && VISUALS.progress,
       "the boxes, the hotbar, the mugshot, hearts and hunger, and the XP bar have descriptors");
   }

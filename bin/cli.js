@@ -45,8 +45,9 @@ import { terminalStep } from "../src/kit/raster/glyph-level.js";
 import { decodePng } from "../src/kit/raster/png.js";
 import { sgrFg, sgrBg } from "../src/kit/ansi.js";
 import { ensureEmojiFont } from "../src/install/emoji-font.js";
-import { sampleImage } from "../src/games/index.js";
-import { installSkinAssets, removeUnused, skinPackages } from "../src/platform/assets.js";
+import { defaultGame } from "../src/games/index.js";
+import { loadSkin } from "../src/kit/skin/load.js";
+import { createAssetResolver, installSkinAssets, removeUnused, skinPackages } from "../src/platform/assets.js";
 
 const HASH = rootHash(PACKAGE_ROOT); // this installation's daemon and its files
 
@@ -240,9 +241,22 @@ function installSkin(args, cfg) {
   return { name: s.name, warnings: s.warnings };
 }
 
+// The first default frame an animation of the skin tree under `node` names, or null.
+const firstFrame = (node) => (typeof node.params.default_frame === "string" && node.params.default_frame
+  ? node.params.default_frame : node.children.reduce((ref, k) => ref || firstFrame(k), null));
+
+// The image the test card draws: the default frame of the first animation in the default game's
+// default skin, found through the asset store, or null.
+function sampleImage() {
+  const game = defaultGame();
+  const s = findSkin(game.defaultSkin);
+  const skin = s && s.file ? loadSkin(s.file).skin : null;
+  const ref = skin ? firstFrame(skin.root) : null;
+  return ref ? createAssetResolver({ folder: game.dir }).resolve(ref) : null;
+}
+
 // The glyph test card, then one face drawn at every step side by side, so the steps this terminal
-// draws correctly can be judged by eye. The face is the sample image of the first registered game
-// that has one (src/games/index.js).
+// draws correctly can be judged by eye. The face is the default game's mugshot (sampleImage).
 function testCard() {
   console.log("Glyph test card: each step below should show clean block shapes, no boxes, question");
   console.log("marks or gaps. The last step that looks right is the richest one this terminal can draw.\n");

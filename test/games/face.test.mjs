@@ -1,83 +1,55 @@
 #!/usr/bin/env node
-// Faces: the built-in converter draws them at the session's glyph step, without starting a process,
-// and keeps them in a disk cache that sweeps the caches older converters left behind.
+// Faces: the DOOM mugshot images, in DOOM's asset package, drawn by the built-in converter
+// (src/kit/raster/asset-raster.js) at the session's glyph step without starting a process, and
+// every frame the mugshot script can name present among them.
 
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { sandboxEnv } from "../_sandbox-env.mjs";
-import { renderContext } from "../../src/kit/context.js";
+import { fileURLToPath } from "node:url";
+import { TEMP_SANDBOX } from "../_temp-sandbox.mjs"; // before the modules that name temp paths
+import { rasterize } from "../../src/kit/raster/asset-raster.js";
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 const glyphs = (f) => new Set(f.flat().map((cell) => cell[0]));
 
-// Before the import: the sandbox is the runtime directory face.js caches its faces in.
-const SB = mkdtempSync(path.join(os.tmpdir(), "gamebar-face-"));
-Object.assign(process.env, { ...sandboxEnv(SB) });
-const OLD = path.join(SB, "gamebar_faces_000000000000.json");
-const RECENT = path.join(SB, "gamebar_faces_111111111111.json");
-const OTHER = path.join(SB, "gamebar_other.json");
-for (const f of [OLD, RECENT, OTHER]) writeFileSync(f, "{}");
-const twoDaysAgo = new Date(Date.now() - 2 * 24 * 3600 * 1000);
-for (const f of [OLD, OTHER]) utimesSync(f, twoDaysAgo, twoDaysAgo);
-const face = await import("../../src/games/doom/face.js");
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const FACES = path.join(ROOT, "games", "doom", "assets", "images", "mugshot");
+const IDLE = path.join(FACES, "STFST01.png");
 
-const SPRITE = "STFST01";
-const OCTANT = renderContext({ step: "octant" });
+console.log("built-in faces:");
+{
+  const f = rasterize(IDLE, 8, { step: "octant" });
+  ok(f.length === 8 && f.every((r) => r.length > 0), "an 8-row face has 8 drawn rows");
+  ok(rasterize(IDLE, 8, { step: "octant" }) === f, "a face drawn once is served from the cache");
+  ok(rasterize(IDLE, 8) === f, "with no options the face is drawn at the octant step on black");
+  const half = rasterize(IDLE, 8, { step: "half" });
+  ok(half !== f, "a face drawn at another step is not served from the octant face's cache entry");
+  ok([...glyphs(half)].every((ch) => " █▀▄▌▐".includes(ch)), "at the half step the face uses half blocks only");
+  ok(Math.max(...half.map((r) => r.length)) === Math.max(...f.map((r) => r.length)), "the face is as wide at every step");
+  const grey = rasterize(IDLE, 8, { background: [128, 128, 128] });
+  ok(grey !== f, "a face fitted against another background is not served from the black one's cache entry");
+  ok(rasterize(path.join(FACES, "NOSUCHSPRITE.png"), 5) === null, "a missing image draws nothing (its element falls back to its default)");
+  const cached = readdirSync(TEMP_SANDBOX).filter((n) => /^gamebar_faces_[0-9a-f]{12}\.json$/.test(n));
+  ok(cached.length === 1, `converted faces are kept on disk for the next process (${cached.join(", ") || "none"})`);
+}
 
-try {
-  console.log("built-in faces:");
-  {
-    const f = face.loadFace(SPRITE, 8, OCTANT);
-    ok(f.length === 8 && f.every((r) => r.length > 0), "an 8-row face has 8 drawn rows");
-    ok(face.loadFace(SPRITE, 8, OCTANT) === f, "a face drawn once is served from the cache");
-    ok(face.loadFace(SPRITE, 8) === f, "with no context the face is drawn at the octant step on black");
-    const half = face.loadFace(SPRITE, 8, renderContext({ step: "half" }));
-    ok(half !== f, "a face drawn at another step is not served from the octant face's cache entry");
-    ok([...glyphs(half)].every((ch) => " █▀▄▌▐".includes(ch)), "at the half step the face uses half blocks only");
-    ok(Math.max(...half.map((r) => r.length)) === Math.max(...f.map((r) => r.length)), "the face is as wide at every step");
-    const grey = face.loadFace(SPRITE, 8, renderContext({ background: [128, 128, 128] }));
-    ok(grey !== f, "a face fitted against another background is not served from the black one's cache entry");
-    const missing = face.loadFace("NOSUCHSPRITE", 5, OCTANT);
-    ok(missing.length === 5 && missing.every((r) => r.length === 0), "a missing sprite draws an empty face of the asked height");
+console.log("the frames:");
+{
+  const names = new Set(readdirSync(FACES).filter((n) => n.endsWith(".png")).map((n) => n.slice(0, -4)));
+  const want = ["STFDEAD0", "STFGOD0"];
+  for (let hp = 0; hp <= 4; hp++) {
+    want.push(`STFOUCH${hp}`, `STFKILL${hp}`, `STFEVL${hp}`, `STFTL${hp}0`, `STFTR${hp}0`, `STFST${hp}0`, `STFST${hp}1`, `STFST${hp}2`);
   }
+  const missing = want.filter((n) => !names.has(n));
+  ok(missing.length === 0, `a frame for every reaction at every health row (${want.length} frames${missing.length ? `; missing ${missing.join(", ")}` : ""})`);
+  ok(want.every((n) => rasterize(path.join(FACES, `${n}.png`), 4) !== null), "every frame decodes and draws");
+}
 
-  console.log("disk cache:");
-  {
-    const own = readdirSync(SB).filter((n) => /^gamebar_faces_/.test(n) && ![OLD, RECENT].includes(path.join(SB, n)));
-    ok(own.length === 1, `the converted faces are written to one cache file (found ${own.join(", ") || "none"})`);
-    ok(!existsSync(OLD), "a face cache untouched for a day is removed");
-    ok(existsSync(RECENT), "a recent face cache, maybe another installation's, is kept");
-    ok(existsSync(OTHER), "files that are not face caches are left alone");
-
-    // A new process (here a fresh copy of the module) reads the faces another one converted.
-    const cache = path.join(SB, own[0]);
-    const sentinel = [[["X", [1, 2, 3], null]], [], [], [], [], [], [], []];
-    const stored = JSON.parse(readFileSync(cache, "utf8"));
-    const key = Object.keys(stored).find((k) => k === `${SPRITE}@8@octant@0,0,0`);
-    ok(Boolean(key), `the cache holds the octant face under its sprite, rows, step and background (keys: ${Object.keys(stored).join(", ")})`);
-    writeFileSync(cache, JSON.stringify({ ...stored, [key]: sentinel }));
-    const fresh = await import("../../src/games/doom/face.js?second-process");
-    ok(JSON.stringify(fresh.loadFace(SPRITE, 8, OCTANT)) === JSON.stringify(sentinel), "a face in the disk cache is read, not converted again");
-
-    // A cache file that is not an object of faces is ignored and the face is converted.
-    writeFileSync(cache, "[]");
-    const third = await import("../../src/games/doom/face.js?corrupt-cache");
-    const redrawn = third.loadFace(SPRITE, 8, OCTANT);
-    ok(redrawn.length === 8 && redrawn.every((r) => r.length > 0) && redrawn[0][0][0] !== "X", "a cache file of the wrong shape is ignored and the face converted");
-    writeFileSync(cache, "{not json");
-    const fourth = await import("../../src/games/doom/face.js?broken-cache");
-    ok(fourth.loadFace(SPRITE, 8, OCTANT).every((r) => r.length > 0), "an unreadable cache file is ignored and the face converted");
-  }
-
-  console.log("no process:");
-  {
-    const src = readFileSync(new URL("../../src/games/doom/face.js", import.meta.url), "utf8");
-    ok(!/child_process/.test(src), "the face loader does not import child_process");
-  }
-} finally {
-  rmSync(SB, { recursive: true, force: true });
+console.log("no process:");
+{
+  const src = readFileSync(new URL("../../src/kit/raster/asset-raster.js", import.meta.url), "utf8");
+  ok(!/child_process/.test(src), "the image converter does not import child_process");
 }
 
 console.log(fails ? `\n${fails} failing` : "\nall passing");

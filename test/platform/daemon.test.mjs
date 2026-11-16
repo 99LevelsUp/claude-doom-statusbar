@@ -161,9 +161,11 @@ try {
     const state = createState({ version: VERSION, now: t0 });
     runPass(state, { dir: TMPDIR, hash: HASH, now: t0 });
     const before = readFrame(bad);
-    // A preset that is not TOML: renderSession throws (a missing one draws a line instead).
-    bad.fwd.GAMEBAR_PRESET = path.join(SB, "broken.toml");
-    writeFileSync(bad.fwd.GAMEBAR_PRESET, "[[[ not toml\n");
+    // A payload whose cost is not an object: renderSession throws.
+    const cost = bad.data.cost;
+    bad.data.cost = "not an object";
+    ok((() => { try { renderSession({ data: bad.data, env: { ...process.env, ...bad.fwd } }); return false; } catch { return true; } })(),
+      "renderSession throws on that payload (the checks below can fail)");
     bad.write();
     let kept = true, others = true;
     for (let i = 1; i <= 6; i++) {
@@ -175,7 +177,7 @@ try {
     }
     ok(before !== null && kept, "the failing session keeps its previous frame, deadline included");
     ok(others, "the other session keeps renewing while one session's render throws");
-    bad.fwd.GAMEBAR_PRESET = path.join(PRESETS, "full.toml");
+    bad.data.cost = cost;
     bad.write();
     const now = t0 + 4000;
     runPass(state, { dir: TMPDIR, hash: HASH, now });
@@ -314,9 +316,10 @@ try {
           `a session forwarding only ${forwarded} renders with it, though the daemon inherited a different ${inherited}`);
         unlinkSync(payloadFile(`only-${forwarded}`));
       }
-      // Nor does an old name the daemon inherited reach a session that sets neither name.
+      // Nor does an old name the daemon inherited reach a session that sets neither name (which
+      // draws the default skin, the full one).
       delete process.env.GAMEBAR_PRESET;
-      process.env.DOOMBAR_PRESET = full;
+      process.env.DOOMBAR_PRESET = minimal;
       const s = session("neither");
       delete s.fwd.GAMEBAR_PRESET;
       s.write();
@@ -326,7 +329,7 @@ try {
       delete base.GAMEBAR_PRESET;
       delete base.DOOMBAR_PRESET;
       const want = renderSession({ data: s.data, env: base, now: now / 1000 });
-      ok(!sameLines(want, renderSession({ data: s.data, env: { ...base, DOOMBAR_PRESET: full }, now: now / 1000 })),
+      ok(!sameLines(want, renderSession({ data: s.data, env: { ...base, DOOMBAR_PRESET: minimal }, now: now / 1000 })),
         "the inherited DOOMBAR_PRESET would change the render (so the next case can tell)");
       ok(sameLines(frameOf(s)?.slots[0].lines, want), "a session that sets neither name does not take the daemon's DOOMBAR_PRESET");
       unlinkSync(payloadFile("neither"));

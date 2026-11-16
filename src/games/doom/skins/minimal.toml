@@ -1,0 +1,213 @@
+# doom-minimal: MODEL, USAGE, the mugshot, PROJECT and ACTIVITY. The narrowest DOOM bar: when even
+# this does not fit, it is drawn cut at the terminal's edge.
+version = 1
+name = "doom-minimal"
+games = ["doom"]
+root = "bar"
+
+[element.bar]
+kind = "row"
+separator = " "
+children = ["model", "usage", "mugshot", "project", "activity"]
+
+# --- MODEL --------------------------------------------------------------------------------------
+[element.model]
+kind = "column"
+frame = { kind = "box", title = "MODEL", background = "#1c2036" }
+children = ["model-line", "model-mode", "model-permission", "model-style", "advisor"]
+
+[element.model-line]
+kind = "row"
+separator = " "
+separator_background = "#1c2036"
+children = ["model-name", "model-effort"]
+
+[element.model-name]
+kind = "text"
+metric = "model.name"
+icon = "🤖"
+width = 14
+min_width = 10
+
+[element.model-effort]
+kind = "icon"
+metric = "model.effort"
+
+[element.model-mode]
+kind = "icon"
+metric = "model.mode"
+width = 13
+
+[element.model-permission]
+kind = "icon"
+metric = "model.permission"
+show_text = true
+width = 10
+
+[element.model-style]
+kind = "text"
+metric = "model.style"
+icon = "🎨"
+width = 10
+min_width = 6
+
+[element.advisor]
+kind = "text"
+metric = "advisor.model"
+icon = "🧙"
+width = 10
+min_width = 6
+
+# --- USAGE --------------------------------------------------------------------------------------
+[element.usage]
+kind = "column"
+frame = { kind = "box", title = "USAGE", background = "#1c2036" }
+children = ["context", "limit-5h", "limit-7d", "ram", "cost"]
+
+[element.context]
+kind = "progress"
+metric = "context.hp"
+icon = "🧠"
+
+[element.limit-5h]
+kind = "row"
+separator = " "
+separator_background = "#1c2036"
+children = ["limit-5h-bar", "limit-5h-reset"]
+
+[element.limit-5h-bar]
+kind = "progress"
+metric = "ratelimit.5h"
+icon = "🕔"
+percent = "none"
+
+[element.limit-5h-reset]
+kind = "text"
+metric = "usage.reset5h"
+width = 6
+min_width = 5
+
+[element.limit-7d]
+kind = "row"
+separator = " "
+separator_background = "#1c2036"
+children = ["limit-7d-bar", "limit-7d-reset"]
+
+[element.limit-7d-bar]
+kind = "progress"
+metric = "ratelimit.7d"
+icon = "📅"
+percent = "none"
+
+[element.limit-7d-reset]
+kind = "text"
+metric = "usage.reset7d"
+width = 6
+min_width = 5
+
+[element.ram]
+kind = "progress"
+metric = "sys.ram"
+icon = "💾"
+
+[element.cost]
+kind = "text"
+metric = "cost.total"
+icon = "💰"
+width = 7
+min_width = 5
+
+# --- PROJECT ------------------------------------------------------------------------------------
+[element.project]
+kind = "column"
+frame = { kind = "box", title = "PROJECT", background = "#1c2036" }
+children = ["session", "cwd", "branch", "work", "churn", "pr"]
+
+[element.session]
+kind = "text"
+metric = "session.name"
+icon = "🎮"
+width = 16
+min_width = 10
+
+[element.cwd]
+kind = "text"
+metric = "loc.cwd"
+icon = "📁"
+width = 16
+min_width = 10
+
+[element.branch]
+kind = "text"
+metric = "git.branch"
+icon = "🌿"
+width = 16
+min_width = 10
+
+[element.work]
+kind = "icon"
+metric = "git.work"
+width = 13
+
+[element.churn]
+kind = "text"
+metric = "loc.churn"
+icon = "📝"
+width = 13
+min_width = 10
+
+[element.pr]
+kind = "text"
+metric = "pr.state"
+icon = "⇧ "
+width = 8
+min_width = 5
+
+# --- the mugshot --------------------------------------------------------------------------------
+# DOOM's script picks the face for the session's reaction; without the script (the one-shot status
+# line) the idle face is drawn. The terminal's glyph step can only lower `glyphs`.
+[element.mugshot]
+kind = "animation"
+frames = "doom:images/mugshot"
+script = "doom:scripts/mugshot.js"
+default_frame = "doom:images/mugshot/STFST01.png"
+width = 14
+rows = 4
+glyphs = "octant"
+background = "#000000"
+
+# --- ACTIVITY -----------------------------------------------------------------------------------
+# Every row of a box is at least as wide as its title, so a box left with one row keeps its title whole.
+[element.activity]
+kind = "column"
+frame = { kind = "box", title = "ACTIVITY", background = "#1c2036" }
+children = ["geiger", "agent-count", "task-count", "errors"]
+
+[element.geiger]
+kind = "sparkline"
+metric = "act.geiger"
+icon = "📟"
+style = "octant"
+max = 1
+width = 15
+min_width = 5
+
+[element.agent-count]
+kind = "number"
+metric = "act.agents"
+icon = "👹"
+width = 5
+
+[element.task-count]
+kind = "text"
+metric = "act.tasks"
+icon = "🎯"
+width = 5
+min_width = 5
+
+[element.errors]
+kind = "number"
+metric = "act.errors"
+icon = "💢"
+color = "threshold"
+width = 5

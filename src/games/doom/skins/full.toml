@@ -1,0 +1,319 @@
+# doom-full: the DOOM status bar with every box. A row of titled boxes on the panel colour with the
+# Doomguy mugshot among them; the mugshot's face follows the session through DOOM's own script.
+#
+# When the terminal is too narrow, the boxes first shrink, then SYSTEM drops, then SAVE; when even
+# that does not fit, the bar switches to doom-standard.
+version = 1
+name = "doom-full"
+games = ["doom"]
+root = "bar"
+smaller = "doom-standard"
+
+[element.bar]
+kind = "row"
+separator = " "
+children = ["model", "usage", "save", "project", "mugshot", "activity", "agents", "tasks", "system"]
+
+# --- MODEL --------------------------------------------------------------------------------------
+[element.model]
+kind = "column"
+frame = { kind = "box", title = "MODEL", background = "#1c2036" }
+children = ["model-line", "model-mode", "model-permission", "model-style", "advisor"]
+
+[element.model-line]
+kind = "row"
+separator = " "
+separator_background = "#1c2036"
+children = ["model-name", "model-effort"]
+
+[element.model-name]
+kind = "text"
+metric = "model.name"
+icon = "🤖"
+width = 14
+min_width = 10
+
+[element.model-effort]
+kind = "icon"
+metric = "model.effort"
+
+[element.model-mode]
+kind = "icon"
+metric = "model.mode"
+width = 13
+
+[element.model-permission]
+kind = "icon"
+metric = "model.permission"
+show_text = true
+width = 10
+
+[element.model-style]
+kind = "text"
+metric = "model.style"
+icon = "🎨"
+width = 10
+min_width = 6
+
+[element.advisor]
+kind = "text"
+metric = "advisor.model"
+icon = "🧙"
+width = 10
+min_width = 6
+
+# --- USAGE --------------------------------------------------------------------------------------
+[element.usage]
+kind = "column"
+frame = { kind = "box", title = "USAGE", background = "#1c2036" }
+children = ["context", "limit-5h", "limit-7d", "ram", "cost"]
+
+[element.context]
+kind = "progress"
+metric = "context.hp"
+icon = "🧠"
+
+[element.limit-5h]
+kind = "row"
+separator = " "
+separator_background = "#1c2036"
+children = ["limit-5h-bar", "limit-5h-reset"]
+
+[element.limit-5h-bar]
+kind = "progress"
+metric = "ratelimit.5h"
+icon = "🕔"
+percent = "none"
+
+[element.limit-5h-reset]
+kind = "text"
+metric = "usage.reset5h"
+width = 6
+min_width = 5
+
+[element.limit-7d]
+kind = "row"
+separator = " "
+separator_background = "#1c2036"
+children = ["limit-7d-bar", "limit-7d-reset"]
+
+[element.limit-7d-bar]
+kind = "progress"
+metric = "ratelimit.7d"
+icon = "📅"
+percent = "none"
+
+[element.limit-7d-reset]
+kind = "text"
+metric = "usage.reset7d"
+width = 6
+min_width = 5
+
+[element.ram]
+kind = "progress"
+metric = "sys.ram"
+icon = "💾"
+
+[element.cost]
+kind = "text"
+metric = "cost.total"
+icon = "💰"
+width = 7
+min_width = 5
+
+# --- SAVE ---------------------------------------------------------------------------------------
+[element.save]
+kind = "column"
+frame = { kind = "box", title = "SAVE", background = "#1c2036" }
+children = ["save-leanctx", "save-lingua"]
+priority = 2
+
+[element.save-leanctx]
+kind = "text"
+metric = "save.leanctx"
+icon = "🪶"
+width = 9
+min_width = 6
+
+[element.save-lingua]
+kind = "text"
+metric = "save.lingua"
+icon = "📜"
+width = 9
+min_width = 6
+
+# --- PROJECT ------------------------------------------------------------------------------------
+[element.project]
+kind = "column"
+frame = { kind = "box", title = "PROJECT", background = "#1c2036" }
+children = ["session", "cwd", "branch", "work", "churn", "pr"]
+
+[element.session]
+kind = "text"
+metric = "session.name"
+icon = "🎮"
+width = 16
+min_width = 10
+
+[element.cwd]
+kind = "text"
+metric = "loc.cwd"
+icon = "📁"
+width = 16
+min_width = 10
+
+[element.branch]
+kind = "text"
+metric = "git.branch"
+icon = "🌿"
+width = 16
+min_width = 10
+
+[element.work]
+kind = "icon"
+metric = "git.work"
+width = 13
+
+[element.churn]
+kind = "text"
+metric = "loc.churn"
+icon = "📝"
+width = 13
+min_width = 10
+
+[element.pr]
+kind = "text"
+metric = "pr.state"
+icon = "⇧ "
+width = 8
+min_width = 5
+
+# --- the mugshot --------------------------------------------------------------------------------
+# DOOM's script picks the face for the session's reaction; without the script (the one-shot status
+# line) the idle face is drawn. The terminal's glyph step can only lower `glyphs`.
+[element.mugshot]
+kind = "animation"
+frames = "doom:images/mugshot"
+script = "doom:scripts/mugshot.js"
+default_frame = "doom:images/mugshot/STFST01.png"
+width = 14
+rows = 4
+glyphs = "octant"
+background = "#000000"
+
+# --- ACTIVITY -----------------------------------------------------------------------------------
+# Every row of a box is at least as wide as its title, so a box left with one row keeps its title whole.
+[element.activity]
+kind = "column"
+frame = { kind = "box", title = "ACTIVITY", background = "#1c2036" }
+children = ["geiger", "agent-count", "task-count", "errors"]
+
+[element.geiger]
+kind = "sparkline"
+metric = "act.geiger"
+icon = "📟"
+style = "octant"
+max = 1
+width = 15
+min_width = 5
+
+[element.agent-count]
+kind = "number"
+metric = "act.agents"
+icon = "👹"
+width = 5
+
+[element.task-count]
+kind = "text"
+metric = "act.tasks"
+icon = "🎯"
+width = 5
+min_width = 5
+
+[element.errors]
+kind = "number"
+metric = "act.errors"
+icon = "💢"
+color = "threshold"
+width = 5
+
+# --- AGENTS and TASKS ---------------------------------------------------------------------------
+# Rows, so the lists fill the bar's whole height; long labels scroll back and forth.
+[element.agents]
+kind = "row"
+frame = { kind = "box", title = "AGENTS", background = "#1c2036" }
+children = ["agent-list"]
+
+[element.agent-list]
+kind = "scroll-list"
+metric = "act.subagents"
+icon = "👹"
+anchor = "top"
+width = 19
+min_width = 16
+rows = 3
+
+[element.tasks]
+kind = "row"
+frame = { kind = "box", title = "TASKS", background = "#1c2036" }
+children = ["task-list"]
+
+[element.task-list]
+kind = "scroll-list"
+metric = "act.tasklist"
+anchor = "boundary"
+width = 22
+min_width = 13
+rows = 3
+
+# --- SYSTEM -------------------------------------------------------------------------------------
+[element.system]
+kind = "column"
+frame = { kind = "box", title = "SYSTEM", background = "#1c2036" }
+children = ["cpu", "disk", "zombies", "session-time", "clock"]
+priority = 1
+
+[element.cpu]
+kind = "row"
+separator = " "
+separator_background = "#1c2036"
+children = ["cores", "cpu-total"]
+
+[element.cores]
+kind = "equalizer"
+metric = "sys.cores"
+icon = "🔥"
+
+[element.cpu-total]
+kind = "number"
+metric = "sys.cpu"
+suffix = "%"
+width = 4
+align = "right"
+
+[element.disk]
+kind = "progress"
+metric = "sys.disk"
+icon = "💿"
+
+# Live bash processes on Windows, red from 10 (where the MSYS add_item failure hits); absent elsewhere.
+[element.zombies]
+kind = "number"
+metric = "sys.zombies"
+icon = "🧟"
+color = [[5, "#7fae6a"], [8, "#e8c34a"], [10, "#e25555"]]
+width = 3
+
+[element.session-time]
+kind = "text"
+metric = "sys.session"
+icon = "🕙"
+width = 6
+min_width = 5
+
+[element.clock]
+kind = "text"
+metric = "sys.clock"
+icon = "🕓"
+width = 5
+min_width = 5

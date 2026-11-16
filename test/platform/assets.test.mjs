@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { sandboxEnv } from "../_sandbox-env.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const SPRITE = path.join(ROOT, "src", "games", "doom", "assets", "mugshot", "alpha", "STFST01.png");
+const SPRITE = path.join(ROOT, "games", "doom", "assets", "images", "mugshot", "STFST01.png");
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 const strip = (s) => s.replace(/\x1b\[[0-9;]*m|\x1b\]8;[^\x07\x1b]*(?:\x1b\\|\x07)/g, "");

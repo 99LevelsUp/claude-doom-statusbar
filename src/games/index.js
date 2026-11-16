@@ -24,14 +24,15 @@
 //   name, description, about (the same blurb), aliases, default, dir, defaultSkin, readsPresets,
 //   presetSkins (preset name -> skin name), assets, skins ([{ name, file | null }], in the order
 //   the manifest names them, then the other skin files)
-// and, while a game still draws with its old layout:
 //   usesPresetSetting  the same as readsPresets
-//   presets            preset name -> absolute path of its .toml file in the game's presets/
+//   presets            preset name -> absolute path of its .toml file in the game's presets/, where
+//                      an installer before skins pointed the preset setting; the file is there only
+//                      while the game still draws with its old layout
+// and, while a game still draws with its old layout:
 //   defaultPreset      the preset the old layout renders when the preset setting names none
 //   layoutKey          the preset [bar] layout value that selects this game's layout
 //   layout             (cfg, target, ctx) -> lines, from a parsed preset, the target width and the
 //                      render context (src/kit/context.js)
-//   sample             optional image the glyph test card draws at every glyph step
 //
 // The list is plain data. A test may add an entry (readGame of a folder of its own) and take it out
 // again; the lookups below read the list each time they are called.
@@ -40,13 +41,10 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { parse as parseToml } from "smol-toml";
 import { PACKAGE_ROOT, SRC_DIR } from "../package-root.js";
-import { doomLayout } from "./doom/layout.js";
-import { IDLE_FACE } from "./doom/face.js";
 import { minecraftLayout } from "./minecraft/layout.js";
 
 // The code the bundled games still draw with, by folder name, until their skins replace it.
 const OLD_LAYOUTS = {
-  doom: { layoutKey: "boxes", layout: doomLayout, defaultPreset: "standard", sample: IDLE_FACE },
   minecraft: { layoutKey: "hotbar", layout: minecraftLayout, defaultPreset: "minecraft" },
 };
 
@@ -69,9 +67,7 @@ export function readGame(dir, old = {}) {
   const m = parseToml(readFileSync(path.join(dir, "game.toml"), "utf8"));
   const legacy = m.legacy || {};
   const presetSkins = { ...(legacy.presets || {}) };
-  const presets = Object.fromEntries(Object.keys(presetSkins)
-    .map((n) => [n, path.join(dir, "presets", `${n}.toml`)])
-    .filter(([, f]) => existsSync(f)));
+  const presets = Object.fromEntries(Object.keys(presetSkins).map((n) => [n, path.join(dir, "presets", `${n}.toml`)]));
   const files = skinFiles(dir);
   const names = [...new Set([...Object.values(presetSkins), m.default_skin, ...files.map((f) => f.name)])]
     .filter((n) => typeof n === "string" && n);
@@ -93,7 +89,6 @@ export function readGame(dir, old = {}) {
     defaultPreset: old.defaultPreset ?? Object.keys(presets)[0] ?? null,
     layoutKey: old.layoutKey ?? null,
     layout: old.layout ?? null,
-    sample: old.sample ?? null,
   };
 }
 
@@ -153,6 +148,3 @@ export function presetFile(file) {
   if (!sameDir(path.dirname(file), LEGACY_PRESETS)) return file;
   return registeredPreset(path.basename(file)) || file;
 }
-
-// The image the glyph test card draws: the first registered game's that has one, or null.
-export const sampleImage = () => (GAMES.find((g) => g.sample) || {}).sample || null;

@@ -1,34 +1,26 @@
 #!/usr/bin/env node
-// Unit tests for the `equalizer` render type.
-//
-// The equalizer is a one-row VU-meter: one block column per channel, each column
-// coloured by its OWN value via threshold() (green<60, yellow<85, red>=85). Unlike
-// spark it does not pack 2 samples/char and does not span-normalize -- it is 1
-// channel = 1 column with absolute 0..1 scaling. It uses its OWN 9-level height
-// ramp " ▁▂▃▄▅▆▇█" (index pyround(clamp(v,0,1)*8)) so an idle channel is empty and
-// a maxed one is a full block -- deliberately different from spark's 7-level
-// BLOCK_RAMP. When channels exceed the column cap (EQ_MAX=16) it densifies by
-// averaging into exactly min(N, cap) columns, so the visible width always equals
-// metricFixedWidth -- the invariant box layout depends on.
-import { renderValue } from "../../src/kit/meters.js";
-import { metricFixedWidth } from "../../src/kit/planner.js";
-import { renderContext } from "../../src/kit/context.js";
+// The equalizer visual: a one-row VU-meter, one column per channel (such as each CPU core), each
+// column as high and as coloured as its OWN value on an absolute 0..1 scale (no span-normalising).
+// Its height ramp " ▁▂▃▄▅▆▇█" has nine levels (index pyround(clamp(v,0,1)*8)), so an idle channel
+// is empty and a maxed one a full block. It draws exactly the columns it is given: more channels
+// than columns are averaged into them, fewer are spread across them.
+import { VISUALS } from "../../src/kit/elements/index.js";
 import { vlen } from "../../src/kit/text.js";
-import { TEXT, OK, CRIT } from "../../src/kit/ansi.js";
+import { OK, CRIT } from "../../src/kit/ansi.js";
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 
-const EQ_MAX = 16;                // column cap, mirrors src/kit/meters.js
-const BOX = [28, 32, 54];         // a non-term box bg, like the standard preset
+const EQ = VISUALS.equalizer;
+const BOX = [28, 32, 54];         // a box background, like the DOOM boxes
 // Strip ANSI/OSC to count the visible glyph run.
 const ANSI = /\x1b\[[0-9;]*m|\x1b\]8;[^\x07\x1b]*(?:\x1b\\|\x07)/g;
 const visible = (s) => s.replace(ANSI, "");
 // The foreground colour of each column, in order, parsed back out of the SGR runs.
 const fgs = (s) => [...s.matchAll(/38;2;(\d+);(\d+);(\d+)m/g)].map((m) => [+m[1], +m[2], +m[3]]);
-const coresOf = (vals) => renderContext({ values: { "x.cores": vals } });
-const eq = (vals, extra = {}) =>
-  renderValue(coresOf(vals), { id: "x.cores", render: "equalizer", color: "threshold", ...extra }, 0, BOX);
+// The equalizer of `vals` in `columns` columns (one per channel by default).
+const eq = (vals, extra = {}, columns = Math.max(1, vals.length)) =>
+  EQ.draw({ value: vals, params: EQ.validate(extra).params, width: columns, surface: BOX })[0];
 
 // 1. Happy path: 3 channels -> 3 glyphs at empty/mid/full height.
 {
@@ -58,36 +50,37 @@ const eq = (vals, extra = {}) =>
   ok(v === "▄", `.5 -> ▄ (got "${v}")`);
 }
 
-// 4. Overflow densifies to exactly min(N, cap) columns.
+// 4. It draws exactly the columns it is given, however many channels there are.
 {
-  ok(vlen(eq(Array(32).fill(0.5))) === EQ_MAX, `32 channels -> ${EQ_MAX} columns`);
-  ok(vlen(eq(Array(17).fill(0.5))) === EQ_MAX, `17 channels -> ${EQ_MAX} columns`);
-  ok(vlen(eq(Array(8).fill(0.5))) === 8, `8 channels -> 8 columns (no densify)`);
+  ok(vlen(eq(Array(32).fill(0.5), {}, 16)) === 16, "32 channels in 16 columns -> 16 columns");
+  ok(vlen(eq(Array(17).fill(0.5), {}, 16)) === 16, "17 channels in 16 columns -> 16 columns");
+  ok(vlen(eq(Array(8).fill(0.5), {}, 16)) === 16, "8 channels in 16 columns -> 16 columns");
+  ok(visible(eq([0, 1], {}, 4)) === "  ██", "fewer channels than columns are spread across them, in order");
 }
 
 // 5. Averaging: a low/high pair densified into one column lands mid-height.
 {
-  const v = visible(eq([0, 1]));     // 2 channels, under cap -> 2 columns
+  const v = visible(eq([0, 1]));     // 2 channels in 2 columns
   ok(vlen(v) === 2, "2 channels stay 2 columns");
   // 32 alternating 0/1 -> 16 pair-averaged columns, each avg 0.5 -> ▄
-  const dens = visible(eq(Array.from({ length: 32 }, (_, i) => i % 2)));
+  const dens = visible(eq(Array.from({ length: 32 }, (_, i) => i % 2), {}, 16));
   ok([...dens].every((ch) => ch === "▄"), `alternating 0/1 densifies to all ▄ (got "${dens}")`);
 }
 
-// 6. Empty array -> no columns, no crash.
+// 6. No channels -> blank columns, no crash.
 {
-  ok(vlen(eq([])) === 0, "empty array renders 0 columns");
+  const out = eq([], {}, 5);
+  ok(vlen(out) === 5 && visible(out) === "     ", "an empty list draws its columns blank");
 }
 
-// 7. Width invariant: visible width == metricFixedWidth, under and over the cap.
+// 7. Width: the columns come from the parameters, the icon in front of them.
 {
+  const p = EQ.validate({ icon: "🔥", columns: 16, min_columns: 4 }).params;
+  const w = EQ.widths(p);
+  ok(w.natural === 3 + 16 && w.min === 3 + 4, `natural and minimum width are the icon and the columns (${w.natural}, ${w.min})`);
   for (const n of [3, 8, 16, 17, 32, 64]) {
-    const ctx = coresOf(Array(n).fill(0.5));
-    const entry = { id: "x.cores", render: "equalizer", color: "threshold" };
-    const w = metricFixedWidth(ctx, entry);
-    const rendered = renderValue(ctx, entry, 0, BOX);
-    ok(vlen(rendered) === w && w === Math.min(n, EQ_MAX),
-       `N=${n}: vlen(${vlen(rendered)}) == fixedWidth(${w}) == min(N,cap)(${Math.min(n, EQ_MAX)})`);
+    const line = EQ.draw({ value: Array(n).fill(0.5), params: p, width: w.natural, surface: BOX })[0];
+    ok(vlen(line) === w.natural, `N=${n}: the line is exactly its ${w.natural} columns`);
   }
 }
 

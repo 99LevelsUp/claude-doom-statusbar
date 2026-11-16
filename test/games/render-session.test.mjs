@@ -43,6 +43,7 @@ Object.assign(process.env, { ...sandboxEnv(TMPDIR), PATH: "", GAMEBAR_MSYS_REAP:
   GAMEBAR_THEME: "doom", GAMEBAR_RATELIMITS_SHARE: "0", GAMEBAR_PRESET: path.join(PRESETS, "minimal.toml") });
 for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "GAMEBAR_GLYPHS"]) delete process.env[k];
 const { renderSession } = await import("../../src/render.js");
+const { findSkin } = await import("../../src/skin-select.js");
 
 const NOW_MS = 1793500000123;
 const NOW = NOW_MS / 1000;
@@ -100,23 +101,28 @@ try {
       { input: JSON.stringify(s.data), env: childEnv }).toString("utf8"));
     s = session(`same-${name}`, "same");
     rmSync(path.join(TMPDIR, "gamebar_cpu.json"), { force: true });
-    const viaRender = [1, 2].map(() => render(s, over));
+    // The one-shot status line runs no skin scripts.
+    const viaRender = [1, 2].map(() => renderSession({ data: s.data, env: { ...s.env, ...over }, now: NOW, scripts: false }).join("\n") + "\n");
     ok(viaMain[0] === viaRender[0] && viaMain[1] === viaRender[1],
-      `${name}: main() prints exactly what renderSession returns (two renders in a row)`);
+      `${name}: main() prints exactly what renderSession returns without scripts (two renders in a row)`);
   }
   render(session("warmup", "warmup")); // the comparison above reset the CPU sample
 
-  // A preset that does not exist draws one line naming it, from renderSession and from main(),
-  // with nothing on stderr (S-6).
+  // A preset that does not exist (or one the user wrote) no longer draws: the bar draws the game's
+  // default skin with one line under it naming the preset, from renderSession and from main(), with
+  // nothing on stderr.
   {
     const s = session("nopreset", "nopreset");
     const missing = path.join(SB, "nope.toml");
-    const want = `gamebar: preset not found: ${missing}\n`;
-    ok(render(s, { GAMEBAR_PRESET: missing }) === want, `renderSession names the missing preset (got ${JSON.stringify(render(s, { GAMEBAR_PRESET: missing }))})`);
+    const out = renderSession({ data: s.data, env: { ...s.env, GAMEBAR_PRESET: missing }, now: NOW, scripts: false }).join("\n") + "\n";
+    const lines = out.trimEnd().split("\n");
+    ok(lines.length > 1 && strip(lines[0]).includes("MODEL") && strip(lines.at(-1)).includes(missing),
+      `renderSession draws the default skin and names the preset under it (got ${JSON.stringify(strip(lines.at(-1)))})`);
     const childEnv = { ...s.env, GAMEBAR_PRESET: missing, SystemRoot: process.env.SystemRoot, PATH: "",
       ...sandboxEnv(TMPDIR), GAMEBAR_MSYS_REAP: "0" };
-    const r = spawnSync(process.execPath, [STATUSLINE], { input: JSON.stringify(s.data), env: childEnv, encoding: "utf8" });
-    ok(r.status === 0 && r.stdout === want, `main() prints that line and exits 0 (status ${r.status}, got ${JSON.stringify(r.stdout)})`);
+    const r = spawnSync(process.execPath, ["--import", pathToFileURL(PIN).href, STATUSLINE], { input: JSON.stringify(s.data), env: childEnv, encoding: "utf8" });
+    ok(r.status === 0 && strip(r.stdout).trimEnd().split("\n").at(-1) === strip(lines.at(-1)),
+      `main() prints the same warning line and exits 0 (status ${r.status})`);
     ok(r.stderr === "", `main() writes nothing to stderr (got ${JSON.stringify(r.stderr.slice(0, 120))})`);
   }
 
@@ -148,20 +154,23 @@ try {
     ok(a1 === a2, "rendering another session in between changes nothing in the first one");
   }
 
-  // The mugshot's glyph step comes from the session's own environment, capped by the preset's
-  // [mugshot] glyphs key: one daemon draws each session with the glyphs its terminal can show.
+  // The mugshot's glyph step comes from the session's own environment, capped by the skin's
+  // `glyphs` parameter of the mugshot: one daemon draws each session with the glyphs its terminal
+  // can show.
   {
     const s = session("glyphs", "glyphs");
     const half = render(s, { GAMEBAR_GLYPHS: "half" });
     const octant = render(s, { GAMEBAR_GLYPHS: "octant" });
     ok(half !== octant, "a session asking for half blocks draws a different face than one asking for octants");
     ok(render(s, { GAMEBAR_GLYPHS: "half" }) === half, "the same session settings draw the same face again");
-    const capped = path.join(s.dir, "capped.toml");
-    const preset = readFileSync(path.join(PRESETS, "standard.toml"), "utf8");
-    ok(/^glyphs = "octant"$/m.test(preset), "the standard preset names its mugshot glyph step (the check below can fail)");
-    writeFileSync(capped, preset.replace(/^glyphs = "octant"$/m, 'glyphs = "half"'));
-    ok(render(s, { GAMEBAR_PRESET: capped, GAMEBAR_GLYPHS: "octant" }) === half,
-      "a preset that caps the mugshot at half blocks wins over a terminal that draws octants");
+    // A user's copy of the standard skin with the mugshot capped at half blocks.
+    const standard = readFileSync(findSkin("doom-standard").file, "utf8");
+    ok(/^glyphs = "octant"$/m.test(standard), "the standard skin names its mugshot glyph step (the check below can fail)");
+    const capped = path.join(s.env.GAMEBAR_USER_DIR, "skins", "capped", "capped.toml");
+    mkdirSync(path.dirname(capped), { recursive: true });
+    writeFileSync(capped, standard.replace(/^glyphs = "octant"$/m, 'glyphs = "half"').replace(/^name = "doom-standard"$/m, 'name = "capped"'));
+    ok(render(s, { GAMEBAR_SKIN: "capped", GAMEBAR_GLYPHS: "octant" }) === half,
+      "a skin that caps the mugshot at half blocks wins over a terminal that draws octants");
     ok(render(s, { WT_SESSION: "x" }) === octant, "a Windows Terminal session gets octants without any setting");
   }
 

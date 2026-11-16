@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Snapshot tests: pin what the DOOM presets and the Minecraft hotbar draw today, byte for
+// Snapshot tests: pin what the DOOM skins and the Minecraft hotbar draw today, byte for
 // byte, so a refactor can prove it changes nothing on screen.
 //
 // Only the pure renderers run here, with a fixed fixture and a fixed clock: the statusline
@@ -17,26 +17,32 @@ import { fileURLToPath } from "node:url";
 import { parse as parseToml } from "smol-toml";
 import { SAMPLE } from "../../src/kit/values.js";
 import { renderContext } from "../../src/kit/context.js";
-import { resolvePreset } from "../../src/kit/planner.js";
-import { buildBar, mugshotFace } from "../../src/games/doom/layout.js";
 import { buildHotbar } from "../../src/games/minecraft/layout.js";
 import { buildReaction } from "../../src/metrics/reaction.js";
+import { findGame } from "../../src/games/index.js";
+import { findSkin } from "../../src/skin-select.js";
+import { loadSkin } from "../../src/kit/skin/load.js";
+import { fitSkin } from "../../src/kit/skin/fit.js";
+import { drawFit } from "../../src/kit/skin/draw.js";
+import { runScripts } from "../../src/kit/skin/scripts.js";
+import { createScriptHost } from "../../src/platform/scripts/host.js";
+import { createAssetResolver } from "../../src/platform/assets.js";
+import { RAW_SAMPLE } from "../_raw-sample.mjs";
 
 const HERE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const DOOM_PRESETS = path.join(HERE, "..", "src", "games", "doom", "presets");
 const MINECRAFT_PRESETS = path.join(HERE, "..", "src", "games", "minecraft", "presets");
 const SNAP_DIR = path.join(HERE, "snapshots");
 const UPDATE = process.env.UPDATE_SNAPSHOTS === "1";
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 
-// A preset by name from a game's folder (DOOM's by default, where the fallback chain looks).
-const loadPreset = (name, dir = DOOM_PRESETS) => {
+// A Minecraft preset by name.
+const loadPreset = (name, dir = MINECRAFT_PRESETS) => {
   try { return parseToml(readFileSync(path.join(dir, `${name}.toml`), "utf8")); }
   catch { return null; }
 };
 
-// SAMPLE plus the keys the hotbar slots and the chat read that the box presets do not.
+// SAMPLE plus the keys the hotbar slots and the chat read.
 const FIXTURE = {
   ...SAMPLE,
   "loc.added": "185",
@@ -70,33 +76,34 @@ function check(name, lines) {
   ok(actual === expected, `${name}: matches test/snapshots/${name}.txt`);
 }
 
-// --- DOOM presets, through the same fallback chain the statusline uses -------------------
-// No reaction and no clock: the calm face that holds still.
-for (const preset of ["full", "standard", "minimal"]) {
-  for (const width of [80, 120, 200]) {
-    const ctx = contextOf();
-    const cfg = loadPreset(preset);
-    const selected = resolvePreset(ctx, cfg, width, loadPreset, mugshotFace(ctx));
-    const overflow = selected.text_overflow || cfg.text_overflow || "scroll";
-    check(`doom-${preset}-${width}`, buildBar(selected, width, { ...ctx, overflow }).lines);
-  }
+// --- DOOM skins, fitted down their smaller-skin chain, the mugshot script run ---------------
+// The session's metric values in their raw form, at the richest glyph step, the clock fixed.
+const doom = findGame("doom");
+const resolveAsset = createAssetResolver({ folder: doom.dir }).resolve;
+const host = createScriptHost({ callBudgetMs: 2000, graceMs: 2000, startupMs: 5000 });
+const loadNamed = (name) => loadSkin(findSkin(name).file).skin;
+const doomReaction = (o = {}) => buildReaction({ st: {}, values: RAW_SAMPLE, godUntil: 0, exhausted: false, now: NOW, ...o });
+function doomBar(skinName, width, reaction) {
+  const fit = fitSkin(loadNamed(skinName), { values: RAW_SAMPLE, width, loadSmaller: loadNamed });
+  const run = runScripts(fit, { host, values: RAW_SAMPLE, reaction, now: NOW, tick: 0, folderOf: () => doom.dir, resolveAsset });
+  return drawFit(run.fit, { values: RAW_SAMPLE, width, scripts: run.scripts, ctx: { tick: 0, step: "octant", resolveAsset, reaction, now: NOW } });
 }
 
-// --- DOOM reactions: the face for each reaction the statusline can choose ------------------
-{
-  const reactions = {
-    ouch: reactionTo({ st: { expr: "ouch", ts: NOW - 0.5 } }),
-    kill: reactionTo({ st: { expr: "kill", ts: NOW - 0.5 } }),
-    god: reactionTo({ godUntil: NOW + 1 }),
-    dead: reactionTo({ exhausted: true }),
-  };
-  for (const [name, reaction] of Object.entries(reactions)) {
-    const ctx = contextOf({ reaction, now: NOW });
-    const cfg = loadPreset("full");
-    const selected = resolvePreset(ctx, cfg, 120, loadPreset, mugshotFace(ctx));
-    const overflow = selected.text_overflow || cfg.text_overflow || "scroll";
-    check(`doom-full-120-${name}`, buildBar(selected, 120, { ...ctx, overflow }).lines);
+try {
+  // Calm: the idle glance the clock picks.
+  for (const size of ["full", "standard", "minimal"]) {
+    for (const width of [80, 120, 200]) check(`doom-${size}-${width}`, doomBar(`doom-${size}`, width, doomReaction()));
   }
+  // The face for each reaction the statusline can choose.
+  const reactions = {
+    ouch: doomReaction({ st: { expr: "ouch", ts: NOW - 0.5 } }),
+    kill: doomReaction({ st: { expr: "kill", ts: NOW - 0.5 } }),
+    god: doomReaction({ godUntil: NOW + 1 }),
+    dead: doomReaction({ exhausted: true }),
+  };
+  for (const [name, reaction] of Object.entries(reactions)) check(`doom-full-120-${name}`, doomBar("doom-full", 120, reaction));
+} finally {
+  host.close();
 }
 
 // --- Minecraft hotbar -------------------------------------------------------------------

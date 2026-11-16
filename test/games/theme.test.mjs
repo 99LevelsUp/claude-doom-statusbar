@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Themes: the `icons` render, the minecraft hotbar + chat, the live switch (`theme`, the older name
+// Themes: the icon-row visual, the minecraft hotbar + chat, the live switch (`theme`, the older name
 // of `skin`), and the theme a release before skins saved.
 import "../_temp-sandbox.mjs"; // before the modules that name temp paths
 import { execFileSync } from "node:child_process";
@@ -8,9 +8,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseToml } from "smol-toml";
-import { buildBar } from "../../src/games/doom/layout.js";
 import { renderContext } from "../../src/kit/context.js";
-import { renderValue } from "../../src/kit/meters.js";
+import { VISUALS } from "../../src/kit/elements/index.js";
 import { vlen } from "../../src/kit/text.js";
 import { buildHotbar, wrapMessage } from "../../src/games/minecraft/layout.js";
 import { sandboxEnv } from "../_sandbox-env.mjs";
@@ -22,21 +21,12 @@ let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 const strip = (s) => s.replace(/\x1b\[[0-9;]*m/g, "");
 
-// icons render: invert reads a used% as what is left.
-const hearts = strip(renderValue(renderContext({ values: { "context.hp": 70 } }),
-  { id: "context.hp", render: "icons", glyph: "♥", empty_glyph: "♡", count: 10, invert: true }, 0, [0, 0, 0]));
-ok(hearts === "♥♥♥♡♡♡♡♡♡♡", `icons: 70% used -> 3 of 10 hearts (${hearts})`);
-
-// stretch icons fill their whole box row, like a bar does.
+// icon-row visual: invert reads a used% as what is left.
 {
-  const ctx = renderContext({ values: { "context.hp": 50, "sys.ram": 40 } });
-  const box = { bar: { headers: false }, segment: [{ type: "box", metric: [
-    { id: "context.hp", render: "icons", icon: "💖", glyph: "♥", empty_glyph: "♡", stretch: true, invert: true },
-    { id: "sys.ram", render: "bar", icon: "💾" },
-  ] }] };
-  const [heartsRow, barRow] = buildBar(box, 120, ctx).lines.map((l) => strip(l).trim());
-  ok(vlen(heartsRow) === vlen(barRow), `stretch: hearts row is as wide as the bar row (${vlen(heartsRow)} vs ${vlen(barRow)})`);
-  ok([...heartsRow].filter((c) => c === "♥" || c === "♡").length > 10, "stretch: more than the default 10 glyphs at full width");
+  const row = VISUALS["icon-row"];
+  const p = row.validate({ glyph: "♥", empty_glyph: "♡", count: 10, invert: true }).params;
+  const hearts = strip(row.draw({ value: 70, params: p, width: row.widths(p).natural })[0]);
+  ok(hearts === "♥♥♥♡♡♡♡♡♡♡", `icon row: 70% used -> 3 of 10 hearts (${hearts})`);
 }
 
 // Hotbar layout: every row the same width, hearts/hunger track the values, death screen.

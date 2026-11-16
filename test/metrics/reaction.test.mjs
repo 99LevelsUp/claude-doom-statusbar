@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// The game-neutral reaction (src/metrics/reaction.js) and the two games that read it: the
-// DOOM portrait's sprite name and the Minecraft hotbar's hearts and reacting slot.
+// The game-neutral reaction (src/metrics/reaction.js) and the two games that read it: the frame
+// DOOM's mugshot script picks and the Minecraft hotbar's hearts and reacting slot.
 import "../_temp-sandbox.mjs"; // before the modules that name temp paths
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -8,7 +8,9 @@ import { fileURLToPath } from "node:url";
 import { parse as parseToml } from "smol-toml";
 import { buildReaction, calmReaction, hpRow, DECAY } from "../../src/metrics/reaction.js";
 import { EXPRESSIONS } from "../../src/platform/journal.js";
-import { portrait } from "../../src/games/doom/portrait.js";
+import { createScriptHost } from "../../src/platform/scripts/host.js";
+import { createAssetResolver } from "../../src/platform/assets.js";
+import { findGame } from "../../src/games/index.js";
 import { buildHotbar } from "../../src/games/minecraft/layout.js";
 import { renderContext } from "../../src/kit/context.js";
 
@@ -60,8 +62,14 @@ ok(react().expr === null && react().flash === null, "no expression: expr null, n
   ok(react({ godUntil: NOW + 1, expr: "ouch", age: 0.1 }).flash === "god", "god wins over a fresh ouch");
 }
 
-// DOOM portrait: a sprite name per reaction.
+// DOOM mugshot script: a frame name per reaction.
 {
+  const host = createScriptHost({ callBudgetMs: 2000, graceMs: 2000, startupMs: 5000 });
+  const script = createAssetResolver({ folder: findGame("doom").dir }).resolve("doom:scripts/mugshot.js");
+  const portrait = (reaction, now) => {
+    const [r] = host.runBatch([{ script, input: { reaction, now } }], { deadlineMs: 5000 });
+    return r.status === "ok" ? r.output.frame : `(${r.status})`;
+  };
   const calm = { expr: null, exprAge: Infinity, flash: null, god: false, dead: false };
   ok(portrait({ ...calm, expr: "ouch", flash: "ouch", hp: 2 }, NOW) === "STFOUCH2", "doom: ouch at hp 2 -> STFOUCH2");
   ok(portrait({ ...calm, dead: true, flash: "dead", hp: 3 }, NOW) === "STFDEAD0", "doom: dead -> STFDEAD0");
@@ -81,6 +89,7 @@ ok(react().expr === null && react().flash === null, "no expression: expr null, n
   ok(portrait({ ...calm, hp: 0 }, NOW) === portrait({ ...calm, hp: 0 }, NOW + 1.9), "doom: a glance holds for its 2 s bucket");
   const decayed = react({ expr: "ouch", age: 2 });
   ok(/^STFST1[012]$/.test(portrait(decayed, NOW)), "doom: an ouch 2 s ago shows the idle glance");
+  host.close();
 }
 
 // Minecraft hotbar: hearts flash with the reaction, the reacting slot holds for 6 s.
