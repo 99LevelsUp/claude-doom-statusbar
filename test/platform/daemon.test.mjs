@@ -53,6 +53,7 @@ for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "G
 const { renderSession } = await import("../../src/render.js");
 const { sessionPaths, daemonPaths, rootHash, daemonSocket, procStartTicks } = await import("../../src/platform/runtime.js");
 const { parseFrame } = await import("../../src/platform/frame.js");
+const { envGet } = await import("../../src/platform/env.js");
 const { createState, runPass, pipePath, maybeStartReaper, FORWARDED_ENV } = await import("../../src/daemon.js");
 
 const HASH = rootHash();
@@ -69,7 +70,8 @@ const heartbeatFile = (hash = HASH, dir = TMPDIR) => path.join(dir, path.basenam
 let bumps = 0;
 function session(key, { label = key, env = {}, hash = HASH, dir = TMPDIR } = {}) {
   const fwd = { COLUMNS: "250", GAMEBAR_PRESET: path.join(PRESETS, "full.toml"),
-    GAMEBAR_STATE: path.join(SB, `state-${key}.json`), ...env };
+    GAMEBAR_STATE: path.join(SB, `state-${key}.json`),
+    GAMEBAR_EVENTS: SANDBOX_ENV.GAMEBAR_EVENTS, GAMEBAR_LLMLINGUA: SANDBOX_ENV.GAMEBAR_LLMLINGUA, ...env };
   const data = {
     session_id: key, session_name: `${label}-run`, cwd: path.join(SB, "proj"),
     model: { display_name: "Opus 5.5" }, context_window: { used_percentage: 42, context_window_size: 1000000 },
@@ -249,6 +251,36 @@ try {
       process.env.GAMEBAR_THEME = saved.theme;
       if (saved.state === undefined) delete process.env.GAMEBAR_STATE; else process.env.GAMEBAR_STATE = saved.state;
       try { unlinkSync(payloadFile("unset")); } catch {}
+    }
+  }
+
+  // The savings files are the session's own too (S-8): what the daemon inherited, under either
+  // name, never reaches a session, and a session's old name is read when it sets only that one.
+  {
+    const names = ["GAMEBAR_EVENTS", "DOOMBAR_EVENTS", "GAMEBAR_LLMLINGUA", "DOOMBAR_LLMLINGUA",
+      "GAMEBAR_SAVINGS_STATE", "DOOMBAR_SAVINGS_STATE"];
+    const saved = Object.fromEntries(names.map((n) => [n, process.env[n]]));
+    process.env.GAMEBAR_EVENTS = path.join(SB, "spawner-events.jsonl");
+    process.env.DOOMBAR_LLMLINGUA = path.join(SB, "spawner-ling.json");
+    process.env.GAMEBAR_SAVINGS_STATE = path.join(SB, "spawner-savings.json");
+    try {
+      const own = { events: path.join(SB, "own-events.jsonl"), ling: path.join(SB, "own-ling.json") };
+      const s = session("savings-own");
+      delete s.fwd.GAMEBAR_EVENTS;
+      delete s.fwd.GAMEBAR_LLMLINGUA;
+      Object.assign(s.fwd, { DOOMBAR_EVENTS: own.events, GAMEBAR_LLMLINGUA: own.ling });
+      s.write();
+      const now = Date.now();
+      const state = createState({ version: VERSION, now });
+      runPass(state, { dir: TMPDIR, hash: HASH, now });
+      const env = state.sessions.get("savings-own")?.env ?? {};
+      ok(envGet("EVENTS", env) === own.events, `a session's own DOOMBAR_EVENTS wins over the daemon's GAMEBAR_EVENTS (got ${envGet("EVENTS", env)})`);
+      ok(envGet("LLMLINGUA", env) === own.ling, `a session's own GAMEBAR_LLMLINGUA wins over the daemon's DOOMBAR_LLMLINGUA (got ${envGet("LLMLINGUA", env)})`);
+      ok(envGet("SAVINGS_STATE", env) === undefined,
+        "a session without GAMEBAR_SAVINGS_STATE does not take the daemon's savings file");
+    } finally {
+      for (const n of names) if (saved[n] === undefined) delete process.env[n]; else process.env[n] = saved[n];
+      try { unlinkSync(payloadFile("savings-own")); } catch {}
     }
   }
 

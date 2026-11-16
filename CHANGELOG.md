@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- The render daemon takes `GAMEBAR_EVENTS`, `GAMEBAR_LLMLINGUA` and `GAMEBAR_SAVINGS_STATE`
+  (and their `DOOMBAR_*` names) from each session, like the other forwarded settings. Before,
+  every session sharing the daemon read the savings files of the session whose hook started it.
+
 ## [1.0.0] - 2026-11-15
 
 `claude-doom-statusbar` is now `claude-game-bar`: the same bar under a name that belongs to no

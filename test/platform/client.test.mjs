@@ -24,7 +24,8 @@ const BASH = process.env.GAMEBAR_TEST_BASH || (WIN ? "C:/Program Files/Git/bin/b
 const HASH = "abc1234567";
 const OFFLINE = "gamebar: offline\n";
 const FORWARDED = ["COLUMNS", "GAMEBAR_PRESET", "GAMEBAR_THEME", "GAMEBAR_TEXT_OVERFLOW",
-  "GAMEBAR_INDENT", "GAMEBAR_FRAME_WINDOW", "GAMEBAR_STATE", "CLAUDE_CODE_TASK_LIST_ID", "CLAUDE_CONFIG_DIR",
+  "GAMEBAR_INDENT", "GAMEBAR_FRAME_WINDOW", "GAMEBAR_STATE", "GAMEBAR_EVENTS", "GAMEBAR_LLMLINGUA",
+  "GAMEBAR_SAVINGS_STATE", "CLAUDE_CODE_TASK_LIST_ID", "CLAUDE_CONFIG_DIR",
   "WT_SESSION", "TERM_PROGRAM", "TMUX", "GAMEBAR_GLYPHS", "TERM", "VTE_VERSION"];
 
 let fails = 0;
@@ -197,6 +198,14 @@ try {
     run({ sid: vsid, input: JSON.stringify({ session_id: vsid }), env: { TERM: "xterm-256color", VTE_VERSION: "8001" } });
     const vline = existsSync(inSandbox(vsid, "payload")) ? readFileSync(inSandbox(vsid, "payload"), "utf8").split("\n")[0] : "";
     ok(vline === "gamebar-env\tTERM=xterm-256color\tVTE_VERSION=8001", `TERM and VTE_VERSION are forwarded when set (got ${show(vline)})`);
+
+    // The savings files are the session's own, under either name.
+    const ssid = "payload-savings";
+    run({ sid: ssid, input: JSON.stringify({ session_id: ssid }),
+      env: { GAMEBAR_EVENTS: "/e/events.jsonl", DOOMBAR_LLMLINGUA: "/l/ling.json", GAMEBAR_SAVINGS_STATE: "/s/sav.json" } });
+    const sline = shellTermless(existsSync(inSandbox(ssid, "payload")) ? readFileSync(inSandbox(ssid, "payload"), "utf8").split("\n")[0] : "");
+    ok(sline === "gamebar-env\tGAMEBAR_EVENTS=/e/events.jsonl\tDOOMBAR_LLMLINGUA=/l/ling.json\tGAMEBAR_SAVINGS_STATE=/s/sav.json",
+      `the savings settings are forwarded when set (got ${show(sline)})`);
     ok(r.out === OFFLINE, "with no frame yet the payload is still written and the offline line printed");
   }
 

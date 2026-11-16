@@ -41,9 +41,11 @@ const SRC_CHECK_MS = 2000;
 // setting under both its names (src/platform/env.js). A session that leaves one unset gets it
 // unset, never the value in the daemon's own environment (which is the environment of whichever
 // session's hook started the daemon): both names are dropped from that environment, so a session
-// that sets only the old name is never overruled by a new name the daemon inherited.
+// that sets only the old name is never overruled by a new name the daemon inherited. The savings
+// files (EVENTS, LLMLINGUA, SAVINGS_STATE) are per session too.
 export const FORWARDED_ENV = [
-  "COLUMNS", ...["PRESET", "THEME", "TEXT_OVERFLOW", "INDENT", "FRAME_WINDOW", "STATE"].flatMap(bothNames),
+  "COLUMNS", ...["PRESET", "THEME", "TEXT_OVERFLOW", "INDENT", "FRAME_WINDOW", "STATE",
+    "EVENTS", "LLMLINGUA", "SAVINGS_STATE"].flatMap(bothNames),
   "CLAUDE_CODE_TASK_LIST_ID", "CLAUDE_CONFIG_DIR",
   "WT_SESSION", "TERM_PROGRAM", "TMUX", ...bothNames("GLYPHS"), "TERM", "VTE_VERSION",
 ];
