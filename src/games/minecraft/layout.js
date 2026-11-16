@@ -25,8 +25,6 @@ const C = {
   chatBg: hex("#1a1a1a"), chatText: hex("#ffffff"), system: hex("#ffff55"), adv: hex("#55ff55"),
 };
 // The selected model's name in chat is coloured by reasoning effort (the moon icon):
-// full moon / sun = bright green, half moon = orange, dark moon = red.
-// The selected model's name in chat is coloured by reasoning effort (the moon icon):
 //   low 🌒 red · medium 🌓 orange · high 🌔 green · xhigh 🌕 diamond aqua · max 🌞 rainbow
 const EFFORT_COLOR = {
   low: hex("#ff5555"), medium: hex("#ffaa00"), high: hex("#55ff55"), xhigh: hex("#55ffff"),
