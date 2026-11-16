@@ -15,4 +15,4 @@ presets = { minecraft = "minecraft" }
 [assets]
 package = "@claude-game-bar/minecraft"
 version = "1.0.0"
-integrity = ""
+integrity = "sha512-NfuFx/6mctqAa1hwasedgRHKGqsyCAXDZ2yaCYjRpFiOJYv6P0b9hV0CqBkwog5HPfifhGZmdm7ByeuGtNu3Hw=="

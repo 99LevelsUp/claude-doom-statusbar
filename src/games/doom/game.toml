@@ -17,4 +17,4 @@ presets = { full = "doom-full", standard = "doom-standard", minimal = "doom-mini
 [assets]
 package = "@claude-game-bar/doom"
 version = "1.0.0"
-integrity = ""
+integrity = "sha512-m/Mpt9S2N9KqLVxUG8Gnob7ULj3lzpEuWQwS0SMCPFLbRMnCWs8Ie3VtViY0ljOI08sdOy2AY3kuFt9NMwQqAA=="
