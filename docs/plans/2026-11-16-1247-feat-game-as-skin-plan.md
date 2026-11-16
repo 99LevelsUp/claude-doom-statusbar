@@ -13,7 +13,7 @@ execution: code
 ## Goal Capsule
 
 - **Objective:** a new look for the bar, whether a new game such as Warcraft III or a user's own mix, is made from data, scripts and assets alone, out of one shared set of bar elements, without writing a new layout in the platform. A user can compose, name and keep their own bar, and only the assets the chosen skins need are installed.
-- **Product authority:** the owner (Petr Skypala), in the brainstorm of 2026-11-16.
+- **Product authority:** the project owner, in the brainstorm of 2026-11-16.
 - **Open blockers:** none.
 
 ---
@@ -22,7 +22,7 @@ execution: code
 
 ### Summary
 
-The bar becomes a tree of shared elements: containers that lay out their children, with or without a visual of their own, and metric elements that always draw a value in one of a defined set of visuals. A skin describes that tree as data, binds metrics, sets the visual parameters and attaches scripts that may change any element before it is drawn. A game is a folder of assets, scripts, conversation libraries and bundled skins; standard assets are published to npm and installed on demand.
+The bar becomes a tree of shared elements: containers that lay out their children, with or without a visual of their own, and metric elements that always draw a value in one of a defined set of visuals. A skin describes that tree as data, binds metrics, sets the visual parameters and attaches scripts that may change any element before it is drawn. A game is a folder of assets, its scripts and conversation libraries among them, and bundled skins; standard assets are published to npm and installed on demand.
 
 ### Problem Frame
 
@@ -44,9 +44,11 @@ The ideation of 2026-10-31 (`docs/ideation/2026-10-31-shared-game-layout-engine.
 - **Bundled skins need not match today's output.** (session-settled: user-directed — chosen over a byte-for-byte match and over "the same in broad strokes": the move is a chance to redo both games.) Governs R25.
 - **Old presets break.** (session-settled: user-directed — chosen over a one-time conversion and over reading the old format forever: few users have their own presets, and the changelog tells them how to rebuild.) Governs R26.
 - **What no longer holds in a user's skin is skipped with a warning.** (session-settled: user-directed — chosen over a versioned format with automatic migration and over a hard break.) Governs R12.
-- **Assets on demand belong to this work.** (session-settled: user-directed — chosen over leaving backlog G-10 for later.) Governs R14, R15, R16.
+- **Assets on demand belong to this work.** (session-settled: user-directed — chosen over leaving backlog G-10 for later.) Governs R14, R15, R16, R28, R29.
+- **Everything a game ships besides skins is an asset.** Images, models, sounds, scripts and conversation libraries live in one asset folder, in subfolders by kind. (session-settled: user-directed — chosen over separate rules for assets and scripts: one rule then covers installing, removing and referencing everything a game ships.) Governs R13, R14.
+- **The element and visual set belongs to the platform and grows with it.** (session-settled: user-directed — chosen over games bringing their own visuals as scripts: a new kind of element, such as Warcraft III's minimap, is ordinary platform development.) Governs R3, R13.
 - **The chat is a standard element fed by conversation libraries.** (session-settled: user-directed — chosen over a chat script owned by one game: the first library is questions and answers about the metrics; a skin can drop, change or add conversations.) Governs R22, R23.
-- **A failing script never takes the bar down.** A user's script runs in the render daemon on every redraw, so one slow or broken script would otherwise blank every session the daemon serves. Governs R20, R21.
+- **A failing script never takes the bar down.** A user's script runs in the render daemon on every redraw, so one slow or broken script would otherwise blank every session the daemon serves. Governs R20.
 
 ```mermaid
 flowchart TB
@@ -75,57 +77,59 @@ The diagram shows part of today's DOOM bar as an element tree: the bar is a cont
 
 - R1. The bar is a tree of two element kinds: containers and metric elements.
 - R2. A container lays out its children side by side or one under another, can be nested, and decides how its children shrink and drop when the width changes; it may have a visual (frame, title, background) or none.
-- R3. A metric element shows one value and always has a visual from a defined set: text, number, progress bar, graph (sparkline, equalizer), icon row, scrolling list, and animation (2D frames, 3D model).
+- R3. A metric element shows one value and always has a visual from the platform's set, which grows as the platform develops: text, number, progress bar, graph (sparkline, equalizer), icon row, scrolling list, chat, and animation (2D frames, 3D model).
 - R4. Every element type, every visual and each of their parameters has a machine-readable description (name, meaning, allowed values), complete enough to drive the configurator of backlog G-11.
-- R5. Every metric in the catalogue has an id, a human-readable name and a value type (percentage, number, text, list, time series).
+- R5. Every metric in the catalogue has an id, a human-readable name and a value type (percentage, number, text, list, time series, conversation).
 - R6. Every visual declares which value types it can show, so a progress bar is offered only for a percentage and a graph only for a time series.
 
 **Skins**
 
-- R7. A skin is a named tree of elements described as data: metric bindings, visual parameters (glyphs, colours, frames, icons), priorities, script bindings and asset references.
+- R7. A skin is a named tree of elements described as data: metric bindings, visual parameters (its own characters such as ♥ or frame lines, colours, icons), priorities, script bindings and asset references.
 - R8. A skin may reference assets of any game.
 - R9. When the terminal is too narrow, elements first shrink to their minimum width, then drop in the order of the priorities the skin gives them, lowest first; if the skin still does not fit, the bar switches to the smaller skin it names.
-- R10. The user chooses the active skin by name; this replaces today's theme switch.
+- R10. The user chooses the active skin by name, which replaces today's theme switch; on upgrade, a saved game choice and the installer's preset choice (full, standard, minimal) become the bundled skin of the same game and size.
 - R11. The user can save a skin under their own name; an update replaces the bundled skins and never changes a user's skin.
 - R12. A part of a user's skin that no longer holds after an update (an unknown element, parameter or metric) is skipped with one warning, and the rest of the skin is drawn.
 
 **Games and assets**
 
-- R13. A game is a folder of assets (images, models, sounds), scripts, conversation libraries and bundled skins; adding a game changes no platform code.
-- R14. Standard assets are published to npm by the project and installed only from that source, on demand: the assets the active skins reference are installed, and assets no active skin references any more are removed.
+- R13. A game is a folder of assets (images, models, sounds, scripts, conversation libraries, in subfolders by kind) and bundled skins; a game that uses only existing elements and visuals changes no platform code.
+- R14. Standard assets are published to npm by the project and installed on demand when a skin in use references them, only as packages under the project's own npm scope with npm lifecycle scripts disabled, never by a package name written in a skin.
 - R15. An asset folder committed to the repository is published to npm as a new asset batch by GitHub Actions.
 - R16. A user who wants their own assets puts them in the folder of their own skin; the bar uses them from there and never fetches assets from anyone else.
+- R28. Assets that no skin in use references are removed only when the bar is installed or updated; a skin is in use when it is the saved choice, was drawn for any session within the daemon's idle period, is set in a project's settings, or is a smaller skin one of those names.
+- R29. An element whose assets are not installed yet, or whose install failed, draws its default visual: rendering never waits for an install, the bar shows one warning naming the missing asset batch, and a failed install is retried later, not on every redraw.
 
 **Scripts**
 
 - R17. Every visual element can run a script before it is drawn, and the script can change that element's visual.
 - R18. An element type may require a script (an animation needs one to pick the frame or model from its inputs) or come with a default script that a skin can replace with its own.
 - R19. Scripts may come from any game folder or skin folder, bundled or the user's own.
-- R20. A script that throws or exceeds its time budget does not break the bar or any other element: its element falls back to its default visual and the bar shows a warning.
+- R20. A script that throws or exceeds its time budget does not break the bar or any other element: the bar stops it, its element falls back to its default visual, the bar shows a warning, and the script does not run again until it or its skin changes.
 - R21. The bar runs scripts only from folders installed on the machine; it never downloads code from anywhere but the project's own npm packages.
 
 **Chat**
 
-- R22. The chat is a standard element whose property is the set of conversations it plays, taken from conversation libraries; the project ships a first library of questions and answers about the metrics.
+- R22. The chat is a standard metric element whose value is the conversation it plays and whose visual is the chat; its property is the set of conversations, taken from conversation libraries, and the project ships a first library of questions and answers about the metrics.
 - R23. A skin can drop, change or add conversations of a library it uses.
 
 **Existing games and the release**
 
 - R24. DOOM and Minecraft are rebuilt as game folders with skins; what is specific to them lives in their scripts (the mugshot's frame selection, Minecraft's highlighted hotbar cell that jumps to the last event and otherwise wanders).
 - R25. The rebuilt skins may look different from today's output; the snapshot tests are recorded again and the owner reviews the result by eye.
-- R26. Preset files in today's format stop working; the release is a major version, and its changelog tells users how to rebuild their own presets as skins.
-- R27. The glyph step and the line level stay settings of the platform per terminal, not of a skin.
+- R26. Preset files in today's format that a user wrote or edited stop working; the release is a major version, and its changelog tells users how to rebuild their own presets as skins.
+- R27. The glyph step and the line level (which glyph sets the terminal can draw, backlog D-17) stay settings of the platform per terminal, and a skin cannot override them.
 
 ### Key Flows
 
 - F1. A user builds their own mixed skin
   - **Trigger:** the user wants the DOOM mugshot next to a Minecraft hotbar.
   - **Steps:** the user copies a bundled skin under their own name, edits its element tree to add the mugshot animation that references DOOM's assets, and chooses the skin by name; the bar installs DOOM's assets if they are missing and draws the skin.
-  - **Covered by:** R7, R8, R10, R11, R14
+  - **Covered by:** R7, R8, R10, R11, R14, R29
 - F2. An update arrives
   - **Trigger:** the user upgrades the package.
-  - **Steps:** bundled skins are replaced; user skins stay as they are; parts of a user skin that no longer hold are skipped with a warning; assets no active skin references are removed.
-  - **Covered by:** R11, R12, R14
+  - **Steps:** bundled skins are replaced; a saved game and preset choice becomes the bundled skin of the same game and size; user skins stay as they are; parts of a user skin that no longer hold are skipped with a warning; assets no skin in use references are removed.
+  - **Covered by:** R10, R11, R12, R28
 - F3. A script fails while the bar draws
   - **Trigger:** a skin's script throws or runs past its time budget.
   - **Steps:** the element draws its default visual, every other element draws normally, and the bar shows a warning naming the script.
@@ -136,8 +140,9 @@ The diagram shows part of today's DOOM bar as an element tree: the bar is a cont
 - AE1. Covers R9. **Given** a skin whose elements at minimum width need 140 columns and whose AGENTS box has the lowest priority, **when** the terminal is 120 columns wide, **then** the AGENTS box is dropped first; **when** the terminal is 60 columns wide and the skin still does not fit after every droppable element is gone, **then** the bar draws the smaller skin the skin names.
 - AE2. Covers R12. **Given** a user skin that binds a metric the update removed, **when** the bar draws it, **then** that metric element is skipped, one warning names it, and every other element is drawn.
 - AE3. Covers R20. **Given** a skin whose hotbar highlight script never returns, **when** the time budget passes, **then** the hotbar draws without a highlighted cell, the rest of the bar is unchanged, and the bar shows a warning.
-- AE4. Covers R14. **Given** a user switches from a DOOM skin to a Minecraft skin and no other active skin references DOOM's assets, **when** the switch completes, **then** Minecraft's assets are installed if missing and DOOM's assets are removed.
+- AE4. Covers R14, R28. **Given** a user switches from a DOOM skin to a Minecraft skin, **when** the switch completes, **then** Minecraft's assets are installed if missing and DOOM's assets stay; **when** the next update runs and no skin in use references DOOM's assets, **then** they are removed.
 - AE5. Covers R8, R24. **Given** a user skin with the DOOM mugshot animation inside a Minecraft-styled container, **when** the reaction turns to "ouch", **then** the mugshot shows its hurt frame chosen by DOOM's selection script.
+- AE6. Covers R29. **Given** Minecraft's assets are not installed, **when** the user switches to a Minecraft skin, **then** the hotbar draws its default visual at once, the bar shows one warning, and the skin's own look appears once the install finishes.
 
 ### Success Criteria
 
@@ -159,7 +164,7 @@ The diagram shows part of today's DOOM bar as an element tree: the bar is a cont
 **Not in this work**
 
 - Behaviour without a network connection: the bar runs inside Claude Code, which itself needs one.
-- Installing assets or scripts from anyone but the project; user assets live only in the user's own skin folder (R16), and scripts come only from installed folders (R21).
+- Installing assets or scripts from anyone but the project (R14); user assets live only in the user's own skin folder (R16), and scripts come only from installed folders (R21).
 
 <!-- ce-section: work-relationships -->
 ### How This Work Fits Together
@@ -168,7 +173,7 @@ This plan covers the element model, skins, scripts, conversation libraries and a
 
 - Shared HUD kit (G-4) and the hotbar on the shared width planner (G-5): absorbed; the shared elements of R1–R6 replace the kit, and Minecraft uses the shared width behaviour of R9.
 - User preset overlay (G-3): replaced by user skins (R11).
-- Assets on demand (G-10): part of this work (R14–R16).
+- Assets on demand (G-10): part of this work (R14–R16, R28, R29).
 - Chat as data and chat packs (G-6, G-7): this work makes the chat a standard element with conversation libraries (R22, R23); the declarative condition language and the conversation order of G-9 are still to decide.
 - Visual configurator (G-11): depends on this work's element, visual and metric descriptions.
 - Warcraft III (G-8, D-5, D-6): depends on this work; adds a 3D animation, a minimap and its own skins.
@@ -176,7 +181,7 @@ This plan covers the element model, skins, scripts, conversation libraries and a
 
 ### Dependencies / Assumptions
 
-- npm is available wherever the bar is installed, so standard assets can be installed on demand.
+- npm is available wherever the bar is installed, and on-demand assets go to a directory the user can write, outside the package's install folder: a system-wide global npm folder may need sudo, which the render daemon does not have.
 - The earlier decision that Warcraft III's art is the project's own and not Blizzard's still holds.
 
 ### Outstanding Questions
@@ -186,8 +191,11 @@ This plan covers the element model, skins, scripts, conversation libraries and a
 - What an animation receives as input (the reaction, bound metrics, time) and what its selection script returns; the owner does not have a definition yet.
 - Whether a skin may hold several chat elements with different conversation sets; the owner is undecided, and R22 already allows each chat element its own set.
 - How asset batches are named and versioned on npm, and how an on-demand install works under a global install.
-- The language and interface of scripts, and the time budget of R20.
+- The language and interface of scripts, and the time budget of R20. Today the daemon renders every session in one synchronous pass, so a script must run where the bar can stop it.
 - The file format of skins and where user skins are stored.
+- Where and how the warnings of R12, R20 and R29 appear in the bar, and whether "one warning" counts per session, per skin load or per redraw.
+- Whether scripts run before or after the bar fits the skin to the width of R9; today Minecraft's highlight picks only among the slots that still fit.
+- What an element draws when a script it requires (an animation's frame selection) fails and the element has no default visual of its own.
 - How a skin references an asset of another game.
 
 ### Sources / Research
