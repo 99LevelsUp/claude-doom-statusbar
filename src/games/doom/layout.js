@@ -12,7 +12,7 @@ import { faceCell, loadFace } from "./face.js";
 import { portrait } from "./portrait.js";
 import { renderContext } from "../../kit/context.js";
 import { vlen, marquee, scrollWindow, ESC_RE, OSC8_RE } from "../../kit/text.js";
-import { rgbOf, colorFor, isTerm, bgsgrBox, borderFg, barMeta, renderValue } from "../../kit/meters.js";
+import { rgbOf, colorFor, isTerm, bgsgrBox, borderFg, barMeta, renderValue, legacyValues } from "../../kit/meters.js";
 import { boxWidth, layoutContext, planLayout, resolvePreset } from "../../kit/planner.js";
 import { calmReaction } from "../../metrics/reaction.js";
 
@@ -196,6 +196,7 @@ export function buildBar(cfg, target, ctx) {
 // chosen one's, default "scroll". It depends on the pick, so the build gets a copy of the context
 // that carries it; the context the planner used stays as it was.
 export function doomLayout(cfg, target, ctx) {
+  ctx = { ...ctx, values: legacyValues(ctx.values) }; // the boxes draw values in their presented form
   const selected = resolvePreset(ctx, cfg, target, ctx.presetByName, mugshotFace(ctx));
   const overflow = ctx.overflow || selected.text_overflow || cfg.text_overflow || "scroll";
   return buildBar(selected, target, { ...ctx, overflow }).lines;

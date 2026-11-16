@@ -253,3 +253,57 @@ export function barMeta(ctx, entry) {
   }
   return [lw, 0, entry.render || "text"];
 }
+
+// --- the presented form the old layouts draw (temporary) ----------------------------------------
+// Metric values are raw (src/metrics/catalogue.js). The box and hotbar layouts were written for
+// values that carried their own presentation: hyperlink escapes, icons, colours and numbers as
+// strings. legacyValues gives them that form back, so they draw exactly as before until skins
+// replace them; it goes with them. A value already in the presented form passes unchanged,
+// except plain churn text ("+185 / -62"), which gains its colours.
+
+const EFFORT_ICON = { low: "🌒", medium: "🌓", high: "🌔", xhigh: "🌕", max: "🌞" };
+const MOONS = new Set(Object.values(EFFORT_ICON));
+const PERM_LABEL = { plan: "📋 plan", auto: "⏩ auto", acceptEdits: "⏩ auto", bypassPermissions: "⏩ bypass" };
+const MODE_ICON = { thinking: "💭", fast: "🚀" };
+const TASK_MARK = { completed: ["✅", OK], deleted: ["❌", CRIT], in_progress: ["⏩", null], pending: ["🎯", null] };
+const COUNTS = ["act.agents", "act.errors", "git.status", "loc.added", "sys.zombies"];
+const LINKS = ["loc.cwd", "git.branch", "pr.state"];
+
+const osc8 = ({ text, url }) => (url ? `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\` : text);
+
+export function legacyValues(values) {
+  const v = { ...values };
+  const isNum = (id) => typeof v[id] === "number";
+  for (const id of LINKS) if (v[id] && typeof v[id] === "object" && typeof v[id].text === "string") v[id] = osc8(v[id]);
+  for (const id of COUNTS) if (isNum(id)) v[id] = String(v[id]);
+  if (isNum("sys.cpu")) v["sys.cpu"] = `${v["sys.cpu"]}%`;
+  if (isNum("git.behind")) v["git.behind"] = `↓${v["git.behind"]}`;
+  if (isNum("git.ahead")) v["git.ahead"] = `↑${v["git.ahead"]}`;
+
+  const eff = v["model.effort"];
+  if (typeof eff === "string" && !MOONS.has(eff)) {
+    v["model.effort"] = EFFORT_ICON[eff] || "🌓";
+    v["model.effort_level"] ??= eff; // the hotbar chat colours the model name by the level
+  }
+  if (PERM_LABEL[v["model.permission"]]) v["model.permission"] = PERM_LABEL[v["model.permission"]];
+  if (Array.isArray(v["model.mode"])) {
+    v["model.mode"] = v["model.mode"].map(([flag, state]) => `${MODE_ICON[flag] || flag} ${state}`).join("  ");
+  }
+  if (Array.isArray(v["git.work"])) {
+    const w = Object.fromEntries(v["git.work"]);
+    const parts = [];
+    if ("changed" in w) parts.push(`✎ ${w.changed}`);
+    if ("behind" in w) parts.push(`⇅ ↓${w.behind} ↑${w.ahead}`);
+    v["git.work"] = parts.join("  ");
+  }
+  const churn = /^\+(\d+) \/ -(\d+)$/.exec(typeof v["loc.churn"] === "string" ? v["loc.churn"] : "");
+  if (churn) v["loc.churn"] = `${f(OK)}+${churn[1]}${f(TEXT)} / ${f(CRIT)}-${churn[2]}`;
+  if (Array.isArray(v["act.tasklist"])) {
+    v["act.tasklist"] = v["act.tasklist"].map((t) => {
+      if (!t || "mark" in t) return t;
+      const [mark, markRgb] = TASK_MARK[t.status] || ["🎯", null];
+      return { mark, markRgb, text: t.text };
+    });
+  }
+  return v;
+}

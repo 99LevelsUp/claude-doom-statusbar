@@ -1,5 +1,9 @@
 // SAMPLE, the preview data: the metric values a render context carries when it is given none
 // (the preview CLI, tests). A real render passes the session's own values (src/kit/context.js).
+//
+// They are in the presented form the box and hotbar layouts draw (links, icons and numbers as text),
+// not the raw form the metric producers emit (src/metrics/catalogue.js), because those layouts and
+// their tests read them directly.
 
 import { OK, CRIT } from "./ansi.js";
 

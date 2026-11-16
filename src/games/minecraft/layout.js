@@ -15,6 +15,7 @@ import { RESET, BOLD, sgrFg as f, sgrBg as b, pyround } from "../../kit/ansi.js"
 import { vlen } from "../../kit/text.js";
 import { chatLog, chatScript } from "./chat.js";
 import { calmReaction } from "../../metrics/reaction.js";
+import { legacyValues } from "../../kit/meters.js";
 
 const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const C = {
@@ -224,5 +225,6 @@ export function buildHotbar(cfg, target, ctx, { indent = 2 } = {}) {
 
 // The Minecraft game's layout (src/games/index.js): the hotbar HUD, centred for the context's indent.
 export function minecraftLayout(cfg, target, ctx) {
-  return buildHotbar(cfg, target, ctx, { indent: ctx.indent }).lines;
+  // The hotbar and the chat draw values in their presented form.
+  return buildHotbar(cfg, target, { ...ctx, values: legacyValues(ctx.values) }, { indent: ctx.indent }).lines;
 }

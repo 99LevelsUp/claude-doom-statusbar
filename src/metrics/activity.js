@@ -1,5 +1,6 @@
 // Activity values from the folded session state: permission mode, the geiger counter, the
-// subagent and task lists, errors and the MSYS bash-flood gauge.
+// subagent and task lists, errors and the MSYS bash-flood gauge. Raw, like every metric value
+// (see src/metrics/catalogue.js): names and counts, no icons or colours.
 
 import { TASK_LINGER } from "../platform/journal.js";
 import { clip, _dur } from "./session.js";
@@ -7,15 +8,13 @@ import { clip, _dur } from "./session.js";
 const GEIGER_WINDOW = 30.0; // must match the hook's window
 const GEIGER_BINS = 14;
 
-const PERM = { plan: "📋 plan", auto: "⏩ auto", acceptEdits: "⏩ auto", bypassPermissions: "⏩ bypass" };
-const OK_RGB = [96, 200, 104];   // matches kit/ansi.js OK (done, green)
-const CRIT_RGB = [224, 84, 64];  // matches kit/ansi.js CRIT (deleted, red)
-const TASK_MARK = { completed: ["✅", OK_RGB], deleted: ["❌", CRIT_RGB], in_progress: ["⏩", null], pending: ["🎯", null] };
+// The permission modes the bar shows; the default mode is left out.
+const PERM_MODES = new Set(["plan", "auto", "acceptEdits", "bypassPermissions"]);
 const TASK_ORDER = { completed: 0, deleted: 0, in_progress: 1, pending: 2 }; // settled (done+deleted, by time) first, then open
 
 export function activityValues(st, now) {
   const v = {};
-  if (PERM[st.mode]) v["model.permission"] = PERM[st.mode];
+  if (PERM_MODES.has(st.mode)) v["model.permission"] = st.mode;
   if ("spans" in st) {
     const binw = GEIGER_WINDOW / GEIGER_BINS;
     const start0 = now - GEIGER_WINDOW;
@@ -36,7 +35,7 @@ export function activityValues(st, now) {
   }
   // AGENTS + TASKS boxes (and their ACTIVITY counts) are always shown, even empty.
   const squad = st.squad || {};
-  v["act.agents"] = String(Object.keys(squad).length);
+  v["act.agents"] = Object.keys(squad).length;
   const agents = Object.values(squad).sort((a, b) => a.start - b.start);
   // Clip generously (not 24): the box caps width and the label marquees, so a long
   // agent description should stay long enough to be worth scrolling through.
@@ -55,14 +54,12 @@ export function activityValues(st, now) {
   const ordered = (showList ? tasks.filter((t) => !t.cleaned) : [])
     .map((t) => ({ ...t }))
     .sort((a, b) => (TASK_ORDER[a.status] - TASK_ORDER[b.status]) || (a.ts - b.ts));
-  v["act.tasklist"] = ordered.map((t) => {
-    const [mark, markRgb] = TASK_MARK[t.status] || ["🎯", null];
-    return { mark, markRgb, text: clip(t.title, 60) }; // generous clip: box width caps it, title marquees
-  });
+  // generous clip: box width caps it, title marquees
+  v["act.tasklist"] = ordered.map((t) => ({ status: t.status, text: clip(t.title, 60) }));
 
-  if ("errors" in st) v["act.errors"] = String(st.errors);
+  if ("errors" in st) v["act.errors"] = Number(st.errors);
   // MSYS bash-flood gauge: live bash.exe count the async hook snapshotted (win32 only). The
   // preset colours it by threshold so a forming "zombie horde" reds out before add_item bites.
-  if (st.msys && typeof st.msys.n === "number") v["sys.zombies"] = String(st.msys.n);
+  if (st.msys && typeof st.msys.n === "number") v["sys.zombies"] = st.msys.n;
   return v;
 }
