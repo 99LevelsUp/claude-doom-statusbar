@@ -86,6 +86,8 @@ claude-game-bar install --help          # list the install options
 
 The `statusLine` alone gives you the bar and the idle reactions. The hooks add the live reactions, the geiger, and the subagent list. The installer is idempotent and merge-safe: re-running it won't add anything twice, and an existing `statusLine` of your own is backed up to `settings.json.bak`.
 
+A checkout wired with `install --local` over a global install has hooks in both settings files, and Claude Code runs both sets. In a session the checkout draws, the global hooks step aside, so each event is counted once and the checkout's hook code works with the checkout's daemon. The second set still costs one extra `node` start per event.
+
 ### Emoji font on Linux
 
 The bar uses emoji (🧠 💾 🪓 🪶 …). A Linux desktop without a colour emoji font, such as Raspberry Pi OS or a minimal Debian or Ubuntu, shows boxes with hex codes in their place. So on Linux, `install` checks the fonts too:

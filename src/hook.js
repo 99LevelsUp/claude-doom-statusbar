@@ -22,7 +22,7 @@
 import { appendFileSync, writeFileSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { statePaths, ensureRuntimeDir } from "./platform/runtime.js";
+import { statePaths, ensureRuntimeDir, servedElsewhere } from "./platform/runtime.js";
 import { superviseDaemon } from "./platform/supervise.js";
 import { sweepState, endSession } from "./platform/sweep.js";
 import { bashCount, reapStaleShells, REAP_MIN } from "./platform/reap.js";
@@ -66,6 +66,12 @@ async function main() {
       try { endSession(sid); } catch { /* housekeeping is never worth failing a hook */ }
       process.exit(0);
     }
+
+    // Two installations can both have hooks registered (a checkout wired with `install --local`
+    // over a global install). The one whose client does not draw this session steps aside: no
+    // journal line, no snapshot, no daemon supervision. The drawing installation's hooks do it
+    // all, so nothing is counted twice and its own hook code pairs with its own daemon.
+    if (servedElsewhere(sid)) process.exit(0);
 
     // SessionStart resets the journal so each session starts clean (hygiene; sid is already
     // per-session). At this instant no other hook is appending, so truncation is race-free.

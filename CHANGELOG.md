@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A preset that does not exist (`GAMEBAR_PRESET=…/nope.toml`, not a bundled preset) shows one
   line in the bar, `gamebar: preset not found: <path>`. Before, the one-shot status line printed
   an `ENOENT` stack on stderr and the render daemon drew nothing for that session.
+- With two installations wired at once (a checkout with `install --local` over a global
+  install), both sets of hooks wrote every event into the session's journal, so the bar counted
+  activity and errors twice. The hooks of the installation that does not draw the session now
+  step aside: no journal line, no snapshot, no daemon supervision. Both installations need this
+  release for it; an older one keeps writing as before.
 
 ## [1.0.0] - 2026-11-15
 
