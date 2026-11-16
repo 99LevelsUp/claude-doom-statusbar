@@ -11,14 +11,18 @@
 // asset is the asset store's to report.
 //
 // What a script gets, as the argument of its `render(input)`:
-//   value     its element's metric value, raw as the catalogue gives it (null without a metric)
+//   value     its element's metric value, raw as the catalogue gives it (null without a metric, and
+//             null while the session does not report it)
+//   standIn   null while the value is the metric's own; "empty" or "full" while the session does not
+//             report the metric and the element draws a stand-in in its place (its `when_absent`,
+//             src/kit/skin/draw.js)
 //   metric    the metric id, or null
 //   params    its element's parameters, as the skin set them
 //   reaction  the session's game-neutral reaction (src/metrics/reaction.js); it travels as JSON,
 //             so an age that is Infinity arrives as null
 //   now       the time in seconds; `tick` the render tick
 //   width     the columns the fit gave the element; `rows` its rows
-//   children  a container's drawn children: [{ id, metric, value, width }], in order
+//   children  a container's drawn children: [{ id, metric, value, standIn, width }], in order
 //   state     what the script returned as `state` the last time it ran for this element in this
 //             session ({} the first time, and again whenever the skin or the script changes)
 //
@@ -44,7 +48,7 @@
 import { statSync } from "node:fs";
 import path from "node:path";
 import { vlen } from "../text.js";
-import { clipLine } from "./draw.js";
+import { clipLine, metricValue } from "./draw.js";
 import { blank } from "../elements/paint.js";
 import { createScriptHost } from "../../platform/scripts/host.js";
 import { facts } from "../chat/metrics-library.js";
@@ -135,6 +139,7 @@ const reasons = new Map();
 const librariesOf = (node) => (!node.container && typeof node.descriptor.libraries === "function" ? node.descriptor.libraries(node.params) : []);
 
 const valueOf = (node, values) => (node.metric !== null && Object.hasOwn(values, node.metric) ? values[node.metric] : null);
+const standInOf = (node, values) => (node.container ? null : metricValue(node, values).standIn);
 const isPlainObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 
 // Runs the scripts of the drawn elements of `fit` and returns what to draw:
@@ -185,9 +190,11 @@ export function runScripts(fit, { host, pass = createScriptPass(), state = new M
     calls.push({
       script: where.file, skin: skinKey,
       input: {
-        value: valueOf(t.node, values), metric: t.node.metric, params: t.node.params, reaction, now, tick,
-        width: t.width, rows: t.rows,
-        children: t.children.map((k) => ({ id: k.id, metric: k.node.metric, value: valueOf(k.node, values), width: k.width })),
+        value: valueOf(t.node, values), standIn: standInOf(t.node, values), metric: t.node.metric, params: t.node.params,
+        reaction, now, tick, width: t.width, rows: t.rows,
+        children: t.children.map((k) => ({
+          id: k.id, metric: k.node.metric, value: valueOf(k.node, values), standIn: standInOf(k.node, values), width: k.width,
+        })),
         state: own,
       },
     });

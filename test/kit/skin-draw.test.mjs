@@ -137,6 +137,25 @@ try {
     ok(warningLine(first, { store: fileStore(path.join(SB, "missing-dir", "w.json")), now: 0, width: 200 }) !== null,
       "a file that cannot be written still shows the line");
   }
+
+  console.log("an element kept without its value draws a stand-in");
+  {
+    const row = (count, more) => ({ kind: "icon-row", metric: "ratelimit.5h", count, glyph: "#", empty_glyph: ".", ...more });
+    const skin = inline({
+      bar: { kind: "row", separator: "|", children: ["left", "used", "xp", "cpu", "errors", "branch"] },
+      // Fills by what is left of the limit: full is every glyph lit, whichever way the row reads.
+      left: row(4, { invert: true, when_absent: "full" }),
+      used: row(4, { when_absent: "full" }),
+      xp: { kind: "progress", metric: "ratelimit.7d", cells: 4, min_cells: 4, percent: "none", fill: "#", partials: "", empty: ".", track: "none", when_absent: "empty" },
+      cpu: { kind: "number", metric: "sys.cpu", suffix: "%", width: 4, when_absent: "empty" },
+      errors: { kind: "number", metric: "act.errors", width: 3, when_absent: "full" },
+      branch: { kind: "text", metric: "git.branch", width: 4, min_width: 4, when_absent: "full" },
+    });
+    const drawn = (values) => plain(drawFit(fitSkin(skin, { values, width: 40 }), { values, width: 40, ctx: CTX })[0]).trim();
+    ok(drawn({}) === "####|####|....|0%  |   |", `full lights every glyph, empty leaves a bar empty and a percentage at 0, other types draw blank (${JSON.stringify(drawn({}))})`);
+    ok(drawn({ "ratelimit.5h": 50, "ratelimit.7d": 100, "sys.cpu": 7, "act.errors": 2, "git.branch": "dev" }) === "##..|##..|####|7%  |2  |dev",
+      "a value that is there is drawn as it is");
+  }
 } finally {
   rmSync(SB, { recursive: true, force: true });
 }

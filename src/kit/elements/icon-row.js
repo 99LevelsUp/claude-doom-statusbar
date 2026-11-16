@@ -36,6 +36,8 @@ export const iconRow = define({
     return { min: w, natural: w };
   },
   rows: () => 1,
+  // The stand-in percentage that draws the row full (every glyph lit) or empty, whichever way it fills.
+  standIn: (p, mode) => ((mode === "full") !== p.invert ? 100 : 0),
   draw({ value: pct, params: p, width, height = 1 }) {
     const v = p.invert ? 100 - pct : pct;
     const filled = Math.max(0, Math.min(p.count, pyround((v / 100) * p.count)));

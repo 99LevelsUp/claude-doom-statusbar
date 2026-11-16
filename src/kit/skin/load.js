@@ -15,6 +15,9 @@
 //   priority  a whole number (the lowest is dropped first when the bar is too narrow), or "keep";
 //             the loader keeps it as written, and leaves what no priority means to the fit
 //   script    a script asset the element runs each render
+//   when_absent  what a metric element does while the session does not report its metric:
+//             "hide" (the default) leaves it out of the bar; "empty" and "full" keep it at its
+//             widths and draw it with a stand-in value (src/kit/skin/draw.js). Containers have none.
 //   children  a container's child ids, in the order they are drawn
 //   frame     the frame a container wears: { kind = "box" | "grid", ...its parameters }
 // A shared setting a descriptor declares as its own parameter (an animation's `script`) also reaches
@@ -40,12 +43,13 @@
 //   message  one line for the person reading the bar, naming the skin file
 //
 // A loaded skin: { file, name, version, games, smaller, root }, root an element node:
-//   { id, kind, container, descriptor, params, metric, priority, script, frame, children }
+//   { id, kind, container, descriptor, params, metric, priority, script, whenAbsent, frame, children }
 //   container   true for a row or column, false for a metric element
 //   params      the descriptor's validated parameters, defaults filled in
 //   metric      the bound catalogue id, or null (a metric element may bind none)
 //   priority    a whole number, "keep", or null when the skin gives none
 //   script      the script reference as written, or null
+//   whenAbsent  "hide", "empty" or "full"; "hide" for a container and whenever the skin gives none
 //   frame       { kind, descriptor, params } or null
 //   children    element nodes; a metric element has none
 // Loaded skins are cached and shared by every render, so the tree is frozen.
@@ -57,7 +61,8 @@ import { CATALOGUE } from "../../metrics/catalogue.js";
 import { elementKind, frame as frameKind, canShow } from "../elements/index.js";
 
 const TOP_KEYS = ["version", "name", "games", "root", "smaller", "element"];
-const SHARED = ["kind", "metric", "priority", "script", "children", "frame"];
+const SHARED = ["kind", "metric", "priority", "script", "when_absent", "children", "frame"];
+const WHEN_ABSENT = ["hide", "empty", "full"];
 
 const isTable = (v) => v !== null && typeof v === "object" && !Array.isArray(v) && !(v instanceof Date);
 const isNames = (v) => Array.isArray(v) && v.every((x) => typeof x === "string");
@@ -162,6 +167,13 @@ function build(id, elements, seen, add) {
     else invalid("script", "a script reference");
   }
 
+  let whenAbsent = "hide";
+  if (Object.hasOwn(el, "when_absent")) {
+    if (container) unknown("when_absent");
+    else if (WHEN_ABSENT.includes(el.when_absent)) whenAbsent = el.when_absent;
+    else invalid("when_absent", `"hide", "empty" or "full"`);
+  }
+
   let childIds = [];
   if (Object.hasOwn(el, "children")) {
     if (!container) unknown("children");
@@ -196,7 +208,7 @@ function build(id, elements, seen, add) {
 
   return Object.freeze({
     id, kind: el.kind, container, descriptor: desc, params: Object.freeze(params),
-    metric, priority, script, frame, children: Object.freeze(children),
+    metric, priority, script, whenAbsent, frame, children: Object.freeze(children),
   });
 }
 

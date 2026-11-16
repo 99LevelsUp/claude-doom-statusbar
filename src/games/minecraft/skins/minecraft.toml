@@ -28,8 +28,7 @@ rows = 6
 priority = 1
 
 # --- the HUD ------------------------------------------------------------------------------------
-# Aligned to the end, so the hunger row stays at the right edge when the session reports no 5h limit
-# and the hearts are left out.
+# Aligned to the end, so the hunger row stays at the hotbar's right edge if a row above it narrows.
 [element.hud]
 kind = "column"
 align = "end"
@@ -49,6 +48,8 @@ empty_glyph = "♡"
 color = "#ff3b3b"
 empty_color = "#c07070"
 invert = true
+# A session without a 5h limit (an API key, or before the first answer) has every heart.
+when_absent = "full"
 priority = 3
 
 [element.between]
@@ -78,6 +79,8 @@ color = "#80ff20"
 empty_color = "#1f3a12"
 percent = "middle"
 track = "none"
+# A session without a 7-day limit has an empty XP bar at level 0.
+when_absent = "empty"
 priority = 3
 
 # --- the hotbar ---------------------------------------------------------------------------------

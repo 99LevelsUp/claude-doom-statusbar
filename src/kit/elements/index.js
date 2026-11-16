@@ -16,6 +16,12 @@
 //                 black stands for the terminal's own), `ctx` the render context (tick, step,
 //                 resolveAsset, now), `script` what the element's script returned for this render
 //                 and `values` all of the session's metric values (the chat says what they are).
+//                 `value` is undefined when there is none to draw (no metric bound, or a metric the
+//                 session does not report); the visual then draws its empty look.
+//   standIn(params, mode) -> optional, for a visual that accepts percentages: the stand-in
+//                 percentage that draws it "full" or "empty" while its metric is absent and the
+//                 element's `when_absent` keeps it; without it full is 100 and empty 0
+//                 (src/kit/skin/draw.js)
 //   libraries(params) -> optional: the conversation libraries the script pass runs for the
 //                 element (src/kit/skin/scripts.js); their results reach the draw as
 //                 `script.conversations`

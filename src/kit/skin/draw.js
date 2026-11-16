@@ -11,11 +11,39 @@
 //
 // Scripts are not run here: `scripts` holds what each element's script returned for this render,
 // by element id. An element without an entry draws its default visual.
+//
+// A metric element the fit kept while its metric is absent (`when_absent` "empty" or "full") draws
+// a stand-in value; metricValue below says which.
 
 import { RESET, TERM_RGB } from "../ansi.js";
 import { vlen } from "../text.js";
+import { CATALOGUE } from "../../metrics/catalogue.js";
 import { CONTAINERS } from "../elements/index.js";
 import { blank } from "../elements/paint.js";
+
+// The value a metric element draws: { value, standIn }.
+//   - its metric's value, standIn null, while the session reports the metric;
+//   - while it does not, and the element's `when_absent` is "empty" or "full" (the fit kept it), a
+//     stand-in value and standIn set to that word. "full" and "empty" say how the visual looks, not
+//     what the metric measures: "full" is a bar filled to its end and every glyph of a row lit,
+//     "empty" the opposite, whether the metric counts what is used (context.hp, ratelimit.5h) or
+//     what is left (health.headroom). For a percentage the stand-in is 100 for full and 0 for
+//     empty, unless the visual says otherwise through its `standIn(params, mode)` (the icon row,
+//     which can fill by 100 minus the value). For any other value type there is no stand-in value
+//     (undefined), and every visual draws that as it draws a missing value: blank text and
+//     numbers, no icons, an empty graph or list, an animation's default frame;
+//   - otherwise undefined, standIn null.
+export function metricValue(node, values) {
+  if (node.metric === null || node.metric === undefined) return { value: undefined, standIn: null };
+  if (Object.hasOwn(values, node.metric)) return { value: values[node.metric], standIn: null };
+  const mode = node.whenAbsent;
+  if (mode !== "empty" && mode !== "full") return { value: undefined, standIn: null };
+  let value;
+  if (Object.hasOwn(CATALOGUE, node.metric) && CATALOGUE[node.metric].type === "percentage") {
+    value = typeof node.descriptor.standIn === "function" ? node.descriptor.standIn(node.params, mode) : mode === "full" ? 100 : 0;
+  }
+  return { value, standIn: mode };
+}
 
 // An SGR sequence, or an OSC 8 hyperlink sequence with its address captured (empty when it closes
 // a link).
@@ -52,7 +80,7 @@ function drawNode(t, height, surface, env) {
   const { node } = t;
   const script = Object.hasOwn(env.scripts, t.id) ? env.scripts[t.id] : null;
   if (!node.container) {
-    const value = node.metric !== null && Object.hasOwn(env.values, node.metric) ? env.values[node.metric] : undefined;
+    const { value } = metricValue(node, env.values);
     return node.descriptor.draw({ value, params: node.params, width: t.width, height, surface, ctx: env.ctx, script: script ?? {}, values: env.values });
   }
   const f = node.frame;

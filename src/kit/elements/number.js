@@ -28,7 +28,8 @@ export const number = define({
   draw({ value, params: p, width, height = 1 }) {
     const lbl = labelOf(p);
     const room = Math.max(0, width - vlen(lbl));
-    const s = `${p.prefix}${value}${p.suffix}`;
+    // No value (a metric kept in the bar while it is absent) draws blank columns.
+    const s = value === undefined || value === null ? "" : `${p.prefix}${value}${p.suffix}`;
     const body = vlen(s) <= room ? pad(s, room, p.align) : marquee(s, room, 0, "clip");
     return block([lbl + sgrFg(colorFor(p.color, Number(value)) ?? TEXT) + body], width, height);
   },

@@ -2,7 +2,9 @@
 // width become the tree that is drawn, each element with the columns it gets.
 //
 //   1. Elements whose metric the session does not report are removed, except the scrolling list,
-//      which keeps its place and draws empty. A container left with nothing to show goes too.
+//      which keeps its place and draws empty, and an element whose `when_absent` is "empty" or
+//      "full", which keeps its place and draws a stand-in value (src/kit/skin/draw.js). A container
+//      left with nothing to show goes too.
 //   2. Every element's minimum and natural width come from its descriptor's parameters, never from
 //      its value, so the layout does not change as the values do.
 //   3. Natural widths are used when they fit. Otherwise each container shares what it gets among its
@@ -36,6 +38,8 @@ const NONE = Object.freeze({ columns: 0, rows: 0 });
 
 // A visual that shows only lists keeps its place when the list is absent.
 const keepsPlaceEmpty = (desc) => Array.isArray(desc.accepts) && desc.accepts.length === 1 && desc.accepts[0] === "list";
+// An element the skin keeps in the bar while its metric is absent.
+const keptAbsent = (node) => node.whenAbsent === "empty" || node.whenAbsent === "full";
 
 const extraOf = (node, count) => (node.frame ? node.frame.descriptor.extra(node.frame.params, count) : NONE);
 
@@ -56,7 +60,7 @@ function grow(node, parent, counter) {
 function prune(t, values, absent) {
   const { node } = t;
   if (!node.container) {
-    if (node.metric === null || Object.hasOwn(values, node.metric) || keepsPlaceEmpty(node.descriptor)) return t;
+    if (node.metric === null || Object.hasOwn(values, node.metric) || keepsPlaceEmpty(node.descriptor) || keptAbsent(node)) return t;
     absent.push(node.id);
     return null;
   }

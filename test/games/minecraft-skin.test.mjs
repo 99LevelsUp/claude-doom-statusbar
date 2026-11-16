@@ -108,6 +108,15 @@ try {
     ok(count(full, "🍖") === 0 && count(full, "🦴") === 10, `with the context 100 % used the hunger row shows no full shanks (${full.trim()})`);
     const tired = draw({ values: { ...RAW_SAMPLE, "ratelimit.5h": 80 } }).plain[0];
     ok(count(tired, "♥") === 2, "80 % of the 5h limit used -> 2 of 10 hearts");
+    // A session that reports no usage limits (an API key, or the start of a session): full hearts, an
+    // empty XP bar at level 0, and the hunger row in its place at the right edge.
+    const { "ratelimit.5h": _5h, "ratelimit.7d": _7d, ...noLimits } = RAW_SAMPLE;
+    const bare = draw({ values: noLimits });
+    ok(bare.lines.length === 6 && count(bare.plain[0], "♥") === 10 && count(bare.plain[0], "♡") === 0,
+      `without a 5h limit the hearts are full (${bare.plain[0].trim()})`);
+    ok(/━ 0 ━/.test(bare.plain[1]) && !bare.lines[1].includes("\x1b[38;2;128;255;32m━"), "without a 7-day limit the XP bar is empty, at level 0");
+    ok(count(bare.plain[0], "🍖") === 2 && vlen(bare.plain[0].trimEnd()) === vlen(bare.plain[2].trimEnd()),
+      "and the hunger row stays at the hotbar's right edge");
     // A slot whose metric is absent keeps its item and its width.
     const { "act.agents": _, ...noAgents } = RAW_SAMPLE;
     const sparse = draw({ values: noAgents });

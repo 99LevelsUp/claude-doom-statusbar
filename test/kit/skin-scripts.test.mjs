@@ -107,14 +107,52 @@ const nodeWidth = (fit, id) => {
   return find(fit.tree).width;
 };
 
-const host = createScriptHost();
+const host = createScriptHost({ startupMs: 10000 });
+// Checks that time the pass give their own; every other check needs its scripts to run.
 const run = (fit, opts = {}) => runScripts(fit, {
-  host, pass: createScriptPass(), values: VALUES, reaction: null, now: NOW, tick: NOW,
+  host, pass: createScriptPass({ budgetMs: 60000, callBudgetMs: 10000 }), values: VALUES, reaction: null, now: NOW, tick: NOW,
   resolveAsset: () => null, ...opts,
 });
 const draw = (r) => drawFit(r.fit, { values: VALUES, width: WIDTH, ctx: CTX, scripts: r.scripts });
+// A pass and a worker start a loaded machine cannot exhaust, so a slow start never turns a
+// pass into "skipped".
+const roomyPass = () => createScriptPass({ budgetMs: 60000, callBudgetMs: 10000 });
+const roomyHost = () => createScriptHost({ startupMs: 10000 });
 
 try {
+  console.log("a script of an element kept without its value");
+  {
+    const skin = load(userSkin("stand-in", `version = 1
+root = "bar"
+[element.bar]
+kind = "row"
+script = "row.js"
+children = ["xp", "name"]
+[element.xp]
+kind = "progress"
+metric = "ratelimit.7d"
+when_absent = "empty"
+script = "echo.js"
+[element.name]
+kind = "text"
+metric = "model.name"
+width = 6
+min_width = 6
+`, {
+      "echo.js": "function render(i) { return { state: { value: i.value, standIn: i.standIn } }; }",
+      "row.js": "function render(i) { return { state: { children: i.children.map(function (k) { return [k.id, k.value, k.standIn]; }) } }; }",
+    }));
+    const state = new Map();
+    // Generous budgets: the check needs the scripts to run even on a loaded machine.
+    const slow = createScriptHost({ callBudgetMs: 2000, graceMs: 2000, startupMs: 10000 });
+    let r;
+    try { r = run(fitOf(skin), { state, host: slow, pass: createScriptPass({ budgetMs: 60000, callBudgetMs: 10000 }) }); } finally { slow.close(); }
+    ok(r.warnings.length === 0 && same(state.get("xp")?.state, { value: null, standIn: "empty" }),
+      `the script gets value null and standIn "empty" (${JSON.stringify(state.get("xp"))})`);
+    ok(same(state.get("bar")?.state, { children: [["xp", null, "empty"], ["name", "Opus", null]] }),
+      "a container's script sees which children draw a stand-in, and null for the others");
+  }
+
   console.log("a hotbar whose highlight script picks a cell");
   {
     const skin = load(userSkin("hotbar-pick", hotbar("pick.js"), { "pick.js": "function render(i) { return { selected: 1 }; }" }));
@@ -241,7 +279,7 @@ script = "face.js"
 
   console.log("a script that names a game's asset");
   {
-    const fresh = createScriptHost();
+    const fresh = roomyHost();
     const skin = load(userSkin("asset-ref", oneText("doom:scripts/name.js")));
     const fit = fitOf(skin);
     const r = run(fit, { host: fresh });
@@ -256,13 +294,13 @@ script = "face.js"
 
   console.log("no budget left in the pass");
   {
-    const fresh = createScriptHost();
+    const fresh = roomyHost();
     const skin = load(userSkin("no-budget", oneText("nb.js"), { "nb.js": "function render() { return { params: { icon: \"RAN\" } }; }" }));
     const fit = fitOf(skin);
     const r = run(fit, { host: fresh, pass: createScriptPass({ budgetMs: 0 }) });
     ok(r.warnings.length === 0 && !plain(draw(r)[0]).includes("RAN") && fresh.spawns === 0,
       "every element draws its default, with no warning and nothing run");
-    ok(!fresh.isDisabled(path.join(USER, "skins", "no-budget", "nb.js"), "x") && plain(draw(run(fit, { host: fresh }))[0]).includes("RAN"),
+    ok(!fresh.isDisabled(path.join(USER, "skins", "no-budget", "nb.js"), "x") && plain(draw(run(fit, { host: fresh, pass: roomyPass() }))[0]).includes("RAN"),
       "and the script runs on the next pass");
     fresh.close();
   }
@@ -271,12 +309,14 @@ script = "face.js"
   {
     const skin = load(userSkin("rest-of-render", oneText("rr.js"), { "rr.js": "function render() { return { params: { icon: \"RAN\" } }; }" }));
     const fit = fitOf(skin);
-    run(fit); // the worker is up
-    const pass = createScriptPass({ budgetMs: 20 });
+    run(fit, { pass: roomyPass() }); // the worker is up
+    // A budget a loaded machine cannot use up on one trivial call, and more time than that spent
+    // outside the scripts: only the second may not count.
+    const pass = createScriptPass({ budgetMs: 300 });
     const t = performance.now();
-    while (performance.now() - t < 30) { /* the rest of a render, outside the scripts */ }
+    while (performance.now() - t < 400) { /* the rest of a render, outside the scripts */ }
     const r = run(fit, { pass });
-    ok(plain(draw(r)[0]).includes("RAN") && pass.left() > 0 && pass.left() <= 20,
+    ok(plain(draw(r)[0]).includes("RAN") && pass.left() > 0 && pass.left() <= 300,
       `the rest of the render does not use up the scripts' time (${pass.left().toFixed(1)} ms left)`);
   }
 
@@ -296,12 +336,12 @@ script = "face.js"
     userSkin("session-icon", oneText("icon.js", { width: 12 }), { "icon.js": "function render(i) { return { params: { icon: \"SCRIPTED\" } }; }" });
     const env = { ...process.env, COLUMNS: "120", GAMEBAR_SKIN: "session-icon" };
     const data = { model: { display_name: "Opus" } };
-    const scripted = renderSession({ data, env, now: NOW, scripts: { host, pass: createScriptPass(), state: new Map() } });
+    const scripted = renderSession({ data, env, now: NOW, scripts: { host, pass: roomyPass(), state: new Map() } });
     ok(scripted.some((l) => plain(l).includes("SCRIPTED")), "a skin's script changes the session's bar");
     const skipped = renderSession({ data, env, now: NOW, scripts: false });
     ok(!skipped.some((l) => plain(l).includes("SCRIPTED")), "with scripts turned off nothing runs");
     const loopEnv = { ...env, GAMEBAR_SKIN: "session-loop" };
-    const failed = renderSession({ data, env: loopEnv, now: NOW, scripts: { host, pass: createScriptPass(), state: new Map() } });
+    const failed = renderSession({ data, env: loopEnv, now: NOW, scripts: { host, pass: roomyPass(), state: new Map() } });
     ok(failed.some((l) => /gamebar: .*loop\.js/.test(plain(l))), "a failed script shows on the warning line");
 
     // The one-shot status line, a new process each render: no script runs and no warning shows.

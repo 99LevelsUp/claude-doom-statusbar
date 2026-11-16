@@ -167,6 +167,21 @@ try {
     const b = fitSkin(boxed, { values: { "model.name": "x" }, width: 100 });
     ok(same(ids(b.tree), ["bar", "name"]) && b.width === 10, "a container left with nothing to show goes with it");
   }
+
+  console.log("an absent metric: hidden by default, kept by when_absent");
+  {
+    const skin = inline({
+      bar: { kind: "row", children: ["hidden", "empty", "full", "name"] },
+      hidden: txt("ratelimit.5h", 4),
+      empty: { ...txt("ratelimit.7d", 6), when_absent: "empty" },
+      full: { kind: "icon-row", metric: "ratelimit.5h", count: 5, when_absent: "full" },
+      name: txt("model.name", 3),
+    });
+    const f = fitSkin(skin, { values: { "model.name": "x" }, width: 100 });
+    ok(same(ids(f.tree), ["bar", "empty", "full", "name"]) && same(f.absent, ["hidden"]),
+      `hide removes the element, empty and full keep it${show(ids(f.tree), ["bar", "empty", "full", "name"])}`);
+    ok(same(widths(f.tree), { bar: 14, empty: 6, full: 5, name: 3 }), "a kept element takes its normal widths");
+  }
 } finally {
   rmSync(SB, { recursive: true, force: true });
 }

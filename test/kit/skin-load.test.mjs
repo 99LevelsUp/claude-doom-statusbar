@@ -181,6 +181,27 @@ try {
     sameWarnings(next.warnings, ["missing-child bar nowhere"], "the rewritten file's warnings");
     ok(next.skin !== first.skin && same(ids(next.skin.root), ["name"]), "the next load returns the new tree");
   }
+
+  console.log("when_absent: what a metric element does while its metric is absent");
+  {
+    const { skin, warnings } = buildSkin({ version: 1, root: "bar", element: {
+      bar: { kind: "row", children: ["xp", "hearts", "name", "odd", "free"], when_absent: "full" },
+      xp: { kind: "progress", metric: "ratelimit.7d", when_absent: "empty" },
+      hearts: { kind: "icon-row", metric: "ratelimit.5h", when_absent: "full" },
+      name: { kind: "text", metric: "model.name" },
+      odd: { kind: "text", metric: "model.name", when_absent: "always" },
+      free: { kind: "text", when_absent: "hide" },
+    } }, "absent.toml");
+    const at = (id) => find(skin.root, id);
+    ok(at("xp").whenAbsent === "empty" && at("hearts").whenAbsent === "full" && at("free").whenAbsent === "hide",
+      "a metric element keeps the when_absent it gives: hide, empty or full");
+    ok(at("name").whenAbsent === "hide" && at("odd").whenAbsent === "hide" && skin.root.whenAbsent === "hide",
+      "without it, with a value it does not allow, and on a container it is hide");
+    ok(!("when_absent" in at("xp").params), "it is a shared setting, not a parameter of the visual");
+    sameWarnings(warnings, ["unknown-param bar when_absent", "invalid-param odd when_absent"],
+      "a container's when_absent is unknown, a value other than hide, empty or full is invalid");
+    ok((warnings.find((w) => w.element === "odd") || {}).message?.includes('"hide", "empty" or "full"'), "the warning names the values it allows");
+  }
 } finally {
   rmSync(SB, { recursive: true, force: true });
 }
