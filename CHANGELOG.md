@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The render daemon takes `GAMEBAR_EVENTS`, `GAMEBAR_LLMLINGUA` and `GAMEBAR_SAVINGS_STATE`
   (and their `DOOMBAR_*` names) from each session, like the other forwarded settings. Before,
   every session sharing the daemon read the savings files of the session whose hook started it.
+- A preset that does not exist (`GAMEBAR_PRESET=…/nope.toml`, not a bundled preset) shows one
+  line in the bar, `gamebar: preset not found: <path>`. Before, the one-shot status line printed
+  an `ENOENT` stack on stderr and the render daemon drew nothing for that session.
 
 ## [1.0.0] - 2026-11-15
 

@@ -9,7 +9,7 @@
 // or faked in the child process), RAM, CPU and disk usage, and the temp dir (a sandbox, so the
 // test never touches the files of the live bar on this machine).
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs, { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -105,6 +105,20 @@ try {
       `${name}: main() prints exactly what renderSession returns (two renders in a row)`);
   }
   render(session("warmup", "warmup")); // the comparison above reset the CPU sample
+
+  // A preset that does not exist draws one line naming it, from renderSession and from main(),
+  // with nothing on stderr (S-6).
+  {
+    const s = session("nopreset", "nopreset");
+    const missing = path.join(SB, "nope.toml");
+    const want = `gamebar: preset not found: ${missing}\n`;
+    ok(render(s, { GAMEBAR_PRESET: missing }) === want, `renderSession names the missing preset (got ${JSON.stringify(render(s, { GAMEBAR_PRESET: missing }))})`);
+    const childEnv = { ...s.env, GAMEBAR_PRESET: missing, SystemRoot: process.env.SystemRoot, PATH: "",
+      ...sandboxEnv(TMPDIR), GAMEBAR_MSYS_REAP: "0" };
+    const r = spawnSync(process.execPath, [STATUSLINE], { input: JSON.stringify(s.data), env: childEnv, encoding: "utf8" });
+    ok(r.status === 0 && r.stdout === want, `main() prints that line and exits 0 (status ${r.status}, got ${JSON.stringify(r.stdout)})`);
+    ok(r.stderr === "", `main() writes nothing to stderr (got ${JSON.stringify(r.stderr.slice(0, 120))})`);
+  }
 
   // The passed environment's preset wins over process.env's (minimal here).
   {
