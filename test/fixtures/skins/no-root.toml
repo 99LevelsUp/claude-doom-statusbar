@@ -1,0 +1,11 @@
+# A skin whose root element cannot be drawn: nothing of it is left.
+version = 1
+root = "bar"
+
+[element.bar]
+kind = "hologram"
+children = ["name"]
+
+[element.name]
+kind = "text"
+metric = "model.name"

@@ -1,0 +1,19 @@
+# A child listed twice, and a container that lists the root again (a cycle).
+version = 1
+root = "bar"
+
+[element.bar]
+kind = "row"
+children = ["name", "name", "inner"]
+
+[element.inner]
+kind = "column"
+children = ["bar", "context"]
+
+[element.name]
+kind = "text"
+metric = "model.name"
+
+[element.context]
+kind = "progress"
+metric = "context.hp"

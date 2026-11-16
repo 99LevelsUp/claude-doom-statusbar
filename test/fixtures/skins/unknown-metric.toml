@@ -1,0 +1,19 @@
+# A user skin that binds a metric an update removed.
+version = 1
+root = "bar"
+
+[element.bar]
+kind = "row"
+children = ["name", "gone", "context"]
+
+[element.name]
+kind = "text"
+metric = "model.name"
+
+[element.gone]
+kind = "text"
+metric = "removed.metric"
+
+[element.context]
+kind = "progress"
+metric = "context.hp"

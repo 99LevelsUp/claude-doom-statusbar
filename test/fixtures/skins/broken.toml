@@ -1,0 +1,6 @@
+# A skin whose TOML does not parse.
+version = 1
+root = "bar"
+
+[element.bar
+kind = "row"

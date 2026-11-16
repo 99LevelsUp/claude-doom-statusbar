@@ -1,0 +1,67 @@
+# Every other way a part of a skin no longer holds: each is skipped or ignored, the rest loads.
+version = 1
+root = "bar"
+colour = "red"
+games = "all of them"
+
+[element.bar]
+kind = "row"
+metric = "model.name"
+shrink = "sideways"
+children = ["name", "wrong-type", "no-kind", "strange", "boxed", "gridded", "framed-text",
+  "scripted", "lister", "string-framed", "kindless-frame", "padded", "numbered"]
+
+[element.name]
+kind = "text"
+metric = "model.name"
+children = ["numbered"]
+
+[element.wrong-type]
+kind = "progress"
+metric = "model.name"
+
+[element.no-kind]
+metric = "model.name"
+
+[element.strange]
+kind = "hologram"
+metric = "model.name"
+
+[element.boxed]
+kind = "row"
+frame = { kind = "cloud" }
+priority = "high"
+
+[element.gridded]
+kind = "column"
+frame = { kind = "grid" }
+
+[element.framed-text]
+kind = "text"
+metric = "git.branch"
+frame = { kind = "box", title = "BRANCH" }
+
+[element.scripted]
+kind = "text"
+metric = "git.branch"
+script = 5
+
+[element.lister]
+kind = "row"
+children = "numbered"
+
+[element.string-framed]
+kind = "row"
+frame = "box"
+
+[element.kindless-frame]
+kind = "row"
+frame = { title = "X" }
+
+[element.padded]
+kind = "row"
+frame = { kind = "box", padding = -1 }
+
+[element.numbered]
+kind = "number"
+metric = "git.status"
