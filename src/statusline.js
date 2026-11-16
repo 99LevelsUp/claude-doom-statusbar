@@ -65,7 +65,10 @@ function main() {
   let data = {};
   try { data = JSON.parse(readFileSync(0, "utf8")); } catch { data = {}; }
   const lines = renderSession({ data, env: process.env, now: Date.now() / 1000,
-    warningStore: fileStore(path.join(runtimeDir(), WARNINGS_FILE)) });
+    warningStore: fileStore(path.join(runtimeDir(), WARNINGS_FILE)),
+    // No skin scripts here: a new process every render would pay a worker start every time, and a
+    // script that hangs a full timeout every time. Their elements draw their defaults.
+    scripts: false });
   process.stdout.write(lines.join("\n") + "\n");
   maybeReap(); // after the write: the HUD is already out, this only cleans up behind it
 }

@@ -13,6 +13,7 @@ import { effectiveStep } from "./kit/raster/glyph-level.js";
 import { loadSkin } from "./kit/skin/load.js";
 import { fitSkin } from "./kit/skin/fit.js";
 import { drawFit } from "./kit/skin/draw.js";
+import { runScripts } from "./kit/skin/scripts.js";
 import { warningLine, memoryStore } from "./kit/skin/warnings.js";
 import { currentTheme, themePreset, defaultPreset } from "./theme.js";
 import { layoutFor, presetFile, defaultGame } from "./games/index.js";
@@ -65,30 +66,47 @@ const columnsOf = (env) => parseInt(env.COLUMNS || "100", 10);
 // reads is built here for this render only, so sessions rendered in turn by the daemon never see
 // each other's values or settings. `warningStore` keeps when each warning under the bar first
 // appeared (src/kit/skin/warnings.js); by default this process's memory.
-export function renderSession({ data, env = process.env, now = Date.now() / 1000, warningStore = processStore }) {
+//
+// `scripts` says how the skin's scripts run (src/kit/skin/scripts.js):
+//   false                    not at all: the one-shot status line, a new process every render,
+//                            would pay a worker start and a full timeout on every one
+//   { host, pass, state }    the render daemon's: its one script host, the time left in its
+//                            current pass, and this session's script state
+//   omitted                  this process's shared host, a pass of this render's own, and no
+//                            state kept between renders
+export function renderSession({ data, env = process.env, now = Date.now() / 1000, warningStore = processStore, scripts = {} }) {
   // A shallow copy: the rate-limit merge in collectValues rewrites data.rate_limits, and a caller
   // that keeps the payload between renders must not see it change.
   if (data && typeof data === "object" && !Array.isArray(data)) data = { ...data };
 
   const selected = selectSkin(env);
   if (selected.file) {
-    const lines = renderSkin(selected, data, env, now, warningStore);
+    const lines = renderSkin(selected, data, env, now, warningStore, scripts);
     if (lines) return lines;
   }
   return renderPreset(selected, data, env, now);
 }
 
-// The selected skin, fitted and drawn, or null when nothing of it (nor of the default skin) can be
-// drawn. Scripts and assets are not run or resolved here yet: every element draws its default.
-function renderSkin(selected, data, env, now, warningStore) {
-  const fallback = findSkin(defaultGame().defaultSkin, env)?.file || null;
+// The selected skin, fitted, its scripts run and drawn, or null when nothing of it (nor of the
+// default skin) can be drawn. Assets are not resolved here yet: an element that needs one draws its
+// default.
+function renderSkin(selected, data, env, now, warningStore, scripts) {
+  // The folder each skin's own script paths are read from: a user skin's folder, a bundled skin's
+  // game folder.
+  const folders = new Map();
+  const note = (s) => {
+    if (s && s.file) folders.set(s.file, !s.user && s.game && s.game.dir ? s.game.dir : path.dirname(s.file));
+    return s;
+  };
+  note(selected);
+  const fallback = note(findSkin(defaultGame().defaultSkin, env))?.file || null;
   const loaded = loadSkin(selected.file, { fallback: fallback !== selected.file ? fallback : null });
   if (!loaded.skin) return null;
   const warnings = [...selected.warnings, ...loaded.warnings];
   const { values, reaction } = sessionValues(data, env, now);
   const width = Math.max(0, columnsOf(env) - indentOf(env));
   const loadSmaller = (name) => {
-    const s = findSkin(name, env);
+    const s = note(findSkin(name, env));
     if (!s || !s.file) {
       warnings.push({ key: `selection|smaller|${name}`, cause: "unknown-smaller", skin: loaded.skin.file, element: null,
         subject: name, message: `no skin is called ${name} (the smaller skin of ${loaded.skin.name})` });
@@ -98,10 +116,20 @@ function renderSkin(selected, data, env, now, warningStore) {
     warnings.push(...r.warnings);
     return r.skin;
   };
-  const fit = fitSkin(loaded.skin, { values, width, loadSmaller });
-  warnings.push(...fit.warnings);
+  const fitted = fitSkin(loaded.skin, { values, width, loadSmaller });
+  warnings.push(...fitted.warnings);
   const ctx = { tick: Math.floor(now), step: effectiveStep(env), resolveAsset: () => null, reaction, now };
-  const lines = drawFit(fit, { values, width, ctx, scripts: {} });
+  let fit = fitted, outputs = {};
+  if (scripts !== false) {
+    const run = runScripts(fitted, {
+      host: scripts.host, pass: scripts.pass, state: scripts.state, values, reaction, now, tick: ctx.tick,
+      folderOf: (skin) => folders.get(skin.file) ?? path.dirname(skin.file), resolveAsset: ctx.resolveAsset,
+    });
+    fit = run.fit;
+    outputs = run.scripts;
+    warnings.push(...run.warnings);
+  }
+  const lines = drawFit(fit, { values, width, ctx, scripts: outputs });
   const line = warningLine(warnings, { store: warningStore, now, width });
   return line ? [...lines, line] : lines;
 }

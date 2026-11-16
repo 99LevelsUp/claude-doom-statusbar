@@ -362,6 +362,96 @@ try {
     }
   }
 
+  // Skin scripts run in the daemon's one script worker, under a time budget for the whole pass that
+  // every session shares. The order in which sessions get their scripts run turns from pass to
+  // pass, so none of them is always last.
+  {
+    const { createScriptHost } = await import("../../src/platform/scripts/host.js");
+    // A user skin of text elements bound to the model's name, each running `script` from the skin's
+    // folder.
+    const scripted = (name, source, count = 1) => {
+      const dir = path.join(SANDBOX_ENV.GAMEBAR_USER_DIR, "skins", name);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(path.join(dir, "s.js"), source);
+      const ids = Array.from({ length: count }, (_, i) => `e${i}`);
+      writeFileSync(path.join(dir, `${name}.toml`), [
+        "version = 1", 'root = "bar"', "[element.bar]", 'kind = "row"', `children = ${JSON.stringify(ids)}`,
+        ...ids.flatMap((id) => [`[element.${id}]`, 'kind = "text"', 'metric = "model.name"', "width = 12", "min_width = 12", 'script = "s.js"']),
+      ].join("\n"));
+      return path.join(dir, "s.js");
+    };
+    const text = (s) => strip((frameOf(s)?.slots[0].lines || []).join("\n"));
+    const timed = (state, now) => { const t = performance.now(); runPass(state, { dir: TMPDIR, hash: HASH, now }); return performance.now() - t; };
+
+    // Three sessions, each with a script that picks what to show from the time (a looping
+    // animation): every pass renews every session's frame with what its script returned, and the
+    // pass stays within its budget (plus the backstop's grace for the last batch).
+    {
+      scripted("ticker", 'function render(i) { return { params: { icon: "T" + (i.tick % 10) + " " } }; }');
+      const ss = ["tick-a", "tick-b", "tick-c"].map((k) => session(k, { env: { GAMEBAR_SKIN: "ticker" } }));
+      const t0 = Date.now();
+      const state = createState({ version: VERSION, now: t0 });
+      let renewed = true, drawn = true, slowest = 0;
+      for (let k = 0; k < 6; k++) {
+        const now = t0 + k * 1000;
+        slowest = Math.max(slowest, timed(state, now));
+        const tick = Math.floor(now / 1000) % 10;
+        for (const s of ss) {
+          if (frameOf(s)?.deadline !== now * 1000 + 3e6) renewed = false;
+          if (!text(s).includes(`T${tick} `)) drawn = false;
+        }
+      }
+      ok(renewed, "with a script in each of three sessions, every pass renews every frame within its window");
+      ok(drawn, "and every frame shows what its session's script returned for that pass");
+      ok(slowest < 200 + 40 + 100, `and the pass stays within its budget (slowest ${slowest.toFixed(0)} ms)`);
+      state.scripts.host.close();
+      for (const s of ss) unlinkSync(payloadFile(s.key));
+    }
+
+    // A script stuck where its timeout cannot reach it: the backstop restarts the worker, which uses
+    // up the pass. The next session's healthy script draws its default for that pass, with no
+    // warning, and runs on the following pass.
+    {
+      const hang = scripted("stuck", 'function render() { return { params: { icon: "NEVER" } }; }');
+      scripted("calm", 'function render() { return { params: { icon: "CALM " } }; }');
+      const host = createScriptHost({ simulateNativeHang: hang });
+      const a = session("a-stuck", { env: { GAMEBAR_SKIN: "stuck" } });
+      const b = session("b-calm", { env: { GAMEBAR_SKIN: "calm" } });
+      const t0 = Date.now();
+      const state = createState({ version: VERSION, now: t0, scriptHost: host, scriptPassMs: 20 });
+      timed(state, t0);
+      ok(/gamebar: .*s\.js/.test(text(a)) && !text(a).includes("NEVER"), "the stuck script's element draws its default and a warning shows");
+      ok(!text(b).includes("CALM") && !text(b).includes("gamebar:") && host.spawns === 2,
+        "the next session's script is skipped for that pass, with no warning, once the restart used up the pass");
+      timed(state, t0 + 1000);
+      ok(text(b).includes("CALM"), "and runs on the following pass");
+      host.close();
+      unlinkSync(payloadFile(a.key));
+      unlinkSync(payloadFile(b.key));
+    }
+
+    // Two sessions whose scripts each need most of the pass: over successive passes both get them
+    // run, because the session that went last goes first on the next pass.
+    {
+      scripted("hog", 'function render(i) { var t = Date.now(); while (Date.now() - t < 15) {} return { params: { icon: "R" + (i.tick % 10) + " " } }; }', 4);
+      const ss = ["hog-x", "hog-y"].map((k) => session(k, { env: { GAMEBAR_SKIN: "hog" } }));
+      const t0 = Date.now();
+      const host = createScriptHost({ callBudgetMs: 40 });
+      const state = createState({ version: VERSION, now: t0, scriptHost: host, scriptPassMs: 70, callBudgetMs: 40 });
+      const full = new Map(ss.map((s) => [s.key, 0]));
+      for (let k = 0; k < 4; k++) {
+        const now = t0 + k * 1000;
+        timed(state, now);
+        const want = `R${Math.floor(now / 1000) % 10} `;
+        for (const s of ss) if (text(s).split(want).length - 1 === 4) full.set(s.key, full.get(s.key) + 1);
+      }
+      // Each goes first in every other pass; going last, its scripts would not fit after the other's.
+      ok([...full.values()].every((n) => n >= 2), `both sessions get all their scripts run in every other pass at least (${[...full.entries()].map(([k, n]) => `${k} ${n}`).join(", ")})`);
+      host.close();
+      for (const s of ss) unlinkSync(payloadFile(s.key));
+    }
+  }
+
   // A payload the client has not rewritten for the idle period (a session that ended without
   // SessionEnd) gets no frame after a daemon start and does not keep the daemon alive. A payload
   // written within the idle period still renders.
