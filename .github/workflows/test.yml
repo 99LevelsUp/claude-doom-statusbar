@@ -50,3 +50,26 @@ jobs:
 
       - name: Daemon end to end
         run: npm run test:e2e
+
+  # The script host on every supported Node and on Windows, where the main suite does not run:
+  # a worker thread answered through Atomics.wait must stop a script that never returns there
+  # too. The test prints its spawn, round-trip and per-call times for each combination.
+  script-host:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [18, 22, 26]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Script host
+        run: node test/platform/script-host.test.mjs
