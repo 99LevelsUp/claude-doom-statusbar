@@ -15,6 +15,7 @@
   "scripts": {
     "statusline": "node src/statusline.js",
     "hook": "node src/hook.js",
+    "skin": "node bin/cli.js skin",
     "theme": "node bin/cli.js theme",
     "compare-faces": "node scripts/compare-faces.mjs",
     "test": "node scripts/run-tests.mjs",

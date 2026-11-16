@@ -46,8 +46,7 @@ const sandbox = mkdtempSync(path.join(os.tmpdir(), "gamebar-client-cost-"));
 if (!WIN) chmodSync(sandbox, 0o700);
 const env = {
   ...process.env, ...sandboxEnv(sandbox), COLUMNS: "200",
-  GAMEBAR_GLYPHS: "octant", GAMEBAR_PRESET: path.join(ROOT, "src", "games", "doom", "presets", "full.toml"),
-  GAMEBAR_THEME: "doom", GAMEBAR_RATELIMITS_SHARE: "0", GAMEBAR_MSYS_REAP: "0",
+  GAMEBAR_GLYPHS: "octant", GAMEBAR_SKIN: "doom-full", GAMEBAR_RATELIMITS_SHARE: "0", GAMEBAR_MSYS_REAP: "0",
 };
 const payload = JSON.stringify({
   session_id: "client-cost", cwd: ROOT, workspace: { current_dir: ROOT, project_dir: ROOT },

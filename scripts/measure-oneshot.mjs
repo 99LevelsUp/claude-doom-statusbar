@@ -25,8 +25,7 @@ const payload = JSON.stringify({
 
 const env = {
   ...process.env, ...sandboxEnv(sandbox), COLUMNS: "200",
-  GAMEBAR_GLYPHS: "octant", GAMEBAR_PRESET: path.join(ROOT, "src", "games", "doom", "presets", "full.toml"),
-  GAMEBAR_THEME: "doom", GAMEBAR_RATELIMITS_SHARE: "0", GAMEBAR_MSYS_REAP: "0",
+  GAMEBAR_GLYPHS: "octant", GAMEBAR_SKIN: "doom-full", GAMEBAR_RATELIMITS_SHARE: "0", GAMEBAR_MSYS_REAP: "0",
 };
 
 function run() {

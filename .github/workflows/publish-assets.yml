@@ -1,0 +1,98 @@
+name: Publish game assets
+
+# Publishes each game's assets package (games/<game>/assets, npm package @claude-game-bar/<game>)
+# whose version is not on npm yet, with trusted publishing (OIDC, no token) and provenance. The bar
+# itself is published by publish.yml from a release tag; a game manifest (src/games/<game>/game.toml)
+# pins the asset version a release installs, so nothing published here reaches users until a release
+# pins it.
+#
+# Runs on pushes to master that touch an assets folder, and by hand. The job runs in the GitHub
+# environment `npm-assets`, whose deployment rule allows only master, and each package's trusted
+# publisher on npm names this workflow and that environment, so no other branch can publish.
+#
+# A package name npm does not know yet is skipped with a notice: trusted publishing can be set up
+# only for a package that exists, so its first version is published by hand (see CONTRIBUTING.md).
+# A version already on npm is skipped, so a push that changes nothing else publishes nothing.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "games/*/assets/**"
+      - .github/workflows/publish-assets.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-assets
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    environment: npm-assets
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org/"
+
+      # Trusted publishing needs npm 11.5.1 or later.
+      - name: Install latest npm
+        run: npm install -g npm@latest
+
+      - name: Publish new versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          for manifest in games/*/assets/package.json; do
+            dir="$(dirname "$manifest")"
+            name="$(node -p 'require(process.argv[1]).name' "./$manifest")"
+            version="$(node -p 'require(process.argv[1]).version' "./$manifest")"
+            # 0.0.0 is the placeholder of a package that was never published: the bar does not
+            # install it, and it is never published.
+            if [ "$version" = "0.0.0" ]; then
+              echo "::notice::$name is at the placeholder version 0.0.0; not published"
+              continue
+            fi
+            errors="$RUNNER_TEMP/npm-view.err"
+            if ! known="$(npm view "$name" versions --json 2>"$errors")"; then
+              if grep -q E404 "$errors" || printf '%s' "$known" | grep -q E404; then
+                echo "::notice::$name is not on npm yet; publish its first version by hand, then set up trusted publishing (CONTRIBUTING.md)"
+                continue
+              fi
+              cat "$errors"
+              echo "::error::npm view $name failed"
+              exit 1
+            fi
+            # A package with one version prints a string, with more an array. Exit 0: published
+            # already, 1: not yet, 2: the answer could not be read.
+            status=0
+            printf '%s' "$known" | node -e '
+              let v;
+              try { v = JSON.parse(require("fs").readFileSync(0, "utf8")); } catch { process.exit(2); }
+              process.exit([].concat(v).includes(process.argv[1]) ? 0 : 1);
+            ' "$version" || status=$?
+            if [ "$status" -eq 0 ]; then
+              echo "$name@$version is on npm already"
+              continue
+            fi
+            if [ "$status" -ne 1 ]; then
+              echo "$known"
+              echo "::error::cannot read the versions of $name from npm"
+              exit 1
+            fi
+            echo "publishing $name@$version from $dir"
+            (cd "$dir" && npm publish --provenance --access public)
+          done

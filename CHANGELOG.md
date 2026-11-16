@@ -7,13 +7,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Games become skins. The bar is a tree of shared elements, and a skin describes that tree as data:
+which metrics it shows, in which visuals, how they are laid out, and the scripts and game assets
+it uses. DOOM and Minecraft are rebuilt as skins, and you can compose, name and keep your own. This
+is a major release: presets in the old format no longer draw.
+
+### Upgrading
+- Run `npm i -g claude-game-bar@latest && claude-game-bar install`. A bar set up with 1.x keeps
+  its look without it too: the saved theme picks the game, and the `GAMEBAR_PRESET` an older
+  `install` wrote picks the DOOM size (`full`, `standard`, `minimal` draw `doom-full`,
+  `doom-standard`, `doom-minimal`). `install` then saves that choice as a skin and removes the
+  preset setting it wrote.
+- **Your own preset file no longer draws.** A `GAMEBAR_PRESET` that names a file the bundled game
+  does not know draws the chosen game's skin instead, with a warning under the bar naming the
+  file. To rebuild it, copy the bundled skin closest to it
+  (`src/games/<game>/skins/*.toml` in the package) to
+  `~/.claude/claude-game-bar/skins/<name>/<name>.toml`, set `name = "<name>"` in it, change it to
+  match your preset, and run `claude-game-bar skin <name>`. The README section *Your own skin*
+  shows the format.
+- The first time a skin needs a game's images or scripts, the bar installs that game's asset
+  package from npm in the background; until then the mugshot is blank and a warning names the
+  package. `install` and `skin <name>` install it right away.
+
+### Changed
+- **Skins replace themes and presets.** The bundled skins are `doom-full` (the default),
+  `doom-standard`, `doom-minimal` and `minecraft`. `claude-game-bar skin <name|next|list>` switches
+  between them; `theme` still works as another name for it, and a game's name picks its default
+  skin. The choice is saved in `~/.claude/claude-game-bar/skin.json`.
+- **`GAMEBAR_SKIN` replaces `GAMEBAR_PRESET`.** It is forwarded per session, so a project can set
+  its own skin. `install --skin <name>` writes it; `install --project` and `--local` always do.
+  `install --preset <size>` still picks the size of the current game's skin.
+- **Game assets are their own npm packages**, `@claude-game-bar/doom` and
+  `@claude-game-bar/minecraft`, no longer part of `claude-game-bar`. The bar installs the version
+  its release pins, with npm's package scripts disabled, into
+  `~/.claude/claude-game-bar/assets/`, and `install` removes versions no skin drawn within 30 days
+  uses.
+- **Narrow terminals:** elements shrink first, then drop in the order of the priorities the skin
+  gives them, and then the bar switches to the smaller skin the skin names (`doom-full`, then
+  `doom-standard`, then `doom-minimal`).
+- **DOOM and Minecraft look different in places.** They are rebuilt from the shared elements and
+  were not made to match 1.x exactly.
+- **Configuration can now run code.** A skin can attach scripts to its elements: DOOM's mugshot
+  face and Minecraft's highlighted hotbar slot are scripts. Scripts are trusted code, like any
+  program you install; the bar runs them only from your own skin folders and the game packages it
+  installed, and never downloads code from anywhere else. They run only in the render daemon,
+  each call within a time budget; the one-shot status line runs none, so its mugshot shows the
+  idle face.
+
+### Added
+- **Your own skins** in `~/.claude/claude-game-bar/skins/<name>/<name>.toml`, with their own
+  images and scripts beside them. A skin may use the assets of any game, such as the DOOM mugshot
+  in a Minecraft-style bar. An update never changes them.
+- **A warning line under the bar.** A part of a skin that no longer holds (an unknown element,
+  metric or parameter), a script that fails and a missing asset are skipped, the rest is drawn,
+  and one dim line `gamebar: <the first problem> (+N more)` shows for a minute.
+- **`when_absent`** keeps an element in place while the session does not report its metric:
+  `"empty"` or `"full"` draws it as if the value were empty or full.
+- **The chat is a standard element.** Its questions and answers about the session's metrics play
+  in any skin with a chat, also in the one-shot status line; a game or skin adds conversation
+  libraries, and a skin can drop, replace or add conversations by key.
+
 ### Fixed
 - The render daemon takes `GAMEBAR_EVENTS`, `GAMEBAR_LLMLINGUA` and `GAMEBAR_SAVINGS_STATE`
   (and their `DOOMBAR_*` names) from each session, like the other forwarded settings. Before,
   every session sharing the daemon read the savings files of the session whose hook started it.
-- A preset that does not exist (`GAMEBAR_PRESET=…/nope.toml`, not a bundled preset) shows one
-  line in the bar, `gamebar: preset not found: <path>`. Before, the one-shot status line printed
-  an `ENOENT` stack on stderr and the render daemon drew nothing for that session.
+- A preset setting that names a missing file no longer prints an `ENOENT` stack on stderr in the
+  one-shot status line or leaves the session blank in the render daemon. The bar draws the chosen
+  game's skin with the warning described under *Upgrading*.
+
+### For maintainers
+- Asset packages publish from `master` through `.github/workflows/publish-assets.yml`, with
+  trusted publishing and provenance, from the GitHub environment `npm-assets`. Before this release
+  can be tagged, the owner does a one-time bootstrap: create the npm organisation
+  `claude-game-bar`, publish the first version of `@claude-game-bar/doom` and
+  `@claude-game-bar/minecraft` by hand, configure trusted publishing for both against
+  `publish-assets.yml` and the `npm-assets` environment, then require two-factor authentication
+  and disallow tokens for both, and pin the published versions and their integrity in the game
+  manifests. Until then an installed bar cannot fetch game assets; a checkout works from its own
+  `games/` folders. `CONTRIBUTING.md` has the steps.
 - With two installations wired at once (a checkout with `install --local` over a global
   install), both sets of hooks wrote every event into the session's journal, so the bar counted
   activity and errors twice. The hooks of the installation that does not draw the session now
