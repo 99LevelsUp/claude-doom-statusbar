@@ -1,0 +1,10 @@
+# One half of a smaller-skin cycle: cycle-a names cycle-b, which names cycle-a again. 80 columns.
+version = 1
+root = "name"
+smaller = "cycle-b"
+
+[element.name]
+kind = "text"
+metric = "model.name"
+width = 80
+min_width = 80

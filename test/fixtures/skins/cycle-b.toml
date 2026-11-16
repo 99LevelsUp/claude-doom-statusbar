@@ -1,0 +1,10 @@
+# The other half of the smaller-skin cycle of cycle-a.toml. 70 columns.
+version = 1
+root = "name"
+smaller = "cycle-a"
+
+[element.name]
+kind = "text"
+metric = "model.name"
+width = 70
+min_width = 70
