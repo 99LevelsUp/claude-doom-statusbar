@@ -1,0 +1,20 @@
+# The DOOM game: the manifest the game registry (src/games/index.js) reads.
+name = "doom"
+description = "DOOM (1993) HUD with the Doomguy mugshot"
+# The game drawn when nothing is chosen.
+default = true
+default_skin = "doom-full"
+
+# What a release before skins saved, and the skins it maps to.
+[legacy]
+# Older theme names that still choose this game.
+aliases = []
+# The file name of the preset setting (GAMEBAR_PRESET) picks the size.
+reads_presets = true
+presets = { full = "doom-full", standard = "doom-standard", minimal = "doom-minimal" }
+
+# The npm package of the game's assets, pinned to one version and its npm integrity.
+[assets]
+package = "@claude-game-bar/doom"
+version = "0.0.0"
+integrity = ""

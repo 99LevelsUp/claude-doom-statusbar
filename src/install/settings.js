@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync, const
 import os from "node:os";
 import path from "node:path";
 import { SRC_DIR } from "../package-root.js";
-import { defaultGame, registeredPreset } from "../games/index.js";
+import { registeredPreset } from "../games/index.js";
 import { bothNames, newName, newNameOf } from "../platform/env.js";
 import { samePath } from "../platform/runtime.js";
 import { OLD_PACKAGE } from "./old-package.js";
@@ -167,14 +167,23 @@ export function migratedPreset(value) {
   return !existsSync(value) || inPackageCopy(value) ? slash(reg) : value;
 }
 
-// `preset` is the name `--preset` gave, or null when it was not given: then a preset setting that is
-// already there is kept (moved to this package when it points at another copy, see migratedPreset),
-// and only a missing one gets the full preset. Returns the notes for the output; their `migrated`
-// is true when an earlier installation's entries were renamed or re-pointed (save's firstBackup).
-export function install(cfg, preset, refresh, command) {
+// Is `value` a preset setting an installer of this package or of the old one wrote: a registered
+// preset of this package, a preset in another copy of either package, or a missing file named after
+// a registered preset? A preset file of the user's own is not.
+export function ownPreset(value) {
+  if (typeof value !== "string" || !value) return false;
+  const reg = registeredPreset(path.basename(value));
+  return Boolean(reg) && (samePath(value, reg) || !existsSync(value) || inPackageCopy(value));
+}
+
+// `skin` is the skin to write as GAMEBAR_SKIN, or null to write none. The preset setting an
+// installer wrote goes: the skin choice replaces it. A preset of the user's own stays where it is.
+// Returns the notes for the output; their `migrated` is true when an earlier installation's
+// entries were renamed or re-pointed (save's firstBackup).
+export function install(cfg, skin, refresh, command) {
   const notes = [];
   const existing = cfg.statusLine;
-  let migrated = Boolean(existing && hasMark(existing.command, SL_RE) && existing.command !== command);
+  const migrated = Boolean(existing && hasMark(existing.command, SL_RE) && existing.command !== command);
   if (existing && !hasMark(existing.command, SL_RE)) {
     notes.push("replaced your existing statusLine (the old one is in settings.json.bak)");
   }
@@ -190,21 +199,11 @@ export function install(cfg, preset, refresh, command) {
   if (renamed) notes.push(`renamed ${renamed} setting(s) in env from the old DOOMBAR_ names to GAMEBAR_`);
   const env = (cfg.env ??= {});
   const PRESET = newName("PRESET");
-  if (preset || !env[PRESET]) {
-    const name = preset || "full";
-    const presetFile = name.endsWith(".toml") ? name : name + ".toml";
-    // The registered preset of that name, in its game's folder. A name no game registers keeps the
-    // shape it always had: a file of that name beside the default game's presets.
-    const fallbackDir = path.dirname(defaultGame().presets[defaultGame().defaultPreset]);
-    env[PRESET] = slash(registeredPreset(presetFile) || path.join(fallbackDir, presetFile));
-  } else {
-    const moved = migratedPreset(env[PRESET]);
-    if (moved !== env[PRESET]) {
-      notes.push(`${PRESET} now points at this package's ${path.basename(moved)}`);
-      migrated = true;
-    }
-    env[PRESET] = moved;
+  if (ownPreset(env[PRESET])) {
+    delete env[PRESET];
+    notes.push(`removed ${PRESET}: the skin replaces it`);
   }
+  if (skin) env[newName("SKIN")] = skin;
   env.FORCE_HYPERLINK ??= "1"; // clickable links (Windows Terminal needs this)
 
   const hooks = (cfg.hooks ??= {});
@@ -261,7 +260,7 @@ export function uninstall(cfg) {
   if (hasMark(cfg.statusLine?.command, SL_RE)) delete cfg.statusLine;
 
   const env = cfg.env || {};
-  for (const k of [...bothNames("PRESET"), "FORCE_HYPERLINK"]) delete env[k];
+  for (const k of [...bothNames("PRESET"), ...bothNames("SKIN"), "FORCE_HYPERLINK"]) delete env[k];
   if (Object.keys(env).length === 0) delete cfg.env;
 
   // Our hooks go, and a group left empty goes with them; hooks of others stay.

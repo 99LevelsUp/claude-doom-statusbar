@@ -6,18 +6,25 @@
 // settings.json:
 //   "statusLine": { "type": "command",
 //       "command": "node /abs/path/src/statusline.js", "refreshInterval": 1 }
-// Config: $GAMEBAR_PRESET (default: the default game's default preset), or the theme picked with
-// `claude-game-bar theme` (see theme.js)  State: $GAMEBAR_STATE
+// Config: the skin the selection names (src/skin-select.js: $GAMEBAR_SKIN, the skin picked with
+// `claude-game-bar skin`, or the theme and preset an older install chose)  State: $GAMEBAR_STATE
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { ensureRuntimeDir, FILE_PREFIX } from "./platform/runtime.js";
+import { ensureRuntimeDir, runtimeDir, FILE_PREFIX } from "./platform/runtime.js";
 import { envGet } from "./platform/env.js";
 import { SRC_DIR } from "./package-root.js";
 import { renderSession } from "./render.js";
+import { fileStore } from "./kit/skin/warnings.js";
+
+// When each warning under the bar first appeared, kept between renders (each one is a new process)
+// in the runtime directory, shared by every session as the daemon's memory is. The name ends in
+// neither .json nor .jsonl, so the stale-state sweep (src/platform/sweep.js), which takes every
+// other gamebar_ file for a session's, leaves it alone.
+export const WARNINGS_FILE = `${FILE_PREFIX}warnings.seen`;
 
 // --- Idle-time MSYS reaping -----------------------------------------------------------------
 // The hook reaps hung Git Bash wrappers on every event, but while the session sits idle no events
@@ -57,7 +64,8 @@ function main() {
   if (!ensureRuntimeDir()) { process.stdout.write("gamebar: offline\n"); return; }
   let data = {};
   try { data = JSON.parse(readFileSync(0, "utf8")); } catch { data = {}; }
-  const lines = renderSession({ data, env: process.env, now: Date.now() / 1000 });
+  const lines = renderSession({ data, env: process.env, now: Date.now() / 1000,
+    warningStore: fileStore(path.join(runtimeDir(), WARNINGS_FILE)) });
   process.stdout.write(lines.join("\n") + "\n");
   maybeReap(); // after the write: the HUD is already out, this only cleans up behind it
 }

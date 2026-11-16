@@ -46,9 +46,11 @@ function withEnv(over) {
 function run(tmp, ...args) {
   return runEnv(tmp, {}, ...args);
 }
+// The saved skin and theme are kept in the test's dir too, never in the user's.
 function runEnv(tmp, env, ...args) {
   return execFileSync(process.execPath, [CLI, ...args],
-    { cwd: tmp, encoding: "utf-8", env: withEnv({ ...sandboxEnv(tmp), GAMEBAR_NO_FONTS: "1", ...env }) });
+    { cwd: tmp, encoding: "utf-8", env: withEnv({ ...sandboxEnv(tmp), GAMEBAR_NO_FONTS: "1",
+      GAMEBAR_USER_DIR: path.join(tmp, "user"), GAMEBAR_THEME_FILE: path.join(tmp, "theme.json"), ...env }) });
 }
 const settingsPath = (tmp) => path.join(tmp, ".claude", "settings.json");
 const read = (tmp) => JSON.parse(readFileSync(settingsPath(tmp), "utf-8"));
@@ -111,9 +113,9 @@ const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { retu
   // 1 s on EVERY platform, Windows included. The Git Bash / MSYS cost of a 1 Hz tick on Windows
   // is paid by the reaper, not by slowing the HUD down — a live clock is the point of this thing.
   ok(cfg.statusLine?.refreshInterval === 1, "statusLine refreshInterval is 1 on all platforms");
-  ok(cfg.env?.GAMEBAR_PRESET === `${ROOT.replace(/\\/g, "/")}/src/games/doom/presets/full.toml`,
-    `GAMEBAR_PRESET -> src/games/doom/presets/full.toml (${cfg.env?.GAMEBAR_PRESET})`);
-  ok(existsSync(cfg.env.GAMEBAR_PRESET), "and that preset file exists");
+  ok(cfg.env?.GAMEBAR_SKIN === "doom-full" && !("GAMEBAR_PRESET" in cfg.env),
+    `--preset full writes the DOOM game's full skin as GAMEBAR_SKIN, and no preset (${JSON.stringify(cfg.env)})`);
+  ok(!existsSync(path.join(tmp, "user", "skin.json")), "a project install saves no skin choice of the user's");
   ok(cfg.env?.FORCE_HYPERLINK === "1", "FORCE_HYPERLINK = 1");
   const EVENTS = ["SessionStart", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied",
     "Stop", "SubagentStart", "SubagentStop", "TaskCreated", "TaskCompleted"];

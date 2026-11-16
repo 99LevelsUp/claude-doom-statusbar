@@ -45,7 +45,7 @@ const SANDBOX_ENV = {
   GAMEBAR_THEME_FILE: path.join(SB, "no-theme.json"), GAMEBAR_RATELIMITS_SHARE: "0",
   GAMEBAR_RATELIMITS: path.join(SB, "rl.json"), GAMEBAR_TASKS_DIR: path.join(SB, "tasks"),
   GAMEBAR_EVENTS: path.join(SB, "events.jsonl"), GAMEBAR_LLMLINGUA: path.join(SB, "ling.json"),
-  GAMEBAR_PRESET: path.join(PRESETS, "minimal.toml"),
+  GAMEBAR_PRESET: path.join(PRESETS, "minimal.toml"), GAMEBAR_USER_DIR: path.join(SB, "user"),
 };
 Object.assign(process.env, SANDBOX_ENV);
 // The terminal that runs the tests must not pick the mugshot's glyphs for one side of a comparison.
@@ -333,6 +333,32 @@ try {
     } finally {
       if (saved.now === undefined) delete process.env.GAMEBAR_PRESET; else process.env.GAMEBAR_PRESET = saved.now;
       if (saved.old === undefined) delete process.env.DOOMBAR_PRESET; else process.env.DOOMBAR_PRESET = saved.old;
+    }
+  }
+
+  // The skin is the session's own: one session's GAMEBAR_SKIN draws that skin, and a session without
+  // one never takes the GAMEBAR_SKIN the daemon inherited.
+  {
+    const { defaultGame } = await import("../../src/games/index.js");
+    const sizes = defaultGame().presetSkins;
+    const saved = process.env.GAMEBAR_SKIN;
+    process.env.GAMEBAR_SKIN = sizes.minimal;
+    try {
+      const own = session("skin-own", { env: { GAMEBAR_SKIN: sizes.standard } });
+      const none = session("skin-none");
+      const now = Date.now();
+      runPass(createState({ version: VERSION, now }), { dir: TMPDIR, hash: HASH, now });
+      const base = { ...process.env };
+      delete base.GAMEBAR_SKIN;
+      const render = (s, env = {}) => renderSession({ data: s.data, env: { ...base, ...s.fwd, ...env }, now: now / 1000 });
+      ok(!sameLines(render(own), render(own, { GAMEBAR_SKIN: sizes.minimal })),
+        "the daemon's own GAMEBAR_SKIN would change the render (so the next cases can tell)");
+      ok(sameLines(frameOf(own)?.slots[0].lines, render(own)), `a session forwarding GAMEBAR_SKIN=${sizes.standard} draws that skin`);
+      ok(sameLines(frameOf(none)?.slots[0].lines, render(none)), "a session without GAMEBAR_SKIN does not take the daemon's");
+      unlinkSync(payloadFile("skin-own"));
+      unlinkSync(payloadFile("skin-none"));
+    } finally {
+      if (saved === undefined) delete process.env.GAMEBAR_SKIN; else process.env.GAMEBAR_SKIN = saved;
     }
   }
 

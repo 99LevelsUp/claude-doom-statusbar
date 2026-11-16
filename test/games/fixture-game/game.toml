@@ -1,0 +1,17 @@
+# A tiny game for the registry and skin selection tests (test only, never shipped): this manifest
+# and one skin, nothing else. Nothing outside this folder knows about it; a test reads the folder
+# with readGame and adds the result to the registry's list.
+name = "fixture"
+description = "a test-only game"
+default_skin = "fixture"
+
+[legacy]
+aliases = ["fixture-old"]
+# One skin only: every preset file name draws it.
+reads_presets = false
+presets = { fixture = "fixture" }
+
+[assets]
+package = "@claude-game-bar/fixture"
+version = "0.0.0"
+integrity = ""

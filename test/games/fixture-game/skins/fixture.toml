@@ -1,0 +1,16 @@
+# The fixture game's only skin: the model name behind a FIXTURE label, so a test can see that this
+# skin, and not a bundled game's layout, drew the bar.
+version = 1
+name = "fixture"
+games = ["fixture"]
+root = "bar"
+
+[element.bar]
+kind = "row"
+children = ["model-name"]
+
+[element.model-name]
+kind = "text"
+metric = "model.name"
+icon = "FIXTURE"
+width = 20

@@ -1,0 +1,15 @@
+# The sized fixture game's full skin.
+version = 1
+name = "sized-full"
+root = "bar"
+smaller = "sized-minimal"
+
+[element.bar]
+kind = "row"
+children = ["model-name"]
+
+[element.model-name]
+kind = "text"
+metric = "model.name"
+icon = "FULL"
+width = 30

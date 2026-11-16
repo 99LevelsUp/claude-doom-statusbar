@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-// Themes: the `icons` render, the minecraft hotbar + chat, and the live theme switch.
+// Themes: the `icons` render, the minecraft hotbar + chat, the live switch (`theme`, the older name
+// of `skin`), and the theme a release before skins saved.
 import "../_temp-sandbox.mjs"; // before the modules that name temp paths
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -138,31 +139,48 @@ ok(hearts === "♥♥♥♡♡♡♡♡♡♡", `icons: 70% used -> 3 of 10 hear
   }
 }
 
-// End to end: `theme` writes the choice, the statusline picks it up on the next render.
+// End to end: `theme` is the older name of `skin`. It saves the skin choice (skin.json in the user
+// directory), and the statusline picks it up on the next render. A game's name chooses its default
+// skin.
 const tmp = mkdtempSync(path.join(os.tmpdir(), "gamebar-theme-"));
 try {
-  // TEMP/TMP/TMPDIR -> tmp: the render's state files land here, not in the real temp dir.
+  // TEMP/TMP/TMPDIR -> tmp: the render's state files land here, not in the real temp dir; the user
+  // directory is tmp/user.
   const env = { ...process.env, GAMEBAR_THEME_FILE: path.join(tmp, "theme.json"), COLUMNS: "220",
     ...sandboxEnv(tmp), GAMEBAR_MSYS_REAP: "0" };
-  delete env.GAMEBAR_THEME;
+  for (const k of ["GAMEBAR_THEME", "DOOMBAR_THEME", "GAMEBAR_SKIN", "DOOMBAR_SKIN", "GAMEBAR_PRESET", "DOOMBAR_PRESET"]) delete env[k];
+  const skinFile = path.join(env.GAMEBAR_USER_DIR, "skin.json");
+  const saved = () => (existsSync(skinFile) ? JSON.parse(readFileSync(skinFile, "utf8")).skin : null);
   const cli = (...a) => execFileSync(process.execPath, [path.join(ROOT, "bin", "cli.js"), "theme", ...a], { env, encoding: "utf8" });
+  const skinCli = (...a) => execFileSync(process.execPath, [path.join(ROOT, "bin", "cli.js"), "skin", ...a], { env, encoding: "utf8" });
   const render = () => strip(execFileSync(process.execPath, [path.join(ROOT, "src", "statusline.js")], {
     env, encoding: "utf8", input: JSON.stringify({ session_id: `theme-test-${process.pid}`, cwd: tmp, model: { display_name: "Opus" } }),
   }));
-  cli("minecraft");
-  ok(render().includes("━"), "theme minecraft -> statusline renders the hotbar HUD");
+  const out = cli("minecraft");
+  ok(saved() === "minecraft" && render().includes("━"), "theme minecraft saves the minecraft skin -> statusline renders the hotbar HUD");
+  ok(out === skinCli("minecraft"), "and prints what skin minecraft prints");
+  ok(!existsSync(env.GAMEBAR_THEME_FILE), "theme writes no theme file");
   cli("next");
-  ok(!existsSync(env.GAMEBAR_THEME_FILE), "theme next wraps to doom and removes the saved file");
-  ok(render().includes("MODEL"), "doom theme -> back to the DOOM preset");
+  ok(saved() === "doom-full" && render().includes("MODEL"), `theme next after the last skin wraps to the first, doom's (${saved()})`);
+  cli("next");
+  ok(saved() === "doom-standard", `theme next goes on through the skins (${saved()})`);
   cli("minecraft-hud");
-  ok(JSON.parse(readFileSync(env.GAMEBAR_THEME_FILE, "utf8")).theme === "minecraft", "old name minecraft-hud -> saved as minecraft");
+  ok(saved() === "minecraft", "old name minecraft-hud -> saved as the minecraft skin");
+  ok(cli("list") === skinCli("list") && cli() === skinCli(), "theme and theme list list the skins, as skin does");
+  let threw = false;
+  try { execFileSync(process.execPath, [path.join(ROOT, "bin", "cli.js"), "theme", "satisfactory"], { env, stdio: "pipe" }); } catch { threw = true; }
+  ok(threw && saved() === "minecraft", "unknown (or removed) theme is rejected and nothing is saved");
+
+  // The theme file a release before skins saved is still read while no skin is chosen.
+  rmSync(skinFile);
   writeFileSync(env.GAMEBAR_THEME_FILE, JSON.stringify({ theme: "minecraft-hud" }));
   ok(render().includes("━"), "a saved 0.12.x choice (minecraft-hud) still renders the hotbar");
   writeFileSync(env.GAMEBAR_THEME_FILE, JSON.stringify({ theme: "satisfactory" }));
   ok(render().includes("MODEL"), "a saved theme that no longer exists falls back to doom");
-  let threw = false;
-  try { execFileSync(process.execPath, [path.join(ROOT, "bin", "cli.js"), "theme", "satisfactory"], { env, stdio: "pipe" }); } catch { threw = true; }
-  ok(threw, "unknown (or removed) theme is rejected");
+  writeFileSync(env.GAMEBAR_THEME_FILE, JSON.stringify({ theme: "minecraft" }));
+  cli("doom");
+  ok(render().includes("MODEL") && JSON.parse(readFileSync(env.GAMEBAR_THEME_FILE, "utf8")).theme === "minecraft",
+    "a chosen skin wins over the saved theme, and the theme file is left as it is");
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }
@@ -173,7 +191,8 @@ try {
 const home = mkdtempSync(path.join(os.tmpdir(), "gamebar-theme-home-"));
 try {
   const env = { ...process.env, ...sandboxEnv(home), HOME: home, USERPROFILE: home, COLUMNS: "220", GAMEBAR_MSYS_REAP: "0" };
-  for (const k of ["GAMEBAR_THEME", "DOOMBAR_THEME", "GAMEBAR_THEME_FILE", "DOOMBAR_THEME_FILE"]) delete env[k];
+  for (const k of ["GAMEBAR_THEME", "DOOMBAR_THEME", "GAMEBAR_THEME_FILE", "DOOMBAR_THEME_FILE", "GAMEBAR_SKIN", "DOOMBAR_SKIN",
+    "GAMEBAR_PRESET", "DOOMBAR_PRESET"]) delete env[k];
   const childHome = execFileSync(process.execPath, ["--input-type=module", "-e", "import os from 'node:os'; process.stdout.write(os.homedir())"],
     { env, encoding: "utf8" });
   if (path.resolve(childHome) !== path.resolve(home)) {
@@ -193,26 +212,18 @@ try {
     ok(render({ DOOMBAR_THEME: "minecraft" }).includes("━"), "only DOOMBAR_THEME=minecraft set -> the bar renders Minecraft");
     ok(render({ GAMEBAR_THEME: "doom", DOOMBAR_THEME: "minecraft" }).includes("MODEL"), "both names set -> GAMEBAR_THEME wins");
 
-    cli("minecraft"); // creates ~/.claude
-    rmSync(newFile, { force: true });
+    mkdirSync(claudeDir, { recursive: true });
     writeFileSync(oldFile, JSON.stringify({ theme: "minecraft" }) + "\n");
     ok(saved() === "minecraft" && render().includes("━"), "only the old theme file says minecraft -> the saved theme is minecraft");
-    // The old package may still run and read the old file, so saving a theme never removes it.
-    cli("doom");
-    ok(existsSync(oldFile) && JSON.parse(readFileSync(oldFile, "utf8")).theme === "minecraft", "theme doom leaves the old theme file as it is");
-    ok(existsSync(newFile) && JSON.parse(readFileSync(newFile, "utf8")).theme === "doom",
-      "while an old file exists, the default theme is written to the new file");
-    ok(saved() === "doom", "after theme doom the saved theme reads doom, not the old file's minecraft");
+    writeFileSync(newFile, JSON.stringify({ theme: "doom" }) + "\n");
+    ok(saved() === "doom" && render().includes("MODEL"), "with both files, the new one wins");
+    rmSync(newFile);
 
-    writeFileSync(oldFile, JSON.stringify({ theme: "doom" }) + "\n");
-    cli("minecraft");
-    ok(existsSync(newFile) && existsSync(oldFile), "saving a theme writes the new file and leaves the old one");
-    ok(saved() === "minecraft", "and the saved theme is the new file's");
-
-    rmSync(oldFile, { force: true });
+    // The old package may still run and read the old file, so choosing a skin never touches it.
     cli("doom");
-    ok(!existsSync(newFile), "with no old file, the default theme leaves no file at all");
-    ok(saved() === "doom", "and the saved theme reads doom");
+    ok(existsSync(oldFile) && JSON.parse(readFileSync(oldFile, "utf8")).theme === "minecraft" && !existsSync(newFile),
+      "theme doom leaves the old theme file as it is and writes no new one");
+    ok(render().includes("MODEL"), "and the chosen skin wins over the old file's minecraft");
   }
 } finally {
   rmSync(home, { recursive: true, force: true });

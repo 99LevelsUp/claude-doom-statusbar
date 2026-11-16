@@ -1,19 +1,21 @@
 #!/usr/bin/env node
 // The general part of the bar (everything under src/ except src/games/, plus bin/) knows no game: it
 // reaches games only through the registry (src/games/index.js). This scans its code, comments
-// left out, for a registered game's name in quotes and for a path into a game's folder, so a game
-// name that creeps back into the general part fails here instead of in the next game.
+// left out, for a registered game's name, older theme name or bundled skin name in quotes and for
+// a path into a game's folder, so a game name that creeps back into the general part fails here
+// instead of in the next game.
 
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { GAMES } from "../../src/games/index.js";
+import { gameNames, bundledSkins } from "../../src/games/index.js";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 
-const names = GAMES.flatMap((g) => [g.name, ...(g.aliases || [])]);
+const names = [...new Set([...gameNames(), ...bundledSkins().map((s) => s.name)])];
+ok(gameNames().length > 0, `the registry finds the games in their folders (${names.join(", ")})`);
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const quoted = new RegExp(`["'\`](${names.map(esc).join("|")})["'\`]`);
 const gamePath = new RegExp(`games/(${names.map(esc).join("|")})\\b`);

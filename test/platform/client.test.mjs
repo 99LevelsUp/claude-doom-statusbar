@@ -23,7 +23,7 @@ const WIN = process.platform === "win32";
 const BASH = process.env.GAMEBAR_TEST_BASH || (WIN ? "C:/Program Files/Git/bin/bash.exe" : "bash");
 const HASH = "abc1234567";
 const OFFLINE = "gamebar: offline\n";
-const FORWARDED = ["COLUMNS", "GAMEBAR_PRESET", "GAMEBAR_THEME", "GAMEBAR_TEXT_OVERFLOW",
+const FORWARDED = ["COLUMNS", "GAMEBAR_PRESET", "GAMEBAR_THEME", "GAMEBAR_SKIN", "GAMEBAR_TEXT_OVERFLOW",
   "GAMEBAR_INDENT", "GAMEBAR_FRAME_WINDOW", "GAMEBAR_STATE", "GAMEBAR_EVENTS", "GAMEBAR_LLMLINGUA",
   "GAMEBAR_SAVINGS_STATE", "CLAUDE_CODE_TASK_LIST_ID", "CLAUDE_CONFIG_DIR",
   "WT_SESSION", "TERM_PROGRAM", "TMUX", "GAMEBAR_GLYPHS", "TERM", "VTE_VERSION"];
@@ -180,12 +180,12 @@ try {
   {
     const sid = "payload-env";
     const json = JSON.stringify({ session_id: sid, cwd: "C:\\work", nested: { a: [1, 2] } }, null, 2) + "\n";
-    const r = run({ sid, input: json, env: { COLUMNS: "137", GAMEBAR_PRESET: "compact", GAMEBAR_THEME: "do\tom\nx", GAMEBAR_INDENT: "",
+    const r = run({ sid, input: json, env: { COLUMNS: "137", GAMEBAR_PRESET: "compact", GAMEBAR_THEME: "do\tom\nx", DOOMBAR_SKIN: "mine", GAMEBAR_INDENT: "",
       CLAUDE_CODE_TASK_LIST_ID: "list-7", CLAUDE_CONFIG_DIR: "C:\\cfg\\claude" } });
     const payload = existsSync(inSandbox(sid, "payload")) ? readFileSync(inSandbox(sid, "payload"), "utf8") : "";
     const nl = payload.indexOf("\n");
     const envLine = shellTermless(payload.slice(0, nl));
-    ok(envLine === "gamebar-env\tCOLUMNS=137\tGAMEBAR_PRESET=compact\tGAMEBAR_THEME=doomx\tGAMEBAR_INDENT=\tCLAUDE_CODE_TASK_LIST_ID=list-7\tCLAUDE_CONFIG_DIR=C:\\cfg\\claude",
+    ok(envLine === "gamebar-env\tCOLUMNS=137\tGAMEBAR_PRESET=compact\tGAMEBAR_THEME=doomx\tDOOMBAR_SKIN=mine\tGAMEBAR_INDENT=\tCLAUDE_CODE_TASK_LIST_ID=list-7\tCLAUDE_CONFIG_DIR=C:\\cfg\\claude",
       `environment line forwards set variables, drops tabs and newlines in values (got ${show(envLine)})`);
     ok(payload.slice(nl + 1) === json, "the stdin JSON follows the environment line byte for byte");
 

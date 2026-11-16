@@ -1,5 +1,7 @@
 // Themes: which game the HUD dresses up as. Switched live with
 //   claude-game-bar theme <name|next>
+// The theme is the choice releases before skins saved. A chosen skin (src/skin-select.js) wins over
+// it; while none is chosen, the theme picks the game whose default skin is drawn.
 //
 // The choice lives in a tiny JSON file the statusline reads on every render, so a switch
 // shows up on the next refresh (about a second), with no restart and no settings.json edit.

@@ -73,7 +73,7 @@ function session(name, label, usd = 1) {
     GAMEBAR_PRESET: path.join(PRESETS, "standard.toml"), GAMEBAR_RATELIMITS_SHARE: "0",
     GAMEBAR_STATE: path.join(dir, "state", "checkpoint.json"), GAMEBAR_TASKS_DIR: path.join(dir, "tasks"),
     GAMEBAR_EVENTS: path.join(dir, "events.jsonl"), GAMEBAR_LLMLINGUA: path.join(dir, "ling.json"),
-    GAMEBAR_RATELIMITS: path.join(dir, "rl.json"),
+    GAMEBAR_RATELIMITS: path.join(dir, "rl.json"), GAMEBAR_USER_DIR: path.join(SB, "user"),
   };
   const data = {
     session_id: `sid-${name}`, session_name: `${label}-run`, cwd: path.join(dir, "proj"),

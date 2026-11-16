@@ -1,0 +1,14 @@
+# The sized fixture game's minimal skin.
+version = 1
+name = "sized-minimal"
+root = "bar"
+
+[element.bar]
+kind = "row"
+children = ["model-name"]
+
+[element.model-name]
+kind = "text"
+metric = "model.name"
+icon = "MIN"
+width = 12
