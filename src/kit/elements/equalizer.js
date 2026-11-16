@@ -4,7 +4,7 @@
 
 import { OK, TERM_RGB, sgrFg, sgrBg, pyround } from "../ansi.js";
 import { vlen } from "../text.js";
-import { colorFor, bgsgrBox } from "../meters.js";
+import { colorFor, bgsgrBox } from "../colors.js";
 import { define, param } from "./schema.js";
 import { iconParam, labelOf, labelWidth, block, blank, trackRgb } from "./paint.js";
 

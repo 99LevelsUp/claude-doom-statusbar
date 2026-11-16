@@ -4,7 +4,7 @@
 // line of "━" with its level in the middle.
 
 import { TEXT, BOLD, TERM_RGB, sgrFg, sgrBg, pyround } from "../ansi.js";
-import { colorFor, rgbOf, bgsgrBox } from "../meters.js";
+import { colorFor, rgbOf, bgsgrBox } from "../colors.js";
 import { define, param } from "./schema.js";
 import { iconParam, labelOf, labelWidth, block, trackRgb } from "./paint.js";
 

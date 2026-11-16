@@ -1,18 +1,12 @@
 #!/usr/bin/env node
-// The game-neutral reaction (src/metrics/reaction.js) and the two games that read it: the frame
-// DOOM's mugshot script picks and the Minecraft hotbar's hearts and reacting slot.
+// The game-neutral reaction (src/metrics/reaction.js) and the frame DOOM's mugshot script picks for
+// it. The Minecraft hotbar's reacting slot is pinned in test/games/minecraft-skin.test.mjs.
 import "../_temp-sandbox.mjs"; // before the modules that name temp paths
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { parse as parseToml } from "smol-toml";
 import { buildReaction, calmReaction, hpRow, DECAY } from "../../src/metrics/reaction.js";
 import { EXPRESSIONS } from "../../src/platform/journal.js";
 import { createScriptHost } from "../../src/platform/scripts/host.js";
 import { createAssetResolver } from "../../src/platform/assets.js";
 import { findGame } from "../../src/games/index.js";
-import { buildHotbar } from "../../src/games/minecraft/layout.js";
-import { renderContext } from "../../src/kit/context.js";
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
@@ -90,33 +84,6 @@ ok(react().expr === null && react().flash === null, "no expression: expr null, n
   const decayed = react({ expr: "ouch", age: 2 });
   ok(/^STFST1[012]$/.test(portrait(decayed, NOW)), "doom: an ouch 2 s ago shows the idle glance");
   host.close();
-}
-
-// Minecraft hotbar: hearts flash with the reaction, the reacting slot holds for 6 s.
-{
-  const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-  const cfg = parseToml(readFileSync(path.join(ROOT, "src", "games", "minecraft", "presets", "minecraft.toml"), "utf8"));
-  const vals = { "context.hp": 30, "ratelimit.5h": 40, "ratelimit.7d": 20, "act.errors": "1" };
-  const errorsSlot = cfg.slot.findIndex((s) => s.id === "act.errors");
-  const hud = (reaction) => buildHotbar(cfg, 100, renderContext({ values: vals, reaction, now: NOW }));
-  const calmHearts = hud(react({ values: vals })).lines[0];
-  const at = (age) => hud(react({ expr: "ouch", age, values: vals }));
-  ok(at(1).lines[0] !== calmHearts && at(1).selected === errorsSlot, "hotbar: an ouch 1 s ago flashes the hearts and selects the errors slot");
-  ok(at(2).lines[0] === calmHearts && at(2).selected === errorsSlot, "hotbar: at 2 s the hearts are normal again, the errors slot still held");
-  ok(at(5).selected === errorsSlot, "hotbar: the errors slot is still held at 5 s");
-  ok(at(7).selected === hud(react({ values: vals })).selected, "hotbar: after 6 s the slot goes back to the idle pick");
-  ok(hud(react({ expr: "frown", age: 0.5, values: vals })).lines[0] === calmHearts, "hotbar: an unknown expression leaves the hearts normal");
-  ok(hud(react({ expr: "frown", age: 0.5, values: vals })).selected === hud(react({ values: vals })).selected,
-    "hotbar: an unknown expression selects no reacting slot");
-  for (const [e, id] of Object.entries(cfg.hotbar.react)) {
-    const slot = cfg.slot.findIndex((s) => s.id === id);
-    ok(slot !== hud(react({ values: vals })).selected, `hotbar: the ${e} slot is not the idle pick (the check below can fail)`);
-    ok(hud(react({ expr: e, age: 1, values: vals })).selected === slot, `hotbar: ${e} selects its slot (${id})`);
-    ok(hud(react({ expr: e, age: 6.5, values: vals })).selected !== slot, `hotbar: ${e} lets its slot go after 6 s`);
-  }
-  const god = hud(react({ godUntil: NOW + 1, values: vals })).lines[0];
-  ok(god !== calmHearts && god !== at(1).lines[0], "hotbar: god turns the hearts another colour");
-  ok(hud(react({ exhausted: true, values: vals })).lines[0].includes("You died!"), "hotbar: dead -> You died!");
 }
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILED`);

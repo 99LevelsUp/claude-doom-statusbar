@@ -14,7 +14,7 @@
 
 import { TERM_RGB, RESET, BOLD, sgrFg, sgrBg } from "../ansi.js";
 import { vlen, marquee } from "../text.js";
-import { rgbOf, bgsgrBox } from "../meters.js";
+import { rgbOf, bgsgrBox } from "../colors.js";
 import { define, param } from "./schema.js";
 import { block, blank, pad } from "./paint.js";
 

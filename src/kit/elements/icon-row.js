@@ -6,7 +6,7 @@
 
 import { TEXT, sgrFg, pyround } from "../ansi.js";
 import { vlen, marquee } from "../text.js";
-import { colorFor, rgbOf } from "../meters.js";
+import { colorFor, rgbOf } from "../colors.js";
 import { define, param } from "./schema.js";
 import { iconParam, alignParam, labelOf, labelWidth, block, pad, blank, TEXT_HEX } from "./paint.js";
 import { textOf } from "./text.js";

@@ -6,11 +6,11 @@
 // folder into a registry entry, adds it to the registry's list and renders it through
 // renderSession, the same call the one-shot status line and the render daemon make: nothing outside
 // the fixture's folder is needed. It also pins the production list (themes cycle doom -> minecraft
-// -> doom, the old minecraft-hud name still resolves, every manifest is complete), the old layout
-// that still draws a skin whose file a game does not ship yet, and the preset paths written before
-// skins and before the presets moved into their games.
+// -> doom, the old minecraft-hud name still resolves, every manifest is complete, every game draws
+// only its skins), and the preset paths written before skins and before the presets moved into
+// their games.
 
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,9 +34,10 @@ const USER_DIR = path.join(SB, "user");
 Object.assign(process.env, { ...sandboxEnv(TMPDIR), PATH: "", GAMEBAR_MSYS_REAP: "0", GAMEBAR_RATELIMITS_SHARE: "0", GAMEBAR_USER_DIR: USER_DIR });
 for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "GAMEBAR_GLYPHS", "GAMEBAR_THEME", "GAMEBAR_PRESET", "GAMEBAR_SKIN"]) delete process.env[k];
 
-const { GAMES, readGame, defaultGame, gameNames, presetFile } = await import("../../src/games/index.js");
+const { GAMES, readGame, defaultGame, gameNames } = await import("../../src/games/index.js");
 const { THEME_NAMES, nextTheme, resolveTheme, currentTheme } = await import("../../src/theme.js");
 const { renderSession } = await import("../../src/render.js");
+const { selectSkin } = await import("../../src/skin-select.js");
 const { buildSkin } = await import("../../src/kit/skin/load.js");
 
 const strip = (s) => s.replace(/\x1b\[[0-9;]*m|\x1b\]8;[^\x07\x1b]*(?:\x1b\\|\x07)/g, "");
@@ -88,21 +89,16 @@ try {
     const files = Object.values(g.presets);
     ok(files.length > 0 && files.every((f) => inside(dir, f)) && Object.keys(g.presets).every((n) => Object.hasOwn(g.presetSkins, n)),
       `${g.name}: each preset it names has its place inside src/games/${g.name}`);
-    if (g.layout) {
-      ok(files.every((f) => existsSync(f)) && Object.hasOwn(g.presets, g.defaultPreset),
-        `${g.name}: it still draws with its old layout, so its presets exist and its default preset is one of them`);
-    } else {
-      ok(g.skins.every((s) => s.file && existsSync(s.file)) && files.every((f) => !existsSync(f)),
-        `${g.name}: it draws only its skins, every one a file, and ships no presets`);
-    }
+    ok(g.skins.every((s) => s.file && existsSync(s.file)) && files.every((f) => !existsSync(f)) && Object.hasOwn(g.presets, g.defaultPreset),
+      `${g.name}: it draws only its skins, every one a file, and ships no presets`);
+    ok(!("layout" in g) && !("layoutKey" in g), `${g.name}: its entry names no layout`);
   }
   ok(GAMES.find((g) => g.name === "doom").readsPresets && !GAMES.find((g) => g.name === "minecraft").readsPresets,
     "doom reads the preset setting, minecraft does not");
 
-  // A skin chosen by the session draws what the legacy preset setting of its size draws; a skin a
-  // game names but ships no file for yet draws the game's old layout and preset.
+  // A skin chosen by the session draws what the legacy preset setting of its size draws.
   {
-    const s = session("old-layout");
+    const s = session("by-name");
     const doom = GAMES.find((g) => g.name === "doom");
     for (const size of ["full", "standard", "minimal"]) {
       const skin = doom.presetSkins[size];
@@ -110,7 +106,7 @@ try {
         `GAMEBAR_SKIN=${skin} draws what doom's ${size} preset setting draws`);
     }
     ok(render(s, { GAMEBAR_SKIN: "minecraft", GAMEBAR_THEME: "doom" }) === render(s, { GAMEBAR_THEME: "minecraft" }),
-      "GAMEBAR_SKIN=minecraft draws the minecraft preset, whatever the theme");
+      "GAMEBAR_SKIN=minecraft draws the minecraft skin, whatever the theme");
   }
 
   // The fixture game: its own folder, data only, and it renders through renderSession.
@@ -118,7 +114,7 @@ try {
     const files = readdirSync(FIXTURE_DIR, { recursive: true }).map((f) => f.replace(/\\/g, "/")).sort();
     ok(files.join(",") === "game.toml,skins,skins/fixture.toml", `the fixture game is a manifest and one skin (${files.join(", ")})`);
     const FIXTURE_GAME = readGame(FIXTURE_DIR);
-    ok(FIXTURE_GAME.skins.length === 1 && inside(FIXTURE_DIR, FIXTURE_GAME.skins[0].file) && FIXTURE_GAME.layout === null,
+    ok(FIXTURE_GAME.skins.length === 1 && inside(FIXTURE_DIR, FIXTURE_GAME.skins[0].file) && !("layout" in FIXTURE_GAME),
       "its entry names only a skin from its own folder, and no layout");
     const skinFile = FIXTURE_GAME.skins[0].file;
     ok(buildSkin(parseToml(readFileSync(skinFile, "utf8")), skinFile).warnings.length === 0, "its skin loads without a warning");
@@ -139,17 +135,37 @@ try {
     ok(render(s, { GAMEBAR_THEME: "doom" }).includes("MODEL"), "with the fixture gone, doom draws its boxes again");
   }
 
-  // A game that draws with an old layout follows its theme, whatever preset is set; a game that
-  // reads presets takes only the preset names it declares, and any other preset (another game's,
-  // or one the user wrote) no longer draws: its default skin is drawn with a line naming the preset.
+  // A skin a manifest names but whose file is missing: the default skin is drawn, and a line under
+  // the bar names the missing skin.
+  {
+    const dir = path.join(SB, "ghost-game");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, "game.toml"), 'name = "ghostgame"\ndescription = "a game whose skin file is missing"\ndefault_skin = "ghost"\n');
+    const s = session("ghost");
+    withGame(readGame(dir), () => {
+      const lines = strip(render(s, { GAMEBAR_SKIN: "ghost" })).split("\n");
+      ok(lines[0].includes("MODEL") && lines.at(-1).trim().startsWith("gamebar:") && lines.at(-1).includes("ghost"),
+        `GAMEBAR_SKIN=ghost, a skin without a file, draws doom-full with a line naming ghost (${lines.at(-1).trim()})`);
+    });
+  }
+
+  // A game that reads no presets follows its theme, whatever preset is set; a game that reads presets
+  // takes only the preset names it declares, and any other preset (another game's, or one the user
+  // wrote) no longer draws: its default skin is drawn with a line naming the preset.
   {
     const s = session("cross");
     const over = { COLUMNS: "160", GAMEBAR_INDENT: "4" };
     const minecraft = render(s, { ...over, GAMEBAR_THEME: "minecraft" });
     ok(minecraft.includes("━") && !minecraft.includes("MODEL"), "the minecraft theme draws the hotbar");
     for (const preset of [path.join(ROOT, "src", "games", "minecraft", "presets", "minecraft.toml"), path.join(ROOT, "presets", "minecraft.toml")]) {
-      const lines = render(s, { ...over, GAMEBAR_THEME: "doom", GAMEBAR_PRESET: preset }).split("\n");
-      ok(strip(lines[0]).includes("MODEL") && strip(lines.at(-1)).includes(preset) && strip(lines.at(-1)).includes("doom-full"),
+      const env = { ...s.env, ...over, GAMEBAR_THEME: "doom", GAMEBAR_PRESET: preset };
+      // The warning names the whole path; the line under the bar may cut a long checkout path at the
+      // terminal's width, so the selection's own warning is checked for the name and the render for
+      // the line.
+      const sel = selectSkin(env);
+      const lines = render(s, env).split("\n");
+      ok(sel.name === "doom-full" && sel.warnings.some((w) => w.message.includes(preset) && w.message.includes("doom-full"))
+        && strip(lines[0]).includes("MODEL") && strip(lines.at(-1)).trim().startsWith("gamebar:"),
         `theme doom with ${path.relative(ROOT, preset)} in GAMEBAR_PRESET draws doom-full and names the preset`);
     }
     ok(render(s, { ...over, GAMEBAR_THEME: "minecraft", GAMEBAR_PRESET: path.join(DOOM_PRESETS, "full.toml") }) === minecraft,
@@ -158,16 +174,8 @@ try {
 
   // Preset paths written before the presets moved: <root>/presets/<name>.toml.
   {
-    const oldMinecraft = path.join(ROOT, "presets", "minecraft.toml");
-    const newMinecraft = path.join(ROOT, "src", "games", "minecraft", "presets", "minecraft.toml");
-    ok(!existsSync(oldMinecraft), "the old preset path no longer exists (the checks below can fail)");
-    ok(presetFile(oldMinecraft) === newMinecraft, "an old path to a preset a game still draws resolves to its new file");
-    ok(presetFile(newMinecraft) === newMinecraft, "a path that exists is used as is");
-    const missing = path.join(SB, "missing.toml");
-    ok(presetFile(missing) === missing, "a missing file no game registers stays as it is (and fails to load)");
-    const elsewhere = path.join(SB, "minecraft.toml");
-    ok(!existsSync(elsewhere) && presetFile(elsewhere) === elsewhere,
-      "a missing minecraft.toml outside the old presets folder stays as it is, not swapped for the bundled one");
+    ok(!existsSync(path.join(ROOT, "presets")) && !existsSync(path.join(ROOT, "src", "games", "minecraft", "presets")),
+      "no preset files are shipped, in the old folder or a game's");
     // DOOM's presets are gone; their file names still pick the size of a DOOM skin, from the old
     // folder and the later one alike.
     const oldFull = path.join(ROOT, "presets", "full.toml");

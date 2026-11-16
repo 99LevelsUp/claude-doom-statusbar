@@ -11,7 +11,7 @@
 
 import path from "node:path";
 import { TERM_RGB } from "../ansi.js";
-import { rgbOf, bgsgrBox } from "../meters.js";
+import { rgbOf, bgsgrBox } from "../colors.js";
 import { STEPS, stepIndex } from "../raster/glyphs.js";
 import { rasterize, rasterLine } from "../raster/asset-raster.js";
 import { VALUE_TYPES } from "../../metrics/catalogue.js";

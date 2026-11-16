@@ -2,16 +2,14 @@
 // The chat: a platform visual that plays conversations. The platform's metrics library (questions
 // and answers about the session's metrics) always plays; a skin names more conversation libraries,
 // scripts that run in the render daemon's script pass, and drops, changes or adds conversations by
-// key. The chat wraps and colours its lines as the Minecraft chat before it did.
+// key.
 
 import { TEMP_SANDBOX } from "../_temp-sandbox.mjs";
-import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { parse as parseToml } from "smol-toml";
 
 const { VISUALS, elementKind, accepts } = await import("../../src/kit/elements/index.js");
-const { wrapMessage, playChat, paintChat } = await import("../../src/kit/elements/chat.js");
+const { wrapMessage, playChat } = await import("../../src/kit/elements/chat.js");
 const { facts, conversations } = await import("../../src/kit/chat/metrics-library.js");
 const { loadSkin } = await import("../../src/kit/skin/load.js");
 const { fitSkin } = await import("../../src/kit/skin/fit.js");
@@ -20,18 +18,12 @@ const { createScriptHost } = await import("../../src/platform/scripts/host.js");
 const { runScripts, createScriptPass } = await import("../../src/kit/skin/scripts.js");
 const { renderSession } = await import("../../src/render.js");
 const { vlen } = await import("../../src/kit/text.js");
-const { RESET } = await import("../../src/kit/ansi.js");
-// Today's Minecraft chat, which the chat visual is checked against while it still exists.
-const { buildHotbar, wrapMessage: oldWrap } = await import("../../src/games/minecraft/layout.js");
-const { chatLog: oldChatLog } = await import("../../src/games/minecraft/chat.js");
-const { renderContext } = await import("../../src/kit/context.js");
 
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 const plain = (s) => s.replace(/\x1b\[[0-9;]*m|\x1b\]8;[^\x07\x1b]*(?:\x1b\\|\x07)/g, "");
 const textOf = (parts) => parts.map((p) => p.text).join("");
 
-const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const USER = path.join(TEMP_SANDBOX, "user");
 
 // A session's raw metric values, as the producers emit them (src/metrics/catalogue.js).
@@ -97,9 +89,12 @@ min_width = 70
 rows = ${c.rows || 3}
 ${c.extra || ""}`).join("\n")}`;
 
-const host = createScriptHost();
+// Generous budgets: these checks need the libraries to run, so a slow worker start on a loaded machine
+// must not leave them skipped. The product's budgets are not what is tested here.
+const host = createScriptHost({ callBudgetMs: 2000, graceMs: 2000, startupMs: 10000 });
+const testPass = () => createScriptPass({ budgetMs: 60000, callBudgetMs: 10000 });
 const NOW = 1_700_000_000;
-const run = (fit, values) => runScripts(fit, { host, pass: createScriptPass(), values, reaction: null, now: NOW, tick: NOW, resolveAsset: () => null });
+const run = (fit, values) => runScripts(fit, { host, pass: testPass(), values, reaction: null, now: NOW, tick: NOW, resolveAsset: () => null });
 
 try {
   console.log("the chat is a platform visual");
@@ -239,7 +234,7 @@ try {
       for (let t = NOW; t <= NOW + 600; t += 30) out.push(...renderSession({ data, env, now: t, scripts: scripts() }).map(plain));
       return out.join("\n");
     };
-    const daemon = sample(() => ({ host, pass: createScriptPass(), state: new Map() }));
+    const daemon = sample(() => ({ host, pass: testPass(), state: new Map() }));
     const oneShot = sample(() => false);
     ok(daemon.includes("the game says"), "the daemon's render plays a skin's library");
     ok(!oneShot.includes("the game says") && /<Opus 5\.5> /.test(oneShot), "the one-shot render plays only the metrics library");
@@ -263,30 +258,6 @@ try {
       ok(drawn.length === 6 && drawn.every((l) => vlen(l) === width) && !drawn.join("").includes("…"),
         `at ${width} columns every line is exactly as wide and messages wrap instead of being cut`);
     }
-  }
-
-  console.log("the same lines and colours as today's Minecraft chat");
-  {
-    const cfg = parseToml(readFileSync(path.join(ROOT, "src", "games", "minecraft", "presets", "minecraft.toml"), "utf8"));
-    const title = "the long session title that makes the longest message wider than one hundred columns of the strip";
-    for (const level of ["high", "max"]) {
-      for (const [target, w] of [[205, 60], [285, 100]]) {
-        const values = { "model.name": "Opus 5.5", "model.effort_level": level, "session.title": title, "context.hp": 78, "model.window": "1M" };
-        let same = true, width = null;
-        for (const now of [0, 7, 1005, 3333.5]) {
-          const lines = buildHotbar(cfg, target, renderContext({ values, now })).lines;
-          const strips = lines.map((l) => l.slice(RESET.length, l.indexOf(RESET, RESET.length) + RESET.length));
-          width = vlen(strips[0]);
-          // The same messages, painted by the chat visual (the old advancement role is its accent).
-          const msgs = oldChatLog(values, now, lines.length).map((m) => m.map((p) => ({ ...p, role: p.role === "adv" ? "accent" : p.role })));
-          const drawn = paintChat(msgs, { width: width, height: lines.length, params: params(), level, now });
-          same &&= drawn.every((d, i) => d.replace(/\x1b\[49m$/, "") === strips[i].replace(/\x1b\[0m$/, ""));
-        }
-        ok(width === w + 2 && same, `effort ${level}, a ${w}-column chat: the same bytes as today's chat strip`);
-      }
-    }
-    const msg = [{ text: "<", role: "text" }, { text: "Opus 5.5", role: "me" }, { text: "> " + "word ".repeat(30), role: "text" }];
-    ok([60, 100, 16].every((w) => JSON.stringify(wrapMessage(msg, w)) === JSON.stringify(oldWrap(msg, w))), "and the same wrapping");
   }
 } finally {
   host.close();

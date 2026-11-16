@@ -18,7 +18,7 @@
 //
 // A bundled skin's name is the `name` its file gives, else the file name without .toml. A skin the
 // manifest names (its default skin and the skins of its presets) is a skin of the game even while
-// its file is missing: the bar then draws the game's old layout and preset in its place.
+// its file is missing; the bar then draws the default skin with a warning.
 //
 // An entry of the list:
 //   name, description, about (the same blurb), aliases, default, dir, defaultSkin, readsPresets,
@@ -26,13 +26,9 @@
 //   the manifest names them, then the other skin files)
 //   usesPresetSetting  the same as readsPresets
 //   presets            preset name -> absolute path of its .toml file in the game's presets/, where
-//                      an installer before skins pointed the preset setting; the file is there only
-//                      while the game still draws with its old layout
-// and, while a game still draws with its old layout:
-//   defaultPreset      the preset the old layout renders when the preset setting names none
-//   layoutKey          the preset [bar] layout value that selects this game's layout
-//   layout             (cfg, target, ctx) -> lines, from a parsed preset, the target width and the
-//                      render context (src/kit/context.js)
+//                      an installer before skins pointed the preset setting; no game ships these
+//                      files any more, the paths only recognise the old settings
+//   defaultPreset      the first preset the manifest names
 //
 // The list is plain data. A test may add an entry (readGame of a folder of its own) and take it out
 // again; the lookups below read the list each time they are called.
@@ -40,13 +36,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { parse as parseToml } from "smol-toml";
-import { PACKAGE_ROOT, SRC_DIR } from "../package-root.js";
-import { minecraftLayout } from "./minecraft/layout.js";
-
-// The code the bundled games still draw with, by folder name, until their skins replace it.
-const OLD_LAYOUTS = {
-  minecraft: { layoutKey: "hotbar", layout: minecraftLayout, defaultPreset: "minecraft" },
-};
+import { SRC_DIR } from "../package-root.js";
 
 // The bundled skin files of a game folder, sorted by file name: [{ name, file }].
 function skinFiles(dir) {
@@ -61,9 +51,8 @@ function skinFiles(dir) {
   });
 }
 
-// The registry entry for the game folder `dir`, read from its game.toml. `old` is the old layout
-// the game still draws with, if any.
-export function readGame(dir, old = {}) {
+// The registry entry for the game folder `dir`, read from its game.toml.
+export function readGame(dir) {
   const m = parseToml(readFileSync(path.join(dir, "game.toml"), "utf8"));
   const legacy = m.legacy || {};
   const presetSkins = { ...(legacy.presets || {}) };
@@ -86,9 +75,7 @@ export function readGame(dir, old = {}) {
     skins: names.map((name) => ({ name, file: (files.find((f) => f.name === name) || {}).file || null })),
     usesPresetSetting: readsPresets,
     presets,
-    defaultPreset: old.defaultPreset ?? Object.keys(presets)[0] ?? null,
-    layoutKey: old.layoutKey ?? null,
-    layout: old.layout ?? null,
+    defaultPreset: Object.keys(presets)[0] ?? null,
   };
 }
 
@@ -97,7 +84,7 @@ export const GAMES = readdirSync(GAMES_DIR, { withFileTypes: true })
   .filter((e) => e.isDirectory() && existsSync(path.join(GAMES_DIR, e.name, "game.toml")))
   .map((e) => e.name)
   .sort()
-  .map((n) => readGame(path.join(GAMES_DIR, n), OLD_LAYOUTS[n]));
+  .map((n) => readGame(path.join(GAMES_DIR, n)));
 
 // The game called `name` or one of its aliases, or null.
 export const findGame = (name) =>
@@ -117,34 +104,11 @@ export function bundledSkins() {
     .map((s) => ({ ...s, game })));
 }
 
-// The drawing function for a parsed preset: the game whose layoutKey its [bar] layout names, else
-// the default game's.
-export function layoutFor(cfg) {
-  const key = (cfg.bar || {}).layout;
-  return (GAMES.find((g) => g.layoutKey && g.layoutKey === key) || defaultGame()).layout;
-}
-
-// The registered preset with this file name ("full.toml"), from any game, or null.
+// The registered preset with this file name ("full.toml"), from any game, or null: where the
+// installer of a release before skins pointed the preset setting.
 export function registeredPreset(fileName) {
   const m = /^(.+)\.toml$/.exec(fileName);
   if (!m) return null;
   const g = GAMES.find((game) => Object.hasOwn(game.presets, m[1]));
   return g ? g.presets[m[1]] : null;
-}
-
-// Where the presets lived before they moved into their games. Installations made before the move
-// still point there, at <root>/presets/<name>.toml.
-const LEGACY_PRESETS = path.join(PACKAGE_ROOT, "presets");
-const sameDir = (a, b) => process.platform === "win32"
-  ? path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase()
-  : path.resolve(a) === path.resolve(b);
-
-// The file to load for a preset path. A path that exists is used as is. A missing one in the old
-// presets folder whose file name is a registered preset loads the registered file. Anything else
-// stays as it is, so a moved or deleted preset of the user's own fails to load as it always did
-// instead of quietly drawing a bundled one.
-export function presetFile(file) {
-  if (existsSync(file)) return file;
-  if (!sameDir(path.dirname(file), LEGACY_PRESETS)) return file;
-  return registeredPreset(path.basename(file)) || file;
 }

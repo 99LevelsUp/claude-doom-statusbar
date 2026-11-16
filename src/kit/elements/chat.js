@@ -19,7 +19,7 @@
 
 import { sgrFg, sgrBg, TERM_RGB } from "../ansi.js";
 import { vlen } from "../text.js";
-import { rgbOf, bgsgrBox } from "../meters.js";
+import { rgbOf, bgsgrBox } from "../colors.js";
 import { define, param } from "./schema.js";
 import { blank } from "./paint.js";
 import { facts as metricFacts, conversations as metricsLibrary } from "../chat/metrics-library.js";

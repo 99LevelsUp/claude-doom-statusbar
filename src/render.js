@@ -1,14 +1,9 @@
-// Render one session's bar. The skin selection (src/skin-select.js) names the skin; a skin with a
-// file is loaded, fitted to the width and drawn (src/kit/skin/), with a warning line under it while
-// any part of it needs the user's attention. A skin a game names but does not ship a file for yet
-// is drawn the old way: its game's layout from the game registry (src/games/index.js) draws a preset.
-// Used by the one-shot status line (statusline.js) and the render daemon.
+// Render one session's bar. The skin selection (src/skin-select.js) names the skin; it is loaded,
+// fitted to the width and drawn (src/kit/skin/), with a warning line under it while any part of it
+// needs the user's attention. A skin that cannot be loaded gives way to the default game's default
+// skin, with a warning. Used by the one-shot status line (statusline.js) and the render daemon.
 
-import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { parse as parseToml } from "smol-toml";
-import { renderContext } from "./kit/context.js";
-import { rgbOf } from "./kit/meters.js";
 import { effectiveStep } from "./kit/raster/glyph-level.js";
 import { loadSkin } from "./kit/skin/load.js";
 import { fitSkin } from "./kit/skin/fit.js";
@@ -16,8 +11,7 @@ import { drawFit } from "./kit/skin/draw.js";
 import { runScripts } from "./kit/skin/scripts.js";
 import { warningLine, memoryStore } from "./kit/skin/warnings.js";
 import { createAssetResolver, chainGames, recordUsage } from "./platform/assets.js";
-import { currentTheme, themePreset, defaultPreset } from "./theme.js";
-import { layoutFor, presetFile, defaultGame } from "./games/index.js";
+import { defaultGame } from "./games/index.js";
 import { selectSkin, findSkin } from "./skin-select.js";
 import { collectValues } from "./metrics/index.js";
 import { buildReaction } from "./metrics/reaction.js";
@@ -26,20 +20,6 @@ import { envGet } from "./platform/env.js";
 // When each warning first appeared, for as long as this process lives: the render daemon's store.
 // The one-shot status line, a new process every render, passes a store kept in a file instead.
 const processStore = memoryStore();
-
-// Parsed presets by file path, re-parsed when the file's mtime or size changes. The builders
-// never modify a preset, so one parse serves every render.
-const presetCache = new Map();
-function loadPreset(file) {
-  let st;
-  try { st = statSync(file); } catch { return parseToml(readFileSync(file, "utf8")); }
-  const key = `${st.mtimeMs}:${st.size}`;
-  const hit = presetCache.get(file);
-  if (hit && hit.key === key) return hit.cfg;
-  const cfg = parseToml(readFileSync(file, "utf8"));
-  presetCache.set(file, { key, cfg });
-  return cfg;
-}
 
 // The session's metric values and its reaction.
 function sessionValues(data, env, now) {
@@ -81,11 +61,8 @@ export function renderSession({ data, env = process.env, now = Date.now() / 1000
   if (data && typeof data === "object" && !Array.isArray(data)) data = { ...data };
 
   const selected = selectSkin(env);
-  if (selected.file) {
-    const lines = renderSkin(selected, data, env, now, warningStore, scripts);
-    if (lines) return lines;
-  }
-  return renderPreset(selected, data, env, now);
+  // Nothing to draw (not even the default skin loads): one line in the bar where the user looks.
+  return renderSkin(selected, data, env, now, warningStore, scripts) ?? [`gamebar: skin ${selected.name} cannot be drawn`];
 }
 
 // The selected skin, fitted, its scripts run and drawn, or null when nothing of it (nor of the
@@ -101,9 +78,17 @@ function renderSkin(selected, data, env, now, warningStore, scripts) {
   };
   note(selected);
   const fallback = note(findSkin(defaultGame().defaultSkin, env))?.file || null;
-  const loaded = loadSkin(selected.file, { fallback: fallback !== selected.file ? fallback : null });
+  const warnings = [...selected.warnings];
+  // A skin a game's manifest names but whose file is missing draws the default skin.
+  if (!selected.file && fallback) {
+    warnings.push({ key: `selection|no-file|${selected.name}`, cause: "no-file", skin: null, element: null, subject: selected.name,
+      message: `skin ${selected.name} has no file; drawing ${defaultGame().defaultSkin}` });
+  }
+  const file = selected.file || fallback;
+  if (!file) return null;
+  const loaded = loadSkin(file, { fallback: fallback !== file ? fallback : null });
   if (!loaded.skin) return null;
-  const warnings = [...selected.warnings, ...loaded.warnings];
+  warnings.push(...loaded.warnings);
   const { values, reaction } = sessionValues(data, env, now);
   const width = Math.max(0, columnsOf(env) - indentOf(env));
   const loadSmaller = (name) => {
@@ -141,48 +126,4 @@ function renderSkin(selected, data, env, now, warningStore, scripts) {
   recordUsage(selected.name, assets.packages(), { env, now: now * 1000 });
   const line = warningLine(warnings, { store: warningStore, now, width });
   return line ? [...lines, line] : lines;
-}
-
-// The old way: a game's layout draws a preset. A skin chosen by name (the session's or the saved
-// one) draws its game's preset of the skin's size. A skin the theme and the preset setting chose
-// draws exactly what they drew before skins: the theme's own preset, else the preset setting, else
-// the theme's default preset.
-function renderPreset(selected, data, env, now) {
-  const chosen = selected.source !== "legacy" && selected.game;
-  const theme = chosen ? selected.game.name : currentTheme(env);
-  // A path that no longer exists but names a registered preset (an installation from before the
-  // presets moved into their games) loads the registered file.
-  const named = chosen ? selected.game.presets[selected.size] : envGet("PRESET", env);
-  const preset = presetFile(themePreset(theme) || named || defaultPreset(theme));
-  // A preset that does not exist draws one line naming it, in the bar where the user looks, not
-  // an ENOENT stack on stderr that Claude Code never shows.
-  let cfg;
-  try { cfg = loadPreset(preset); } catch (e) {
-    if (e?.code === "ENOENT") return [`gamebar: preset not found: ${preset}`];
-    throw e;
-  }
-
-  const { values, reaction } = sessionValues(data, env, now);
-
-  // The face settings come from the chosen preset's [mugshot]: the glyph step this session's
-  // terminal allows, and the background transparent face areas are fitted against.
-  const mugshot = cfg.mugshot || {};
-  // Sibling presets (the narrow-width fallback chain) resolve in the folder of the file actually
-  // loaded, so an old path redirected above finds them beside the registered one.
-  const presetDir = path.dirname(preset);
-  const ctx = renderContext({
-    values, reaction, now,
-    tick: Math.floor(now), // one marquee step per refresh (~1s); pure fn of time
-    step: effectiveStep(env, mugshot.glyphs),
-    background: rgbOf(mugshot.background ?? "#000000"),
-    overflow: envGet("TEXT_OVERFLOW", env) || undefined, // set: wins over the presets' text_overflow
-    indent: indentOf(env),
-    presetByName: (name) => {
-      try { return loadPreset(path.join(presetDir, `${name}.toml`)); }
-      catch { return null; }
-    },
-  });
-
-  // The preset's [bar] layout picks the drawing function through the game registry.
-  return layoutFor(cfg)(cfg, columnsOf(env), ctx);
 }

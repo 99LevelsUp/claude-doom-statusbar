@@ -4,7 +4,7 @@
 
 import { sgrFg } from "../ansi.js";
 import { vlen, marquee, scrollWindow } from "../text.js";
-import { rgbOf } from "../meters.js";
+import { rgbOf } from "../colors.js";
 import { define, param } from "./schema.js";
 import { iconParam, labelOf, labelWidth, block, blank, TEXT_HEX } from "./paint.js";
 

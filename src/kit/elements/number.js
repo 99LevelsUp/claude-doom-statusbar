@@ -3,7 +3,7 @@
 
 import { TEXT, sgrFg } from "../ansi.js";
 import { vlen, marquee } from "../text.js";
-import { colorFor } from "../meters.js";
+import { colorFor } from "../colors.js";
 import { define, param } from "./schema.js";
 import { iconParam, alignParam, labelOf, labelWidth, block, pad } from "./paint.js";
 
