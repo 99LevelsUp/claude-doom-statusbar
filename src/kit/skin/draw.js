@@ -53,7 +53,7 @@ function drawNode(t, height, surface, env) {
   const script = Object.hasOwn(env.scripts, t.id) ? env.scripts[t.id] : null;
   if (!node.container) {
     const value = node.metric !== null && Object.hasOwn(env.values, node.metric) ? env.values[node.metric] : undefined;
-    return node.descriptor.draw({ value, params: node.params, width: t.width, height, surface, ctx: env.ctx, script: script ?? {} });
+    return node.descriptor.draw({ value, params: node.params, width: t.width, height, surface, ctx: env.ctx, script: script ?? {}, values: env.values });
   }
   const f = node.frame;
   const extra = f ? f.descriptor.extra(f.params, t.children.length) : { columns: 0, rows: 0 };

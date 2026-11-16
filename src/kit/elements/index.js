@@ -11,10 +11,14 @@
 //   validate(given) -> { params, problems }   the parameters to draw with, and what was skipped
 //   widths(params) -> { min, natural }         columns, from its parameters only, never its value
 //   rows(params)   -> the rows it asks for
-//   draw({ value, params, width, height, surface, ctx, script }) -> `height` lines, each exactly
-//                 `width` columns. `surface` is the background it is drawn on ([r, g, b]; black
-//                 stands for the terminal's own), `ctx` the render context (tick, step,
-//                 resolveAsset) and `script` what the element's script returned for this render.
+//   draw({ value, params, width, height, surface, ctx, script, values }) -> `height` lines, each
+//                 exactly `width` columns. `surface` is the background it is drawn on ([r, g, b];
+//                 black stands for the terminal's own), `ctx` the render context (tick, step,
+//                 resolveAsset, now), `script` what the element's script returned for this render
+//                 and `values` all of the session's metric values (the chat says what they are).
+//   libraries(params) -> optional: the conversation libraries the script pass runs for the
+//                 element (src/kit/skin/scripts.js); their results reach the draw as
+//                 `script.conversations`
 //
 // A container (row, column):
 //   params, validate, as above
@@ -41,6 +45,7 @@ import { equalizer } from "./equalizer.js";
 import { iconRow, icon } from "./icon-row.js";
 import { scrollList } from "./scroll-list.js";
 import { animation, animation3d } from "./animation.js";
+import { chat } from "./chat.js";
 
 export { validateParams, PARAM_TYPES } from "./schema.js";
 export { PLATFORM_ICONS } from "./icon-row.js";
@@ -49,7 +54,7 @@ const byName = (list) => Object.freeze(Object.fromEntries(list.map((d) => [d.nam
 
 export const CONTAINERS = byName([row, column]);
 export const FRAMES = byName([box, grid]);
-export const VISUALS = byName([text, number, progress, sparkline, equalizer, icon, iconRow, scrollList, animation, animation3d]);
+export const VISUALS = byName([text, number, progress, sparkline, equalizer, icon, iconRow, scrollList, chat, animation, animation3d]);
 
 // The descriptor of a skin element's kind: a container or a metric visual, or null.
 export function elementKind(name) {

@@ -31,6 +31,11 @@
 //   state     kept for the next run (it is the only way back: the input reaches the script as a
 //             copy)
 //
+// A chat's conversation libraries (src/kit/elements/chat.js) run in the same batch: each library's
+// `conversations(facts)` gets the session's facts (src/kit/chat/metrics-library.js), and what the
+// libraries return reaches the chat as `conversations`, in the order the skin names them. A library
+// that fails is left out of the chat, with a warning naming it.
+//
 // A script that throws or runs past its budget leaves its element on its default visual and puts a
 // warning under the bar, and the host keeps it off until its file or its skin changes. When the pass
 // has no time left for a session, that session's elements draw their defaults for this render only:
@@ -42,6 +47,7 @@ import { vlen } from "../text.js";
 import { clipLine } from "./draw.js";
 import { blank } from "../elements/paint.js";
 import { createScriptHost } from "../../platform/scripts/host.js";
+import { facts } from "../chat/metrics-library.js";
 
 export const CALL_BUDGET_MS = 20;
 export const PASS_BUDGET_MS = 200;
@@ -125,6 +131,9 @@ function rebuild(t, nodes) {
 // Why each failed script failed, by its warning's key, for as long as this process lives.
 const reasons = new Map();
 
+// The conversation libraries a drawn element names (a chat's), or none.
+const librariesOf = (node) => (!node.container && typeof node.descriptor.libraries === "function" ? node.descriptor.libraries(node.params) : []);
+
 const valueOf = (node, values) => (node.metric !== null && Object.hasOwn(values, node.metric) ? values[node.metric] : null);
 const isPlainObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 
@@ -145,13 +154,14 @@ export function runScripts(fit, { host, pass = createScriptPass(), state = new M
   folderOf = (skin) => path.dirname(skin.file || "."), resolveAsset = null } = {}) {
   const warnings = [];
   const skin = fit.skin;
-  const elements = [];
+  const elements = [], talkers = [];
   const walk = (t) => {
     if (typeof t.node.script === "string" && t.node.script !== "") elements.push(t);
+    if (librariesOf(t.node).length) talkers.push(t);
     t.children.forEach(walk);
   };
   if (fit.tree) walk(fit.tree);
-  if (!elements.length) return { fit, scripts: {}, warnings };
+  if (!elements.length && !talkers.length) return { fit, scripts: {}, warnings };
 
   const skinKey = `${skin.file}@${stampOf(skin.file)}`;
   const folder = folderOf(skin);
@@ -182,8 +192,23 @@ export function runScripts(fit, { host, pass = createScriptPass(), state = new M
       },
     });
   }
+  // The conversation libraries of the drawn chats, in the same batch: each gets the session's facts.
+  let known = null;
+  for (const t of talkers) {
+    for (const ref of librariesOf(t.node)) {
+      const where = resolveScript(ref, folder, resolveAsset);
+      if (where.outside) {
+        warn(t, "script-outside", ref, `${t.id}: conversation library ${ref} is outside the skin's folder; not run`);
+        continue;
+      }
+      if (!where.file) continue;
+      runs.push({ t, ref, file: where.file, library: true });
+      calls.push({ script: where.file, skin: skinKey, fn: "conversations", input: (known ??= facts(values)) });
+    }
+  }
 
   const scripts = {};
+  const heard = new Map(); // chat element -> its libraries' results, in order
   const nodes = new Map();
   if (calls.length) {
     const left = pass.left();
@@ -194,21 +219,26 @@ export function runScripts(fit, { host, pass = createScriptPass(), state = new M
       pass.spend(performance.now() - started);
     }
     results.forEach((r, i) => {
-      const { t, ref, file, stamp } = runs[i];
-      if (r.status === "ok") {
+      const { t, ref, file, stamp, library } = runs[i];
+      if (r.status === "ok" && library) {
+        if (isPlainObject(r.output)) heard.set(t, [...(heard.get(t) ?? []), r.output]);
+      } else if (r.status === "ok") {
         const out = isPlainObject(r.output) ? r.output : {};
         scripts[t.id] = out;
         if (isPlainObject(out.params)) nodes.set(t, withParams(t, out.params));
         if (Object.hasOwn(out, "state")) state.set(t.id, { stamp, state: isPlainObject(out.state) ? out.state : {} });
       } else if (r.status !== "skipped") {
-        const said = String(r.message || "").replace(`${file}: `, "");
-        const why = r.status === "error" ? `failed: ${said}` : said;
+        const msg = String(r.message || "").replace(`${file}: `, "");
+        const why = r.status === "error" ? `failed: ${msg}` : msg;
         const key = [skin.file, t.id, "script-failed", ref].join("|");
         // Once the host has turned the script off it only says so; the warning keeps naming why.
         if (r.status !== "disabled") reasons.set(key, why);
-        warn(t, "script-failed", ref, `${t.id}: script ${ref} ${reasons.get(key) ?? why}; drawn without it`);
+        warn(t, "script-failed", ref, library
+          ? `${t.id}: conversation library ${ref} ${reasons.get(key) ?? why}; the chat plays without it`
+          : `${t.id}: script ${ref} ${reasons.get(key) ?? why}; drawn without it`);
       }
     });
   }
+  for (const t of talkers) scripts[t.id] = { ...(scripts[t.id] ?? {}), conversations: heard.get(t) ?? [] };
   return { fit: nodes.size ? { ...fit, tree: rebuild(fit.tree, nodes) } : fit, scripts, warnings };
 }
