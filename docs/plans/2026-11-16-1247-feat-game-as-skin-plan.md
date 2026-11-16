@@ -220,16 +220,17 @@ Product Contract preservation: changed: R28 — "in use" now means the saved cho
 - KTD2. **One descriptor per element kind and per visual, owned by the platform.** A descriptor carries its name, description, parameter schema (name, meaning, type, default, allowed values), accepted value types, minimum and natural width from its parameters, and its draw function. It unifies today's split between drawing in `src/kit/meters.js` and width in `src/kit/planner.js`, and the parameter schemas are the machine-readable description of R4. Governs R1–R4, R6.
 - KTD3. **Metric producers emit raw values; presentation moves to visuals and skins.** Producers stop baking SGR colours (`loc.churn`), OSC 8 links (`loc.cwd`, `git.branch`, `pr.state`), icons (`model.effort`, `git.work`, `model.permission`) and colours of task marks into values. A link travels as a value attribute that the text visual renders, and icon maps become visual parameters. A catalogue module declares id, human name and value type for every key the producers emit. A skin that owns characters and colours (R7) cannot do so while values carry them. Governs R5, R7.
 - KTD4. **Scripts run in one persistent worker thread per daemon, with a deadline per script and a backstop per batch.**
-  - Inside the worker each script runs in its own `node:vm` context (no timers, `eval` or `wasm`) with a per-script `timeout`, which stops synchronous loops and disables only that script.
+  - Inside the worker each script runs in its own `node:vm` context (no timers, `eval` or `wasm`, `microtaskMode: "afterEvaluate"`), and every call goes through `vm.runInContext` with the per-script `timeout`, so synchronous loops and queued microtasks are both stopped and only that script is disabled. A call that returns a promise or thenable is an error result.
   - The render pass posts one batch per session and waits with `Atomics.wait`. The worker writes the index and start time of the script it is running into the shared buffer, so when the backstop fires (a hang `timeout` cannot stop), the host disables exactly that script, terminates and respawns the worker, and the batch's other elements draw their defaults for that pass only.
   - A respawned worker signals ready under its own startup deadline before the next batch, so start-up cost is never charged to a script.
-  - The budget belongs to the daemon pass, shared by all sessions: each batch gets the smaller of what is left of the pass and the per-element budget times its elements. Defaults are 20 ms per element and 200 ms per pass, tuned from U1.
+  - The budget belongs to the daemon pass, shared by all sessions: each batch gets the smaller of what is left of the pass and the per-element budget times its elements, and the order in which sessions get their batches rotates from pass to pass so no session is always last. Defaults are 20 ms per element and 200 ms per pass, tuned from U1.
+  - A script is disabled only when its own elapsed time, read from the shared buffer, exceeds its per-script budget, or when it throws. When a batch's deadline was cut short by what is left of the pass, or no budget is left for a session, that session's elements draw their defaults for this pass and nothing is disabled.
   - A disabled script stays disabled until its file's size or mtime or its skin changes.
   - Scripts are trusted like any code the user installs: `vm` is not a security boundary, and the README says so.
   - The one-shot status line runs no scripts. (session-settled: user-approved — chosen over running scripts in the one-shot renderer with disable markers on disk: a fresh process per tick would pay a worker start and a full timeout every tick.)
 
   Governs R17–R21, R24.
-- KTD5. **Scripts run after the fit and change only width-neutral things; conversation libraries are a second request kind.** An element script receives its element's bound values, the reaction, the time, the fitted width, the visible children and a state object kept per session and per element; it returns overrides of characters, colours, the selected child or the animation frame, never a size. Output wider than the fitted width is clipped, so the Minecraft highlight picks only among slots that fit. A conversation library request receives the facts and returns the next messages, which the chat visual wraps and clips. Governs R17, R18, R22, R24.
+- KTD5. **Scripts run after the fit and change only width-neutral things; conversation libraries are a second request kind.** A script file is a classic script, not an ES module, evaluated once in its context: an element script defines a global function `render(input)`, a conversation library a global function `conversations(facts)`. A file using `import` or `export` fails to load with an error naming the file. An element script receives its element's bound values, the reaction, the time, the fitted width, the visible children and a state object kept per session and per element; it returns overrides of characters, colours, the selected child or the animation frame, never a size. Output wider than the fitted width is clipped, so the Minecraft highlight picks only among slots that fit. A conversation library request receives the facts and returns the conversations that currently apply, keyed by conversation key; the chat visual merges, plays, wraps and clips them. Governs R17, R18, R22, R24.
 - KTD6. **Fit uses declared widths, skin-wide priorities and the smaller-skin chain.**
   - Elements whose metric is absent are removed before the fit, except list visuals, as `available()` does today. Keys appear and disappear rarely, so this does not cause flicker.
   - Each element reports minimum and natural width from its parameters, not from live text, so the layout does not change as values change.
@@ -239,7 +240,7 @@ Product Contract preservation: changed: R28 — "in use" now means the saved cho
   Governs R2, R9.
 - KTD7. **Skin selection is read at draw time, legacy settings included.**
   - Precedence: the session's `GAMEBAR_SKIN`, forwarded per session like `GAMEBAR_THEME`; then the saved choice; then the legacy mapping; then the default skin `doom-full`, matching what `install` writes today.
-  - The legacy mapping has two steps. The theme (`GAMEBAR_THEME` / `DOOMBAR_THEME`, then the saved theme file) picks the game. The basename of `GAMEBAR_PRESET` / `DOOMBAR_PRESET` picks the size only for a game whose manifest says it reads presets, as `usesPresetSetting` does today. So theme `minecraft` with the installer's `full.toml` draws the Minecraft skin.
+  - The legacy mapping has two steps. The theme (`GAMEBAR_THEME` / `DOOMBAR_THEME`, then the saved theme file) picks the game. The basename of `GAMEBAR_PRESET` / `DOOMBAR_PRESET` picks the size only for a game whose manifest says it reads presets, as `usesPresetSetting` does today. So theme `minecraft` with the installer's `full.toml` draws the Minecraft skin. A game with one skin, such as Minecraft, does not read presets, so every preset basename draws that skin without a warning.
   - Each game's manifest declares its legacy theme names and preset basenames, so no game name enters platform code (`test/games/general-part.test.mjs`).
   - A preset basename that a preset-reading game does not declare is a hand-edited preset: that game's default skin is drawn with a warning (R26).
   - `install` saves the choice to `skin.json` and writes `GAMEBAR_SKIN` into settings only for an explicit `--skin` or a `--project` / `--local` install. `skin <name>` warns when a `GAMEBAR_SKIN` in settings shadows the saved choice.
@@ -256,17 +257,17 @@ Product Contract preservation: changed: R28 — "in use" now means the saved cho
 - KTD9. **Each game's assets are one npm package, `@claude-game-bar/<game>`, installed per version and resolved by manifest only.**
   - A game manifest names its package and the version range the platform release accepts.
   - A checkout resolves assets from the repository's `games/<game>/assets/` folder. An installed bar resolves them from `assets/<game>@<version>/node_modules/@claude-game-bar/<game>`, taking the highest installed version its range accepts, so two installations with different ranges never overwrite each other.
-  - A missing package triggers a background install through the existing Windows-safe npm runner (`src/install/old-package.js`) as `npm install --prefix <temporary dir> --ignore-scripts --no-audit --no-fund`. The result is renamed to its new `<game>@<version>` directory, never over an existing one, under `install.lock`. A failure writes a retry-after marker of 10 minutes.
+  - A missing package triggers a background install under `install.lock`. The installer creates a temporary directory with `mkdtemp` inside `assets/`, so the final rename never crosses a filesystem, writes a `package.json` there whose only dependency is the manifest's package and range, and runs the existing npm runner (`src/install/old-package.js`) in that directory with the constant arguments `install --ignore-scripts --no-audit --no-fund`. No path or version range reaches the command line, so the runner's shell fallback on Windows stays safe. The result is renamed to its new `<game>@<version>` directory, never over an existing one. A failure writes a retry-after marker of 10 minutes; `install` removes temporary directories whose process is gone.
   - The renderer resolves the packages of the whole smaller chain, not only the selected skin.
   - `claude-game-bar install` and the `skin` command install in the foreground.
   - Asset references in skins name a game, never a package.
 
   Governs R8, R14, R21, R29.
-- KTD10. **Asset packages publish from `master` through their own workflow.** A workflow on pushes to `master` publishes each `games/<game>/assets` package whose version is not yet on npm, with OIDC trusted publishing and provenance. Each new package name needs a one-time manual first publish before trusted publishing can be configured, because npm allows that only for an existing package. (session-settled: user-directed — chosen over the owner's user scope and over unscoped prefixed names: the organisation scope is the project's name, can take a second maintainer, and is a stronger identity check than a name prefix.) Governs R14, R15.
+- KTD10. **Asset packages publish from `master` through their own workflow.** A workflow on pushes to `master` publishes each `games/<game>/assets` package whose version is not yet on npm, with OIDC trusted publishing and provenance. Its publish job runs in a GitHub environment `npm-assets` whose deployment rule allows only `master`, and each package's trusted publisher names that environment, so a run from another branch cannot publish. Each new package name needs a one-time manual first publish before trusted publishing can be configured, because npm allows that only for an existing package; until then the workflow skips a package that does not exist on npm and logs a notice instead of failing. (session-settled: user-directed — chosen over the owner's user scope and over unscoped prefixed names: the organisation scope is the project's name, can take a second maintainer, and is a stronger identity check than a name prefix.) Governs R14, R15.
 - KTD11. **The image-to-glyph cache becomes platform code keyed by asset path and stamp.** `src/games/doom/face.js` (loading, raster cache, `IDLE_FACE` for the test card) moves to `src/kit/raster/`, used by the animation visual. Keys become asset path plus size and mtime instead of bare sprite name and package version, so same-named sprites of two games do not collide and an asset that arrives mid-session replaces its default visual. Governs R8, R29.
 - KTD12. **Warnings show as one dim line under the bar, 60 s per cause.** Skin parts skipped (R12), missing assets (R29) and failed scripts (R20) are collected during the render; the bar adds one dim line naming the first cause and the count of others while any cause is younger than 60 s since it first appeared in this daemon's life. The one-shot renderer keeps the first-seen times in the runtime directory with `writeAtomic`. This follows the existing one-line precedent `gamebar: preset not found`. Governs R12, R20, R29.
 - KTD13. **An element whose required script or asset is unavailable draws its default visual: a declared default frame, else a blank of its minimum width.** An animation names a `default_frame` asset used when its selection script is disabled, missing or not run (one-shot mode), so the DOOM mugshot still shows a face there. Without assets it keeps its place as a blank, so the rest of the bar does not jump. Governs R18, R20, R29.
-- KTD14. **The chat is a metric visual fed by conversation libraries; the metrics library ships with the platform.** A conversation library is a script asset exporting conversations with conditions; the platform's metrics library runs as platform code, a game's or a skin's library runs in the script worker (KTD5's second request kind). A skin lists the libraries a chat element uses and drops, replaces or adds conversations by key. Several chat elements may each have their own set. Governs R3, R22, R23.
+- KTD14. **The chat is a metric visual fed by conversation libraries; the metrics library ships with the platform.** A conversation library is a script asset whose `conversations(facts)` returns the conversations that apply, keyed (KTD5); the platform's metrics library runs as platform code, a game's or a skin's library runs in the script worker (KTD5's second request kind). A skin lists the libraries a chat element uses and drops, replaces or adds conversations by key. Several chat elements may each have their own set. Governs R3, R22, R23.
 - KTD15. **The animation visual takes frames from a selection script.** A 2D animation names an asset folder of frames, a selection script and a `default_frame`; the script receives the reaction, its bound metric and the time and returns a frame name, which goes through the glyph raster with the terminal's glyph step as the ceiling (R27). The 3D visual is declared in the catalogue with its parameters and draws its default visual until Warcraft III supplies a renderer. Governs R3, R18, R27.
 - KTD16. **Bundled games stay data-only folders under `src/games/<game>/`; their assets move to `games/<game>/assets/`.** A game folder holds `game.toml` (name, description, legacy names, whether it reads presets, asset package and range, default skin) and `skins/*.toml`; the registry discovers folders instead of importing layouts, and still exports game names and legacy names for the platform-boundary test. Asset packages live outside `src/`, so the daemon's source watch does not scan them and the main package does not ship them. Governs R13, R24.
 
@@ -386,7 +387,7 @@ src/
 
 **Gate on release (not on merge)**
 
-- The owner creates the npm organisation `claude-game-bar`, publishes the first version of `@claude-game-bar/doom` and `@claude-game-bar/minecraft` by hand (`npm publish --access public`), and configures trusted publishing for both against `publish-assets.yml`. Until then an installed 2.0 cannot fetch assets; a checkout works from the repository folders.
+- The owner creates the npm organisation `claude-game-bar`, publishes the first version of `@claude-game-bar/doom` and `@claude-game-bar/minecraft` by hand (`npm publish --access public`), configures trusted publishing for both against `publish-assets.yml` and the `npm-assets` environment, and then sets both packages to require two-factor authentication and disallow tokens. Until then an installed 2.0 cannot fetch assets; a checkout works from the repository folders.
 
 **Deferred to implementation**
 
@@ -406,7 +407,7 @@ Each unit leaves `npm test` green. Old modules and the tests that import them ar
 | U3 | Element and visual descriptors, raster cache | `src/kit/elements/`, `src/kit/raster/` | U2 |
 | U4 | Skin loader and validator | `src/kit/skin/load.js` | U3 |
 | U5 | Fit, draw and warning line | `src/kit/skin/fit.js`, `draw.js`, `warnings.js` | U3, U4 |
-| U7 | Game folders, skin selection and CLI | `src/games/index.js`, `src/skin-select.js`, `src/render.js`, `bin/cli.js` | U4 |
+| U7 | Game folders, skin selection and CLI | `src/games/index.js`, `src/skin-select.js`, `src/render.js`, `bin/cli.js` | U4, U5 |
 | U6 | Scripts in the render pass | `src/kit/skin/scripts.js`, `src/render.js`, `src/daemon.js` | U1, U5, U7 |
 | U8 | Asset store, on-demand install, usage record | `src/platform/assets.js`, `src/hook.js` | U3, U7 |
 | U11 | Chat element and metrics library | `src/kit/elements/chat.js`, `src/kit/chat/` | U3, U6 |
@@ -427,7 +428,7 @@ Each unit leaves `npm test` green. Old modules and the tests that import them ar
 
 **Approach:**
 1. Measure first: a persistent worker answering a batch through a `MessagePort` and `Atomics.wait` on a `SharedArrayBuffer`, on Node 18, 22 and 26, on Windows and Linux. Print round-trip, spawn and per-call times in the test output.
-2. The worker loads each script once into its own `vm` context and caches it by path, size and mtime; each call runs with the per-script `timeout`.
+2. The worker loads each script file once as a classic script into its own `vm` context (KTD4, KTD5) and caches it by path, size and mtime; each call runs through `vm.runInContext` with the per-script `timeout`.
 3. The worker writes the running call's index and start time into the shared buffer; on the batch backstop the host disables that script, terminates the worker without awaiting it, and waits for the respawned worker's ready signal under a startup deadline before the next batch.
 4. If step 1 shows `Atomics.wait` is not usable, fall back to `vm` with `timeout` on the main thread and note the lost bounds in the module's header comment.
 
@@ -442,6 +443,8 @@ Each unit leaves `npm test` green. Old modules and the tests that import them ar
 - A disabled script whose file is rewritten (new mtime): the next call runs it again.
 - A script that throws: the call returns an error result naming the script; other scripts in the batch still return.
 - A script calling `setTimeout`, `eval` or `require`: the call returns an error result and nothing escapes the batch.
+- A script `async () => { for (;;) await 0; }`: its call returns a timeout result, it is the script disabled, and the next batch on the same worker succeeds.
+- A script file using `export default`: loading returns an error result naming the file.
 - A batch of 20 calls of a trivial script: the measured time is printed; the test asserts only that it is below the 200 ms pass budget on CI.
 
 **Verification:** the test passes on Linux CI and on the new Windows / Node 18 job, and the measurements are printed.
@@ -558,7 +561,7 @@ Each unit leaves `npm test` green. Old modules and the tests that import them ar
 
 **Requirements:** R10, R11, R13, R26; KTD7, KTD8, KTD16.
 
-**Dependencies:** U4.
+**Dependencies:** U4, U5.
 
 **Files:** `src/games/index.js`, `src/games/doom/game.toml`, `src/games/minecraft/game.toml`, `src/skin-select.js`, `src/render.js` (skin selection step, beside the old preset path until U9 and U10), `src/theme.js` (legacy reading), `src/daemon.js` and `src/gamebar-client.sh` (forward `GAMEBAR_SKIN` and `DOOMBAR_SKIN`, including the client's doc comment), `bin/cli.js` (`skin <name|next|list>`, `theme` as an alias, `install --skin`), `src/install/settings.js`, `package.json` (`scripts.theme`), `test/games/registry.test.mjs`, `test/games/fixture-game/` (rebuilt as data), `test/games/skin-select.test.mjs`, `test/games/general-part.test.mjs`, `test/platform/daemon.test.mjs`, `test/platform/client.test.mjs`, `test/install/installer.test.mjs`, `test/install/migration.test.mjs`.
 
@@ -570,12 +573,12 @@ Each unit leaves `npm test` green. Old modules and the tests that import them ar
 
 **Patterns to follow:** `aliases` and `usesPresetSetting` in today's registry as the model for manifest legacy names; `migratedPreset` in `src/install/settings.js`.
 
-**Test scenarios:**
-- Covers F2. A saved theme file `{ "theme": "minecraft" }`, `GAMEBAR_PRESET` at the installer's `full.toml`, no skin choice: the Minecraft skin is drawn with no warning.
-- `GAMEBAR_PRESET` pointing at the old `src/games/doom/presets/minimal.toml` with no theme: `doom-minimal` is drawn.
-- `GAMEBAR_PRESET` pointing at `~/my.toml`: the default DOOM skin is drawn with a warning naming the file.
-- A session with `GAMEBAR_SKIN=minecraft` while the saved choice is `doom-full`: that session draws Minecraft, another session draws DOOM.
-- After a global `install` and `skin minecraft`, sessions draw Minecraft (no `GAMEBAR_SKIN` in the global settings); after `install --local --skin doom-full`, `skin minecraft` prints a warning that the project's setting shadows it.
+**Test scenarios** (selection tests assert the skin name `src/skin-select.js` returns, against fixture games and skins under `test/games/fixture-game/` and `test/fixtures/skins/`; drawn checks of the bundled skins live in U9 and U10):
+- Covers F2. A saved theme file naming a fixture game that does not read presets, `GAMEBAR_PRESET` at the installer's `full.toml`, no skin choice: that game's skin is selected with no warning.
+- `GAMEBAR_PRESET` pointing at a legacy preset path whose basename a preset-reading fixture game declares as `minimal`: that game's minimal skin is selected.
+- `GAMEBAR_PRESET` pointing at `~/my.toml`: the default skin is selected with a warning naming the file.
+- A session with `GAMEBAR_SKIN` naming one fixture skin while the saved choice names another: that session selects its own, another session selects the saved one.
+- After a global `install` and `skin <name>`, sessions select that skin (no `GAMEBAR_SKIN` in the global settings); after `install --local --skin <other>`, `skin <name>` prints a warning that the project's setting shadows it.
 - `claude-game-bar skin next` cycles bundled skins in registry order, then user skins.
 - `test/games/general-part.test.mjs` finds a non-empty list of game names and still passes.
 
@@ -604,6 +607,8 @@ Each unit leaves `npm test` green. Old modules and the tests that import them ar
 - A script that stores a counter in its state: the counter increases across passes for one session and starts fresh for another.
 - One-shot mode: no script runs and the animation draws its `default_frame`.
 - Through `runPass`, three sessions each with a looping script: every session's frame is renewed within the default 3 s frame window, and the pass stays within its budget.
+- A worker respawn uses up the pass budget: the next session's healthy script draws its default for that pass and is still enabled on the following pass.
+- Two sessions whose scripts each need most of the pass budget: over successive passes both sessions get their scripts run.
 
 **Verification:** daemon tests pass with scripted fixture skins.
 
@@ -619,7 +624,7 @@ Each unit leaves `npm test` green. Old modules and the tests that import them ar
 
 **Approach:**
 1. Resolve `<game>:<path>` references through the game manifest to the checkout folder or the highest accepted installed version; a user skin's own references resolve inside its folder.
-2. On a missing package, start one detached `node src/hook.js --assets <game>` unless a live lock or a fresh retry-after marker exists; it installs into a temporary prefix with `--ignore-scripts` and renames it to `<game>@<version>`.
+2. On a missing package, start one detached `node src/hook.js --assets <game>` unless a live lock or a fresh retry-after marker exists; it installs as KTD9 describes (temporary directory inside `assets/`, generated `package.json`, constant npm arguments, `cwd` passed to the runner) and renames the result to `<game>@<version>`.
 3. Each render updates its installation's usage file with the skins and the chain's packages, at most once a minute per skin.
 4. `install` merges the usage files and removes `<game>@<version>` directories that neither `skin.json` nor a usage entry younger than 30 days references.
 
@@ -632,7 +637,8 @@ Each unit leaves `npm test` green. Old modules and the tests that import them ar
 - A failed install writes a retry-after marker; renders within 10 minutes start no install, one after does.
 - A lock whose process is gone is taken over; a live lock younger than 10 minutes is respected.
 - A skin reference naming a package directly (`@evil/pkg`) is rejected with a warning; only manifest packages install.
-- The npm stub receives `--ignore-scripts` and a name under `@claude-game-bar/`.
+- The npm stub's argument list is exactly `install --ignore-scripts --no-audit --no-fund`, its working directory is a temporary directory inside `assets/`, and that directory's `package.json` names only a package under `@claude-game-bar/`.
+- `install` removes a temporary directory left by a process that is gone and keeps one whose process is alive.
 
 **Verification:** with the npm stub, a fresh assets directory ends with the chosen skin chain's packages and nothing else.
 
@@ -679,6 +685,7 @@ Each unit leaves `npm test` green. Old modules and the tests that import them ar
 - Covers AE5. A Minecraft-styled container with the DOOM mugshot and reaction `ouch` at hp 2: the frame drawn is `STFOUCH2`.
 - Dead reaction: `STFDEAD0`; god: `STFGOD0`; idle at several clock values cycles the three idle frames.
 - `doom-full` at 200 columns shows the box titles MODEL, USAGE, PROJECT, ACTIVITY, AGENTS and TASKS.
+- Covers F2. `GAMEBAR_PRESET` at the old `src/games/doom/presets/minimal.toml` with no theme and no skin choice: `doom-minimal` is drawn.
 
 **Verification:** no file under `src/games/doom/` contains layout code, and `npm test` passes.
 
@@ -701,6 +708,7 @@ Each unit leaves `npm test` green. Old modules and the tests that import them ar
 - Reaction `ouch` with `act.errors` bound to slot 7: slot 7 is highlighted for 6 s, then the highlight wanders.
 - At 40 columns the rightmost slots drop before the hearts and hunger.
 - With context 100 % used, the hunger row shows no full shanks.
+- Covers F2. A saved theme file `{ "theme": "minecraft" }` with `GAMEBAR_PRESET` at the installer's `full.toml`: the Minecraft skin is drawn with no warning (Minecraft's manifest does not read presets).
 
 **Verification:** no layout code remains under `src/games/minecraft/`, and `npm test` passes.
 
@@ -715,13 +723,13 @@ Each unit leaves `npm test` green. Old modules and the tests that import them ar
 **Files:** `.github/workflows/publish-assets.yml`, `package.json` (`files` without game assets), `test/install/package-files.test.mjs`, `README.md`, `CONTRIBUTING.md`, `CHANGELOG.md`, `docs/BACKLOG.md`.
 
 **Approach:**
-1. The workflow runs on pushes to `master`, compares each `games/*/assets/package.json` version with npm and publishes the new ones with OIDC and provenance, upgrading npm to at least 11.5.1 first as `publish.yml` does.
+1. The workflow runs on pushes to `master`, compares each `games/*/assets/package.json` version with npm and publishes the new ones with OIDC and provenance from the `npm-assets` environment (KTD10), upgrading npm to at least 11.5.1 first as `publish.yml` does; a package that does not exist on npm yet is skipped with a notice.
 2. The changelog states the owner's one-time bootstrap and the breaking changes: old presets, `GAMEBAR_PRESET` replaced by `GAMEBAR_SKIN`, the theme command now `skin`, scripts as trusted code.
 
 **Test scenarios:**
 - The package's `files` and an `npm pack --dry-run` style listing contain no `.png` under `src/` and no `games/` folder.
 
-**Verification:** the new test passes; the workflow publishes nothing when versions are unchanged (checked on the first merge).
+**Verification:** the new test passes; on the first merge the workflow skips both packages with a notice (before the owner's bootstrap), and after the bootstrap it publishes nothing when versions are unchanged.
 
 ### U13. Snapshot harness on skins
 
@@ -781,3 +789,41 @@ Each unit leaves `npm test` green. Old modules and the tests that import them ar
 - A fixture game added as a folder alone draws in the bar.
 - The README, CONTRIBUTING and CHANGELOG describe skins, scripts as trusted code, the owner's npm bootstrap and the breaking changes.
 - Code from abandoned attempts (for example a script runtime variant U1 rejected) is removed from the diff.
+
+---
+
+## Deferred / Open Questions
+
+Review items left for the author. They do not block implementation.
+
+### From 2026-11-16 review
+
+- **A main-thread fallback could not keep a hanging script from stopping the daemon** — Planning Contract, KTD4 (script runtime) and U1 (script runtime) (P1, whole-doc via GPT-6.1 Terra, confidence 75)
+
+  A script that hangs inside native code or grows memory would stall or crash every session's bar under the fallback the plan allows, which breaks the requirement that a failing script never breaks the bar (R20). The plan names the lost bounds but still lets implementation proceed, while the Goal Capsule says to stop and ask if no runtime meets R20.
+  Change: drop the main-thread fallback as an accepted outcome; if U1's measurement rules out the worker, stop for the owner's decision.
+
+- **Asset updates and asset trust depend on whatever version npm resolves in range** — Planning Contract, KTD9 (asset packages) and U8 (asset store) (P2, security-lens and adversarial, confidence 75)
+
+  An installed bar keeps the first in-range version it finds, so a fixed mugshot script or a new sprite never reaches users, and any version published inside the range (by a leaked token or a mistake) runs on every machine with no review. Checkouts read assets from the repository, so tests and the owner's bars would not show either problem.
+  Change: each game manifest pins the exact asset version and its npm integrity, the installer verifies the integrity before the rename, and a test requires the manifest's pin to equal the version in the game's asset `package.json`; asset changes then reach users with the next platform release.
+
+- **An unknown parameter on a container would hide all its valid children** — U4 (skin loader and validator) (P2, whole-doc via GPT-6.1 Terra, confidence 75)
+
+  After an update removes a parameter, a container carrying it would be skipped with its whole subtree, and on the root container that blanks the bar, while R12 (skip what no longer holds, draw the rest) asks only for the stale part to be skipped.
+  Change: an unknown parameter is ignored with a warning and its element and descendants stay; unknown kinds, metrics and missing children still skip their element.
+
+- **"Asset batch" and "asset package" name the same thing** — Requirements, R15 (publishing) and R29 (missing assets) (P3, coherence, confidence 75)
+
+  Readers may take an asset batch to be something other than the npm package of KTD9, and "batch" also names the script-call batch of KTD4.
+  Change: replace "asset batch" with "asset package" in R15 and R29.
+
+- **Decision: should a project's old preset still choose the bar size after `skin` is used?** — Planning Contract, KTD7 (skin selection) (P2, adversarial and feasibility, confidence 75)
+
+  A 1.x `install --project --preset minimal` wrote a size into that project's settings; under KTD7 the saved skin from a later global `install` or `skin <name>` wins, so such projects switch to the global size without a warning. Letting the legacy preset keep choosing the size in projects keeps 1.x behaviour, but a stale global preset left from 1.x would then also override `skin <name>` for size until `install` is run again.
+  Recommendation: a project's legacy preset keeps choosing the size when the session has no `GAMEBAR_SKIN`, 2.0's global `install` removes the global preset it owns, and `skin <name>` warns while a preset in settings shadows it.
+
+- **Decision: may a skin lower the glyph step for one element?** — Requirements, R27 (glyph settings) and U9 (DOOM as data) (P2, coherence, confidence 75)
+
+  U9 keeps today's mugshot `glyphs` ceiling as an animation parameter that can only lower the terminal's step, while R27 says a skin cannot override the glyph step. Implementers cannot tell which holds.
+  Recommendation: allow a skin to lower, never raise, the step per element, and say so in R27, since lowering cannot produce characters the terminal does not draw.
