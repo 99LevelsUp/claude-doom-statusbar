@@ -41,7 +41,13 @@ export function renderSession({ data, env = process.env, now = Date.now() / 1000
   // installation from before the presets moved into their games) loads the registered file.
   const theme = currentTheme(env);
   const preset = presetFile(themePreset(theme) || envGet("PRESET", env) || defaultPreset(theme));
-  const cfg = loadPreset(preset);
+  // A preset that does not exist draws one line naming it, in the bar where the user looks, not
+  // an ENOENT stack on stderr that Claude Code never shows.
+  let cfg;
+  try { cfg = loadPreset(preset); } catch (e) {
+    if (e?.code === "ENOENT") return [`gamebar: preset not found: ${preset}`];
+    throw e;
+  }
 
   const { values, st, god_until } = collectValues(data, env, now);
 

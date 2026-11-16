@@ -161,7 +161,9 @@ try {
     const state = createState({ version: VERSION, now: t0 });
     runPass(state, { dir: TMPDIR, hash: HASH, now: t0 });
     const before = readFrame(bad);
-    bad.fwd.GAMEBAR_PRESET = path.join(SB, "missing.toml"); // renderSession's readFileSync throws
+    // A preset that is not TOML: renderSession throws (a missing one draws a line instead).
+    bad.fwd.GAMEBAR_PRESET = path.join(SB, "broken.toml");
+    writeFileSync(bad.fwd.GAMEBAR_PRESET, "[[[ not toml\n");
     bad.write();
     let kept = true, others = true;
     for (let i = 1; i <= 6; i++) {
