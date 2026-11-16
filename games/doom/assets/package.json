@@ -1,7 +1,11 @@
 {
   "name": "@claude-game-bar/doom",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "Assets of the DOOM game of claude-game-bar: the mugshot images and its frame selection script",
+  "files": [
+    "images/mugshot",
+    "scripts"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/99LevelsUp/claude-game-bar.git",

@@ -1,7 +1,11 @@
 {
   "name": "@claude-game-bar/minecraft",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "Assets of the Minecraft game of claude-game-bar: the hotbar highlight script and the chat's conversation library",
+  "files": [
+    "conversations",
+    "scripts"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/99LevelsUp/claude-game-bar.git",

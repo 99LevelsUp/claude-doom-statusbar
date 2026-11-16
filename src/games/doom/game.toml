@@ -16,5 +16,5 @@ presets = { full = "doom-full", standard = "doom-standard", minimal = "doom-mini
 # The npm package of the game's assets, pinned to one version and its npm integrity.
 [assets]
 package = "@claude-game-bar/doom"
-version = "0.0.0"
+version = "1.0.0"
 integrity = ""
