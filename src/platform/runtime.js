@@ -2,7 +2,7 @@
 // process identity and the atomic write. Shared by the hook, the render path, the daemon and the
 // installer. No spawns.
 
-import { readFileSync, writeFileSync, renameSync, unlinkSync, statSync, lstatSync, mkdirSync, chmodSync } from "node:fs";
+import { readFileSync, writeFileSync, renameSync, unlinkSync, statSync, lstatSync, mkdirSync, chmodSync, readdirSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -217,6 +217,30 @@ export function sessionPaths(sessionId, hash = ROOT_HASH, env = process.env) {
     payload: path.join(rt, `${payloadPrefix(hash)}${key}.json`), // client -> daemon input
     frame: path.join(rt, `${framePrefix(hash)}${key}.json`),     // daemon -> client output
   };
+}
+
+// Does another installation of the bar draw this session, and not this one? True when this
+// installation's client has not written the session's payload, while another installation's
+// client (another hash) has, within `freshMs`. A checkout wired with `install --local` over a
+// global install registers a second set of hooks, and Claude Code runs both; the hooks of the
+// installation that does not draw the session use this to step aside, so every event reaches the
+// journal once and only the drawing installation's daemon is supervised. With no payload at all
+// (SessionStart before the first tick, or the one-shot status line) nobody steps aside.
+// The default freshness is the render daemon's idle period: a payload older than that belongs to
+// a session no daemon draws any more.
+export function servedElsewhere(sessionId, { hash = ROOT_HASH, env = process.env, now = Date.now(),
+  freshMs = 600000 } = {}) {
+  const rt = runtimeDir(env);
+  const key = sidKey(sessionId);
+  try { statSync(path.join(rt, `${payloadPrefix(hash)}${key}.json`)); return false; } catch {}
+  const re = new RegExp(`^${payloadPrefix(`([0-9a-f]{${ROOT_HASH_LEN}})`)}(.+)\\.json$`);
+  let names = [];
+  try { names = readdirSync(rt); } catch { return false; }
+  return names.some((name) => {
+    const m = re.exec(name);
+    if (!m || m[1] === hash || m[2] !== key) return false;
+    try { return now - statSync(path.join(rt, name)).mtimeMs <= freshMs; } catch { return false; }
+  });
 }
 
 // Daemon-wide files, one pair per installation, shared by every session it serves. Never a
