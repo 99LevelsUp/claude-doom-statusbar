@@ -59,16 +59,18 @@ R-0 to R-8 shipped with 1.0.0, see *Done*. What is left:
 ## Shared game layout engine
 Source: [ideation/2026-10-31-shared-game-layout-engine.md](ideation/2026-10-31-shared-game-layout-engine.md)
 
+Owner, 2026-11-16: a game is assets plus skins, and the bar is a tree of shared elements that skins compose; there is no per-game skeleton. Requirements: [plans/2026-11-16-1247-feat-game-as-skin-plan.md](plans/2026-11-16-1247-feat-game-as-skin-plan.md). It absorbs G-3, G-4, G-5 and G-10 and changes the chat items G-6 and G-7 (a standard chat element with conversation libraries).
+
 | ID | Item | Status |
 |---|---|---|
 | G-2 | Layout registry instead of `if (layout === …)` in `statusline.js` | done with R-8 (PR #10) |
-| G-3 | User-level preset overlay `~/.claude/<bar>/<theme>.toml` so slot choices survive npm updates | open |
-| G-4 | Extract the shared HUD kit: cell fit (escape-safe), gauge row (merge `rIcons` + `glyphCells`), meter bar, grid, selection, portrait | open |
-| G-5 | Hotbar uses the shared width planner, `[bar].fallback` and `text_overflow` | open |
+| G-3 | User-level preset overlay `~/.claude/<bar>/<theme>.toml` so slot choices survive npm updates | absorbed: user skins (game-as-skin plan, R11) |
+| G-4 | Extract the shared HUD kit: cell fit (escape-safe), gauge row (merge `rIcons` + `glyphCells`), meter bar, grid, selection, portrait | absorbed: shared elements (game-as-skin plan, R1–R6) |
+| G-5 | Hotbar uses the shared width planner, `[bar].fallback` and `text_overflow` | absorbed: shared width behaviour (game-as-skin plan, R9) |
 | G-6 | Chat as data: script in TOML, declarative conditions, generic facts, cast from data | open |
 | G-7 | Chat packs: universal metric lines keyed, a game pack overrides by key and adds atmosphere lines; chat refers to sockets (`{hearts}`), not metrics | open |
 | G-8 | Warcraft III layout on top of the kit (minimap: see D-5, after D-1 and D-3) | open |
-| G-10 | Assets on demand: a DOOM user does not need WC3 models and a WC3 user does not need mugshots, and the WC3 bar will let the user pick which heads to show. Assets may live in the repo, but the bar downloads the ones the settings need and removes the ones they no longer need (owner, 2026-11-11). Own brainstorm; dropping the `.ans` faces (D-3 plan, R13) already shrinks the DOOM set | idea |
+| G-10 | Assets on demand: a DOOM user does not need WC3 models and a WC3 user does not need mugshots, and the WC3 bar will let the user pick which heads to show. Assets may live in the repo, but the bar downloads the ones the settings need and removes the ones they no longer need (owner, 2026-11-11). Own brainstorm; dropping the `.ans` faces (D-3 plan, R13) already shrinks the DOOM set | absorbed: game-as-skin plan, R14–R16 |
 | G-9 | Decide who owns conversation order: game skeleton pulling universal lines, or universal lines dealt into gaps | idea |
 | G-11 | Visual configurator in the terminal (owner, 2026-11-16). Today the bar is defined by preset TOML files, and nobody knows what can be changed or how. Wanted: a universal configurator, ideally one for every game, where the user sets the bar's parameters with checkboxes and choices in a text-mode terminal window: what is shown and in what arrangement (which metrics, which boxes or sockets, their order, icons, the preset and its fallback, the theme), with a live preview of the bar. Needs: a description of what each game's layout offers (its sockets and options, the `sockets(cfg)` idea of the layout ideation), so the configurator is driven by data and not written per game; somewhere to save the choices that survives updates (G-3); the metric catalogue with a human name per metric. Could also host the glyph-set choice of D-17 (part 4a: what cannot be detected is asked there). Not now; first settle what a game is (see the owner's question of 2026-11-16 on what tells DOOM, Minecraft and WC3 apart) | idea |
 
