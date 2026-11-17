@@ -59,12 +59,14 @@ import path from "node:path";
 import { parse as parseToml } from "smol-toml";
 import { CATALOGUE } from "../../metrics/catalogue.js";
 import { elementKind, frame as frameKind, canShow } from "../elements/index.js";
+import { makeWarning } from "./warnings.js";
+import { isPlainObject } from "../is.js";
 
 const TOP_KEYS = ["version", "name", "games", "root", "smaller", "element"];
 const SHARED = ["kind", "metric", "priority", "script", "when_absent", "children", "frame"];
 const WHEN_ABSENT = ["hide", "empty", "full"];
 
-const isTable = (v) => v !== null && typeof v === "object" && !Array.isArray(v) && !(v instanceof Date);
+const isTable = (v) => isPlainObject(v) && !(v instanceof Date);
 const isNames = (v) => Array.isArray(v) && v.every((x) => typeof x === "string");
 const firstLine = (s) => String(s).split(/\r?\n/).find((l) => l.trim()) || "";
 
@@ -74,11 +76,11 @@ function warner(file) {
   const list = [];
   const add = (cause, element, subject, text) => {
     const where = element === null ? "" : `, element "${element}":`;
-    list.push({
+    list.push(makeWarning({
       key: [file, element ?? "", cause, subject ?? ""].join("|"),
       cause, skin: file, element, subject,
       message: `skin "${label}"${where} ${text}`,
-    });
+    }));
   };
   return { list, add };
 }
@@ -261,7 +263,6 @@ function loadFile(file) {
       e.code ? `cannot be read (${e.code})` : `does not parse: ${firstLine(e.message)}`);
     result = { skin: null, warnings: list };
   }
-  for (const w of result.warnings) Object.freeze(w);
   cache.set(file, { key, result });
   return result;
 }

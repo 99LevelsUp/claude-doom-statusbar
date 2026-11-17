@@ -1,6 +1,5 @@
 // A session's metric values in the raw form the metric producers emit (src/metrics/catalogue.js):
-// numbers as numbers, links as { text, url }, names where icons used to be. The same session as the
-// preview data (src/kit/values.js), for tests that draw skins.
+// numbers as numbers, links as { text, url }, names where icons used to be. For tests that draw skins.
 
 export const RAW_SAMPLE = Object.freeze({
   "model.name": "Opus 4.8", "model.effort": "high", "advisor.model": "Opus 4.8",

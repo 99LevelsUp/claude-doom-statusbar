@@ -22,7 +22,9 @@ import { SLOT, BUFFER_BYTES, startTimes } from "./layout.js";
 
 const WORKER_FILE = new URL("./worker.js", import.meta.url);
 
-const stamp = (file) => {
+const disabledResult = (script) => ({ status: "disabled", message: `${script}: disabled after an earlier failure` });
+
+export const stamp = (file) => {
   try { const st = statSync(file); return `${st.size}:${st.mtimeMs}`; } catch { return "missing"; }
 };
 
@@ -35,15 +37,16 @@ const stamp = (file) => {
 //   now           the clock cooldowns are measured on, in ms (default: the monotonic
 //                 performance.now(), so a change of the wall clock cannot stretch one)
 //   simulateNativeHang  test hook: a script path whose calls block outside the vm timeout
+export const CALL_BUDGET_MS = 20;
 const COOLDOWN_MS = 30_000;
 const COOLDOWN_MAX_MS = 600_000;
 
-export function createScriptHost({ callBudgetMs = 20, graceMs = 40, startupMs = 500, maxHeapMb = 64, now = () => performance.now(), simulateNativeHang } = {}) {
-  let w = null; // { worker, port, i32, start, dead }
+export function createScriptHost({ callBudgetMs = CALL_BUDGET_MS, graceMs = 40, startupMs = 500, maxHeapMb = 64, now = () => performance.now(), simulateNativeHang } = {}) {
+  let w = null;
   let seq = 0;
-  let abandoned = 0; // the last batch the host gave up on while its worker was still running it
+  let abandoned = 0;
   let spawns = 0;
-  const pending = new Map(); // batch seq -> the calls sent in it, for the current worker
+  const pending = new Map();
   // skin + script -> { stamp, kind, streak, until }: the file stamp it failed with; "error" (off
   // until the stamp changes) or "timeout" (off until `until`, `streak` timeouts in a row)
   const disabled = new Map();
@@ -168,7 +171,7 @@ export function createScriptHost({ callBudgetMs = 20, graceMs = 40, startupMs = 
 
   // What a call to a script that is off returns.
   function offResult(script, e) {
-    if (e.kind === "error") return { status: "disabled", message: `${script}: disabled after an earlier failure` };
+    if (e.kind === "error") return disabledResult(script);
     const s = Math.max(1, Math.ceil((e.until - now()) / 1000));
     return { status: "disabled", message: `${script}: stopped after running past its budget; retried in ${s} s` };
   }
@@ -220,7 +223,7 @@ export function createScriptHost({ callBudgetMs = 20, graceMs = 40, startupMs = 
           out[send[j]] = r.status === "ok"
             ? { status: "ok", output: JSON.parse(r.output) }
             : r.status === "disabled"
-              ? { status: "disabled", message: `${c.script}: disabled after an earlier failure` }
+              ? disabledResult(c.script)
               : r.status === "timeout"
                 ? { status: "timeout", message: `${c.script}: ${r.message}`, retryMs: r.retryMs }
                 : { status: r.status, message: `${c.script}: ${r.message}` };

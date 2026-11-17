@@ -27,9 +27,8 @@ import { blank } from "../elements/paint.js";
 //     stand-in value and standIn set to that word. "full" and "empty" say how the visual looks, not
 //     what the metric measures: "full" is a bar filled to its end and every glyph of a row lit,
 //     "empty" the opposite, whether the metric counts what is used (context.hp, ratelimit.5h) or
-//     what is left (health.headroom). For a percentage the stand-in is 100 for full and 0 for
-//     empty, unless the visual says otherwise through its `standIn(params, mode)` (the icon row,
-//     which can fill by 100 minus the value). For any other value type there is no stand-in value
+//     what is left (health.headroom). The stand-in of a percentage is the descriptor contract's
+//     (src/kit/elements/index.js). For any other value type there is no stand-in value
 //     (undefined), and every visual draws that as it draws a missing value: blank text and
 //     numbers, no icons, an empty graph or list, an animation's default frame;
 //   - otherwise undefined, standIn null.

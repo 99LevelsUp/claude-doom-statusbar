@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 import { renderSession } from "./render.js";
 import { createScriptPass, CALL_BUDGET_MS, PASS_BUDGET_MS } from "./kit/skin/scripts.js";
 import { createScriptHost } from "./platform/scripts/host.js";
+import { isPlainObject } from "./kit/is.js";
 import { writeFrame } from "./platform/frame.js";
 import { PACKAGE_ROOT, SRC_DIR } from "./package-root.js";
 import {
@@ -68,7 +69,7 @@ export function parsePayload(text) {
   if (tag !== "gamebar-env") return null;
   let data;
   try { data = JSON.parse(text.slice(lf + 1)); } catch { return null; }
-  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  if (!isPlainObject(data)) return null;
   const env = {};
   for (const item of items) {
     const eq = item.indexOf("=");
@@ -150,7 +151,7 @@ export function runPass(state, { dir = runtimeDir(), hash = rootHash(), now = Da
     state.sessions.set(key, {
       data: parsed.data, env, window: windowOf(env), stamp, seenAt: Math.min(now, st.mtimeMs),
       frame: s ? s.frame : path.join(dir, `${framePrefix(hash)}${key}.json`),
-      scriptState: s ? s.scriptState : new Map(), // what this session's skin scripts keep between renders
+      scriptState: s ? s.scriptState : new Map(),
     });
   }
   for (const key of [...state.sessions.keys()]) if (!present.has(key)) state.sessions.delete(key);

@@ -16,9 +16,8 @@ import { STEPS, stepIndex } from "../raster/glyphs.js";
 import { rasterize, rasterLine } from "../raster/asset-raster.js";
 import { VALUE_TYPES } from "../../metrics/catalogue.js";
 import { define, param } from "./schema.js";
-import { block } from "./paint.js";
+import { block, fixedWidth } from "./paint.js";
 
-// An animation shows any value its script can read, but not a whole conversation.
 const ANY_VALUE = VALUE_TYPES.filter((t) => t !== "conversation");
 
 const sizeParams = () => ({
@@ -29,8 +28,7 @@ const sizeParams = () => ({
   default_frame: param("asset", "", "The image drawn when no frame comes from the script"),
 });
 
-// The richer of the image's step and the terminal's is never used.
-function stepFor(own, terminal) {
+function lowerStep(own, terminal) {
   if (stepIndex(terminal) < 0) return own;
   return stepIndex(own) <= stepIndex(terminal) ? own : terminal;
 }
@@ -41,7 +39,7 @@ const fileOf = (ref, ctx) => (ref && typeof ctx.resolveAsset === "function" ? ct
 function drawImage(file, p, width, height, ctx, surface) {
   if (!file) return null;
   const bg = p.background === "term-bg" ? "term-bg" : rgbOf(p.background);
-  const rows = rasterize(file, height, { step: stepFor(p.glyphs, ctx.step), background: bg === "term-bg" ? [0, 0, 0] : bg });
+  const rows = rasterize(file, height, { step: lowerStep(p.glyphs, ctx.step), background: rgbOf(p.background) });
   if (!rows) return null;
   const restore = bgsgrBox(surface);
   return Array.from({ length: height }, (_, r) => rasterLine(rows[r] || [], width, bg) + restore);
@@ -51,7 +49,7 @@ function drawImage(file, p, width, height, ctx, surface) {
 const drawDefault = (p, width, height, ctx, surface) =>
   drawImage(fileOf(p.default_frame, ctx), p, width, height, ctx, surface) ?? block([], width, height);
 
-const widths = (p) => ({ min: p.width, natural: p.width });
+const widths = (p) => fixedWidth(p.width);
 
 export const animation = define({
   name: "animation",

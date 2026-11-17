@@ -5,10 +5,10 @@
 //             mode as its sign), and a list of [name, value] pairs as each name's icon and value
 
 import { TEXT, sgrFg, pyround } from "../ansi.js";
-import { vlen, marquee } from "../text.js";
+import { vlen } from "../text.js";
 import { colorFor, rgbOf } from "../colors.js";
 import { define, param } from "./schema.js";
-import { iconParam, alignParam, labelOf, labelWidth, block, pad, blank, TEXT_HEX } from "./paint.js";
+import { iconParam, alignParam, labelOf, labelWidth, block, pad, blank, fitText, fixedWidth, TEXT_HEX } from "./paint.js";
 import { textOf } from "./text.js";
 
 const glyphWidth = (p) => Math.max(vlen(p.glyph), vlen(p.empty_glyph));
@@ -31,10 +31,7 @@ export const iconRow = define({
     from_right: param("boolean", false, "Fill from the right end of the row"),
     show_pct: param("boolean", false, "Draw the percentage after the row"),
   },
-  widths: (p) => {
-    const w = labelWidth(p) + p.count * glyphWidth(p) + (p.count - 1) * p.gap + percentWidth(p);
-    return { min: w, natural: w };
-  },
+  widths: (p) => fixedWidth(labelWidth(p) + p.count * glyphWidth(p) + (p.count - 1) * p.gap + percentWidth(p)),
   rows: () => 1,
   // The stand-in percentage that draws the row full (every glyph lit) or empty, whichever way it fills.
   standIn: (p, mode) => ((mode === "full") !== p.invert ? 100 : 0),
@@ -78,10 +75,7 @@ export const icon = define({
     width: param("integer", 2, "Columns of the icons and text", { min: 1 }),
     align: alignParam(),
   },
-  widths: (p) => {
-    const w = labelWidth(p) + p.width;
-    return { min: w, natural: w };
-  },
+  widths: (p) => fixedWidth(labelWidth(p) + p.width),
   rows: () => 1,
   draw({ value, params: p, width, height = 1 }) {
     const iconOf = (name) => (Object.hasOwn(p.icons, name) ? p.icons[name] : null);
@@ -98,7 +92,6 @@ export const icon = define({
     }
     const lbl = labelOf(p);
     const room = Math.max(0, width - vlen(lbl));
-    const body = vlen(s) <= room ? pad(s, room, p.align) : marquee(s, room, 0, "clip");
-    return block([lbl + sgrFg(rgbOf(p.color)) + body], width, height);
+    return block([lbl + sgrFg(rgbOf(p.color)) + fitText(s, room, { align: p.align })], width, height);
   },
 });

@@ -12,14 +12,14 @@
 // in place of the container, and its lines replace the container's separator; any other frame (the
 // box) wraps the container's own arrangement, given as `content`.
 
-import { TERM_RGB, RESET, BOLD, sgrFg, sgrBg } from "../ansi.js";
-import { vlen, marquee } from "../text.js";
-import { rgbOf, bgsgrBox } from "../colors.js";
+import { TERM_RGB, RESET, BOLD, sgrFg } from "../ansi.js";
+import { vlen } from "../text.js";
+import { rgbOf, bgOf, bgsgrBox } from "../colors.js";
 import { define, param } from "./schema.js";
-import { block, blank, pad } from "./paint.js";
+import { block, blank, fitText } from "./paint.js";
 
 const sum = (xs) => xs.reduce((a, b) => a + b, 0);
-const alignParam = () => param("text", "start", "Where the children sit when the container is wider than they are", { allowed: ["start", "center", "end"] });
+const childAlignParam = () => param("text", "start", "Where the children sit when the container is wider than they are", { allowed: ["start", "center", "end"] });
 
 function leftRoom(room, align) {
   if (align === "center") return Math.floor(room / 2);
@@ -27,8 +27,7 @@ function leftRoom(room, align) {
 }
 
 // Widths for children { min, natural } sharing `avail` columns. In lockstep every child shrinks by
-// the same share of its own range, as the bars and texts of the old box row did; from the start or
-// the end, children shrink one after another to their minimum. Children that cannot all fit are
+// the same share of its own range; from the start or the end, children shrink one after another to their minimum. Children that cannot all fit are
 // left at their minimum: dropping elements is the fit's decision, not the container's.
 function shrink(kids, avail, how) {
   const nat = kids.map((k) => k.natural);
@@ -56,7 +55,6 @@ function shrink(kids, avail, how) {
 }
 
 const fgOf = (spec) => (spec === "term-fg" ? "\x1b[39m" : sgrFg(rgbOf(spec)));
-const bgOf = (spec) => (spec === "term-bg" ? "\x1b[49m" : sgrBg(rgbOf(spec)));
 
 export const row = define({
   name: "row",
@@ -66,7 +64,7 @@ export const row = define({
     separator: param("text", "", "Characters drawn between children"),
     separator_color: param("color", "term-fg", "Colour of the separator", { keywords: ["term-fg"] }),
     separator_background: param("color", "term-bg", "Background of the separator", { keywords: ["term-bg"] }),
-    align: alignParam(),
+    align: childAlignParam(),
     shrink: param("text", "lockstep", "How children shrink when the width runs short: all together, from the start, or from the end", { allowed: ["lockstep", "start", "end"] }),
   },
   widths: (p, kids) => {
@@ -90,7 +88,7 @@ export const column = define({
   title: "Column",
   description: "Lays its children out one under another",
   params: {
-    align: alignParam(),
+    align: childAlignParam(),
   },
   widths: (p, kids) => ({ min: Math.max(0, ...kids.map((k) => k.min)), natural: Math.max(0, ...kids.map((k) => k.natural)) }),
   share: (p, width, kids) => kids.map((k) => Math.max(k.min, Math.min(width, k.natural))),
@@ -128,8 +126,7 @@ export const box = define({
     const side = blank(p.padding);
     const lines = [];
     if (p.header) {
-      const title = vlen(p.title) <= inner ? p.title : marquee(p.title, inner, 0, "clip");
-      lines.push(bg + BOLD + sgrFg(rgbOf(p.title_color)) + side + pad(title, inner, "center") + side + RESET);
+      lines.push(bg + BOLD + sgrFg(rgbOf(p.title_color)) + side + fitText(p.title, inner, { align: "center" }) + side + RESET);
     }
     for (const l of content) lines.push(bg + side + l + side + RESET);
     while (lines.length < height) lines.push(bg + blank(width) + RESET);

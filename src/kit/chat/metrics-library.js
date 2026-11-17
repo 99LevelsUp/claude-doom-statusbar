@@ -31,11 +31,13 @@
 //   processes.answer             busy.answer                    saved.answer lingua.answer
 //   uptime.answer                clock.answer
 
+import { isPlainObject } from "../is.js";
+
 // Who asks. The running model answers as "me".
 const CAST = { a: "Ada", b: "Ben" };
 
 const textOf = (v) => {
-  if (v !== null && typeof v === "object" && !Array.isArray(v)) v = v.text;
+  if (isPlainObject(v)) v = v.text;
   if (v == null) return null;
   const s = String(v).trim();
   return s === "" ? null : s;

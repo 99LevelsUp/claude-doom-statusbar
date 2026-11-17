@@ -2,10 +2,9 @@
 // display width and the background blend a track is drawn on.
 
 import { TERM_RGB } from "../ansi.js";
-import { vlen } from "../text.js";
+import { vlen, marquee } from "../text.js";
 import { param } from "./schema.js";
 
-// Parameters several visuals share.
 export const iconParam = () => param("text", "", "An icon or word drawn in front of the value");
 export const alignParam = () => param("text", "left", "Where a value shorter than its columns sits", { allowed: ["left", "center", "right"] });
 
@@ -15,7 +14,6 @@ export const labelWidth = (p) => vlen(labelOf(p));
 
 export const blank = (width) => " ".repeat(Math.max(0, width));
 
-// `lines` cut or padded with blank lines to `height`.
 export function block(lines, width, height) {
   const out = lines.slice(0, height);
   while (out.length < height) out.push(blank(width));
@@ -32,6 +30,14 @@ export function pad(text, width, align = "left") {
   }
   return text + blank(room);
 }
+
+// `text` in exactly `width` columns: placed by `align` when it fits, else scrolled with `tick` or
+// clipped with an ellipsis, as `overflow` says.
+export const fitText = (text, width, { align = "left", tick = 0, overflow = "clip" } = {}) =>
+  (vlen(text) <= width ? pad(text, width, align) : marquee(text, width, tick, overflow));
+
+// A visual as wide at its minimum as at its natural width.
+export const fixedWidth = (n) => ({ min: n, natural: n });
 
 // Halfway between the surface and the terminal background: the empty part of a bar or graph.
 export const trackRgb = (surface) => [0, 1, 2].map((i) => Math.floor((surface[i] + TERM_RGB[i]) / 2));

@@ -1,10 +1,10 @@
 // Which skin a session draws, read on every render. In order:
 //   1. the session's own GAMEBAR_SKIN (forwarded per session by the client, like GAMEBAR_THEME);
 //   2. the saved choice, skin.json in the user directory (`claude-game-bar skin <name>`);
-//   3. the choice a release before skins left behind: the theme (GAMEBAR_THEME, then the saved
-//      theme file) picks the game, and that game's default skin is drawn;
+//   3. the theme (GAMEBAR_THEME, then the saved theme file) picks the game, and that game's default
+//      skin is drawn;
 //   4. the default game's default skin (src/games/index.js).
-// A preset setting (GAMEBAR_PRESET), as installs before skins wrote it, keeps choosing the size:
+// A preset setting (GAMEBAR_PRESET) keeps choosing the size:
 // when the session has no GAMEBAR_SKIN, the preset's file name picks the skin of that size of the
 // chosen game, whether the game came from the saved choice or the theme, if the game reads presets
 // (its manifest says which sizes it has). A file name such a game does not know is a preset the
@@ -22,14 +22,14 @@
 // the form the warning line takes (src/kit/skin/warnings.js).
 
 import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import { findGame, defaultGame, bundledSkins } from "./games/index.js";
+import { findGame, defaultGame, bundledSkins, bundledSkin } from "./games/index.js";
 import { currentTheme } from "./theme.js";
 import { envGet } from "./platform/env.js";
+import { userDir } from "./platform/runtime.js";
+import { makeWarning } from "./kit/skin/warnings.js";
 
-export const userDir = (env = process.env) =>
-  envGet("USER_DIR", env) || path.join(os.homedir(), ".claude", "claude-game-bar");
+export { userDir };
 export const savedSkinFile = (env = process.env) => path.join(userDir(env), "skin.json");
 const userSkinsDir = (env) => path.join(userDir(env), "skins");
 
@@ -57,7 +57,6 @@ export function clearSkin(env = process.env) {
 const sizeOf = (game, name) => Object.keys(game.presetSkins).find((k) => game.presetSkins[k] === name) ?? null;
 const bundled = (s) => ({ name: s.name, file: s.file, game: s.game, size: sizeOf(s.game, s.name), user: false });
 
-// The user's own skins, sorted by name.
 export function userSkins(env = process.env) {
   let names;
   try {
@@ -79,7 +78,7 @@ export const listSkins = (env = process.env) => [...bundledSkins().map(bundled),
 // old theme name) `name`. Null when there is none.
 export function findSkin(name, env = process.env) {
   if (!validName(name)) return null;
-  const b = bundledSkins().find((s) => s.name === name);
+  const b = bundledSkin(name);
   if (b) return bundled(b);
   const own = userSkin(name, env);
   if (own) return own;
@@ -93,9 +92,8 @@ export function nextSkin(name, env = process.env) {
   return names[(names.indexOf(name) + 1) % names.length];
 }
 
-const warning = (cause, subject, message) => ({ key: `selection|${cause}|${subject}`, cause, skin: null, element: null, subject, message });
+const warning = (cause, subject, message) => makeWarning({ key: `selection|${cause}|${subject}`, cause, subject, message });
 
-// The skin this session draws (see the top of this file).
 export function selectSkin(env = process.env) {
   const warnings = [];
   const preset = envGet("PRESET", env) || "";

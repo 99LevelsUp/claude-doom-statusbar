@@ -14,9 +14,12 @@ import { readFileSync } from "node:fs";
 import { RESET } from "../ansi.js";
 import { vlen, marquee } from "../text.js";
 import { writeAtomic } from "../../platform/runtime.js";
+import { isPlainObject } from "../is.js";
 
 export const WARNING_SECONDS = 60;
 const DIM = "\x1b[2m";
+
+export { makeWarning } from "../warning.js";
 
 export function memoryStore() {
   const seen = new Map();
@@ -36,7 +39,7 @@ export function fileStore(file) {
       const seen = Object.create(null);
       try {
         const data = JSON.parse(readFileSync(file, "utf8"));
-        if (data && typeof data === "object" && !Array.isArray(data)) {
+        if (isPlainObject(data)) {
           for (const [k, t] of Object.entries(data)) if (typeof t === "number") seen[k] = t;
         }
       } catch { /* nothing seen yet */ }

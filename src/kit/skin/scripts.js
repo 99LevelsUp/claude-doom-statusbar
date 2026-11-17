@@ -47,15 +47,17 @@
 // a retry that runs late again does not show it anew. When the pass has no time left for a session,
 // that session's elements draw their defaults for this render only: no warning, nothing turned off.
 
-import { statSync } from "node:fs";
 import path from "node:path";
 import { vlen } from "../text.js";
 import { clipLine, metricValue } from "./draw.js";
 import { blank } from "../elements/paint.js";
-import { createScriptHost } from "../../platform/scripts/host.js";
+import { createScriptHost, stamp as stampOf, CALL_BUDGET_MS } from "../../platform/scripts/host.js";
+import { GAME_PREFIX, leadsOutside } from "../../platform/assets.js";
 import { facts } from "../chat/metrics-library.js";
+import { makeWarning } from "./warnings.js";
+import { isPlainObject } from "../is.js";
 
-export const CALL_BUDGET_MS = 20;
+export { CALL_BUDGET_MS };
 export const PASS_BUDGET_MS = 200;
 
 // The time scripts get in one render pass, shared by every session the pass renders. Each batch
@@ -72,20 +74,12 @@ export function createScriptPass({ budgetMs = PASS_BUDGET_MS, callBudgetMs = CAL
 let shared = null;
 export const sharedScriptHost = () => (shared ??= createScriptHost());
 
-const stampOf = (file) => {
-  try { const st = statSync(file); return `${st.size}:${st.mtimeMs}`; } catch { return "missing"; }
-};
-
-// A game asset reference: a game's name, a colon, a path. A drive letter is not a game's name.
-const ASSET_REF = /^[A-Za-z0-9][A-Za-z0-9_-]+:/;
-
 // The file a script reference names: { file } (null while an asset cannot be found), or
 // { outside: true } for a path that leads out of `folder`.
 export function resolveScript(ref, folder, resolveAsset) {
-  if (ASSET_REF.test(ref)) return { file: typeof resolveAsset === "function" ? resolveAsset(ref) || null : null };
+  if (GAME_PREFIX.test(ref)) return { file: typeof resolveAsset === "function" ? resolveAsset(ref) || null : null };
   const file = path.resolve(folder, ref);
-  const rel = path.relative(folder, file);
-  if (path.isAbsolute(ref) || rel === "" || rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return { outside: true };
+  if (path.isAbsolute(ref) || leadsOutside(folder, file)) return { outside: true };
   return { file };
 }
 
@@ -110,7 +104,6 @@ function overParams(descriptor, own, given) {
 
 const sameExtra = (a, b) => a.columns === b.columns && a.rows === b.rows;
 
-// The node `t` draws with the parameters `given` instead of its own.
 function withParams(t, given) {
   const { node } = t;
   if (!node.container) {
@@ -145,7 +138,6 @@ const librariesOf = (node) => (!node.container && typeof node.descriptor.librari
 
 const valueOf = (node, values) => (node.metric !== null && Object.hasOwn(values, node.metric) ? values[node.metric] : null);
 const standInOf = (node, values) => (node.container ? null : metricValue(node, values).standIn);
-const isPlainObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 
 // Runs the scripts of the drawn elements of `fit` and returns what to draw:
 //   { fit, scripts, warnings }
@@ -175,25 +167,27 @@ export function runScripts(fit, { host, pass = createScriptPass(), state = new M
 
   const skinKey = `${skin.file}@${stampOf(skin.file)}`;
   const folder = folderOf(skin);
-  const warn = (t, cause, subject, message) => warnings.push(Object.freeze({
+  const warn = (t, cause, subject, message) => warnings.push(makeWarning({
     key: [skin.file, t.id, cause, subject].join("|"), cause, skin: skin.file, element: t.id, subject, message,
   }));
+  // The file of `t`'s script `ref` (a `what`), or null; one outside the skin's folder is refused.
+  const fileOf = (t, ref, what) => {
+    const where = resolveScript(ref, folder, resolveAsset);
+    if (where.outside) warn(t, "script-outside", ref, `${t.id}: ${what} ${ref} is outside the skin's folder; not run`);
+    return where.file ?? null;
+  };
 
   const calls = [], runs = [];
   for (const t of elements) {
     const ref = t.node.script;
-    const where = resolveScript(ref, folder, resolveAsset);
-    if (where.outside) {
-      warn(t, "script-outside", ref, `${t.id}: script ${ref} is outside the skin's folder; not run`);
-      continue;
-    }
-    if (!where.file) continue;
-    const stamp = `${skinKey}|${where.file}@${stampOf(where.file)}`;
+    const file = fileOf(t, ref, "script");
+    if (!file) continue;
+    const stamp = `${skinKey}|${file}@${stampOf(file)}`;
     const kept = state.get(t.id);
     const own = kept && kept.stamp === stamp ? kept.state : {};
-    runs.push({ t, ref, file: where.file, stamp });
+    runs.push({ t, ref, file, stamp });
     calls.push({
-      script: where.file, skin: skinKey,
+      script: file, skin: skinKey,
       input: {
         value: valueOf(t.node, values), standIn: standInOf(t.node, values), metric: t.node.metric, params: t.node.params,
         reaction, now, tick, width: t.width, rows: t.rows,
@@ -208,19 +202,15 @@ export function runScripts(fit, { host, pass = createScriptPass(), state = new M
   let known = null;
   for (const t of talkers) {
     for (const ref of librariesOf(t.node)) {
-      const where = resolveScript(ref, folder, resolveAsset);
-      if (where.outside) {
-        warn(t, "script-outside", ref, `${t.id}: conversation library ${ref} is outside the skin's folder; not run`);
-        continue;
-      }
-      if (!where.file) continue;
-      runs.push({ t, ref, file: where.file, library: true });
-      calls.push({ script: where.file, skin: skinKey, fn: "conversations", input: (known ??= facts(values)) });
+      const file = fileOf(t, ref, "conversation library");
+      if (!file) continue;
+      runs.push({ t, ref, file, library: true });
+      calls.push({ script: file, skin: skinKey, fn: "conversations", input: (known ??= facts(values)) });
     }
   }
 
   const scripts = {};
-  const heard = new Map(); // chat element -> its libraries' results, in order
+  const heard = new Map();
   const nodes = new Map();
   if (calls.length) {
     const left = pass.left();

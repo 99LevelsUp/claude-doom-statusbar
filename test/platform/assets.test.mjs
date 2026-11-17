@@ -34,7 +34,7 @@ const env = { ...base, ...sandboxEnv(SB), NPM_STUB_LOG: LOG, NPM_STUB_PACKAGES: 
 // Before the imports: modules that read the environment when loaded see the sandbox.
 Object.assign(process.env, env);
 
-const assets = await import("../../src/platform/assets.js");
+const assets = { ...(await import("../../src/platform/assets.js")), ...(await import("../../src/skin-assets.js")) };
 const { GAMES, readGame } = await import("../../src/games/index.js");
 const { renderSession } = await import("../../src/render.js");
 

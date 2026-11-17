@@ -1,38 +1,13 @@
 // The fit: a loaded skin (src/kit/skin/load.js), the session's metric values and the terminal's
 // width become the tree that is drawn, each element with the columns it gets.
 //
-//   1. Elements whose metric the session does not report are removed, except the scrolling list,
-//      which keeps its place and draws empty, and an element whose `when_absent` is "empty" or
-//      "full", which keeps its place and draws a stand-in value (src/kit/skin/draw.js). A container
-//      left with nothing to show goes too.
-//   2. Every element's minimum and natural width come from its descriptor's parameters, never from
-//      its value, so the layout does not change as the values do.
-//   3. Natural widths are used when they fit. Otherwise each container shares what it gets among its
-//      children by its own shrink rule (all together in lockstep, from the start or from the end).
-//   4. When even the minimum widths do not fit, elements drop by the priority the skin gives them,
-//      lowest first; of equal priorities the one later in the skin's tree (depth first) drops
-//      first. Dropping a container drops everything in it, and a container whose children have all
-//      dropped drops too. An element marked "keep", or given no priority at all, is never dropped
-//      on its own account, only with its container; the root is never dropped.
-//   5. A skin that still does not fit gives way to the smaller skin it names, fitted the same way.
-//      The chain stops at a skin that names none, at one that cannot be loaded, and at a name
-//      already tried (with one warning); the last skin tried is drawn at its minimum widths,
-//      clipped to the terminal.
-//
-// The result:
-//   { skin, tree, width, clipped, dropped, absent, warnings }
-//   skin      the skin drawn, the given one or a smaller one
-//   tree      a fitted node, or null when nothing is left to draw:
-//               { id, node, width, rows, children }
-//             `node` the loaded element node, `width` its columns, `rows` the rows it asks for
-//             (a container's frame included), `children` fitted nodes
-//   width     the columns the bar takes
-//   clipped   true when the bar is wider than the terminal and is drawn clipped
-//   dropped   ids of the elements dropped for width, in the order they dropped
-//   absent    ids of the elements removed because their metric is absent
-//   warnings  in the loader's form: { key, cause, skin, element, subject, message }
+// When even the minimum widths do not fit, elements drop by the priority the skin gives them,
+// lowest first; of equal priorities the one later in the skin's tree (depth first) drops first. An
+// element marked "keep", or given no priority at all, is never dropped on its own account, only
+// with its container; the root is never dropped.
 
 import path from "node:path";
+import { makeWarning } from "./warnings.js";
 
 const NONE = Object.freeze({ columns: 0, rows: 0 });
 
@@ -148,9 +123,9 @@ function place(t, width) {
 
 function cycleWarning(skin, name) {
   const label = path.basename(skin.file || skin.name || "skin");
-  return Object.freeze({
+  return makeWarning({
     key: [skin.file, "", "smaller-cycle", name].join("|"),
-    cause: "smaller-cycle", skin: skin.file, element: null, subject: name,
+    cause: "smaller-cycle", skin: skin.file, subject: name,
     message: `skin "${label}" names smaller skin "${name}", which is already in its chain; drawn clipped`,
   });
 }

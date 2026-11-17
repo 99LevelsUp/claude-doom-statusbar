@@ -81,7 +81,7 @@ try {
   for (const g of GAMES) {
     const dir = path.join(ROOT, "src", "games", g.name);
     const manifest = parseToml(readFileSync(path.join(dir, "game.toml"), "utf8"));
-    ok(manifest.name === g.name && g.dir === dir && g.about.length > 0, `${g.name}: read from src/games/${g.name}/game.toml`);
+    ok(manifest.name === g.name && g.dir === dir && g.description.length > 0, `${g.name}: read from src/games/${g.name}/game.toml`);
     ok(g.skins.some((s) => s.name === g.defaultSkin) && Object.values(g.presetSkins).every((n) => g.skins.some((s) => s.name === n)),
       `${g.name}: its default skin and the skin of each preset are among its skins (${g.skins.map((s) => s.name).join(", ")})`);
     ok(g.assets && g.assets.package === `@claude-game-bar/${g.name}` && typeof g.assets.version === "string"

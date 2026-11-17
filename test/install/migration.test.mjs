@@ -13,7 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { rootHash, procStartTicks } from "../../src/platform/runtime.js";
-import { install, uninstall, migratedPreset, renameOldEnv } from "../../src/install/settings.js";
+import { install, uninstall, renameOldEnv } from "../../src/install/settings.js";
 import { privateCandidates, stopDaemon, removeOldPackageFiles } from "../../src/install/daemons.js";
 import { npmCommand } from "../../src/install/old-package.js";
 import { sandboxEnv } from "../_sandbox-env.mjs";
@@ -24,7 +24,6 @@ const HASH = rootHash(ROOT);
 const WIN = process.platform === "win32";
 const fwd = (p) => p.replace(/\\/g, "/");
 const HOOK = fwd(path.join(ROOT, "src", "hook.js"));
-const FULL = fwd(path.join(ROOT, "src", "games", "doom", "presets", "full.toml"));
 const STANDARD = fwd(path.join(ROOT, "src", "games", "doom", "presets", "standard.toml"));
 const EVENTS = ["SessionStart", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied",
   "Stop", "SubagentStart", "SubagentStop", "TaskCreated", "TaskCompleted", "SessionEnd"];
@@ -350,13 +349,6 @@ if (WIN || process.platform === "linux") {
   writeFileSync(path.join(copy, "package.json"), JSON.stringify({ name: "claude-game-bar" }));
   const copyPreset = path.join(copy, "src", "games", "doom", "presets", "standard.toml");
   writeFileSync(copyPreset, "");
-  ok(migratedPreset(fwd(own)) === fwd(own), "a user's own existing preset file is kept, even when named full.toml");
-  ok(migratedPreset(fwd(path.join(tmp, "gone", "full.toml"))) === FULL, "a missing file named after a registered preset is moved here");
-  ok(migratedPreset(fwd(copyPreset)) === STANDARD, "a preset in another copy of this package is moved here");
-  ok(migratedPreset(fwd(path.join(tmp, "gone", "custom.toml"))) === fwd(path.join(tmp, "gone", "custom.toml")),
-    "a missing file of the user's own name is left as it is");
-  ok(migratedPreset(STANDARD) === STANDARD, "this package's own preset is kept");
-
   // The skin replaces a preset setting an installer wrote; a preset of the user's own stays.
   for (const [what, value] of [["this package's", STANDARD], ["another copy's", fwd(copyPreset)],
     ["a missing registered", fwd(path.join(tmp, "gone", "full.toml"))]]) {
@@ -364,9 +356,12 @@ if (WIN || process.platform === "linux") {
     const notes = install(cfg, null, 1, "x");
     ok(!("GAMEBAR_PRESET" in cfg.env) && notes.some((n) => /removed GAMEBAR_PRESET/.test(n)), `install removes ${what} preset`);
   }
-  const mine = { env: { GAMEBAR_PRESET: fwd(own) } };
-  install(mine, null, 1, "x");
-  ok(mine.env.GAMEBAR_PRESET === fwd(own), "install keeps a preset of the user's own");
+  for (const [what, value] of [["an existing preset file of the user's own, even when named full.toml", fwd(own)],
+    ["a missing file of the user's own name", fwd(path.join(tmp, "gone", "custom.toml"))]]) {
+    const mine = { env: { GAMEBAR_PRESET: value } };
+    install(mine, null, 1, "x");
+    ok(mine.env.GAMEBAR_PRESET === value, `install keeps ${what}`);
+  }
   const cfg = { env: { GAMEBAR_PRESET: STANDARD } };
   install(cfg, "doom-minimal", 1, "x");
   ok(cfg.env.GAMEBAR_SKIN === "doom-minimal" && !("GAMEBAR_PRESET" in cfg.env), "a skin to write becomes GAMEBAR_SKIN");

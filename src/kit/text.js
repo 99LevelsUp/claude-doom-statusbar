@@ -23,7 +23,7 @@ function splitLink(s) {
   const m = String(s).match(OSC8_RE);
   return m ? { url: m[1], inner: m[2] } : null;
 }
-function wrapLink(text, url) {
+export function wrapLink(text, url) {
   return `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\`;
 }
 // First `width` visible columns of `text`, no padding, never splitting a 2-col glyph.

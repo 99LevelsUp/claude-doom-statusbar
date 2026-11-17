@@ -1,7 +1,7 @@
 // Themes: which game the HUD dresses up as. Switched live with
 //   claude-game-bar theme <name|next>
-// The theme is the choice releases before skins saved. A chosen skin (src/skin-select.js) wins over
-// it; while none is chosen, the theme picks the game whose default skin is drawn.
+// A chosen skin (src/skin-select.js) wins over the theme; while none is chosen, the theme picks the
+// game whose default skin is drawn.
 //
 // The choice lives in a tiny JSON file the statusline reads on every render, so a switch
 // shows up on the next refresh (about a second), with no restart and no settings.json edit.
@@ -20,8 +20,8 @@ const gameNamed = (theme) => GAMES.find((g) => g.name === theme);
 // theme -> preset file name (null = follow GAMEBAR_PRESET), plus a one-line blurb for the CLI.
 // Taken from the registry when this module loads; the functions below read the registry live.
 export const THEMES = Object.fromEntries(GAMES.map((g) => [g.name, {
-  preset: g.usesPresetSetting ? null : path.basename(g.presets[g.defaultPreset]),
-  about: g.about,
+  preset: g.readsPresets ? null : path.basename(g.presets[g.defaultPreset]),
+  about: g.description,
 }]));
 export const THEME_NAMES = Object.keys(THEMES);
 
@@ -61,7 +61,7 @@ export function currentTheme(env = process.env) {
 // The preset file to render for `theme`, or null to keep the caller's default (GAMEBAR_PRESET).
 export function themePreset(theme) {
   const g = gameNamed(theme);
-  return g && !g.usesPresetSetting ? g.presets[g.defaultPreset] : null;
+  return g && !g.readsPresets ? g.presets[g.defaultPreset] : null;
 }
 
 // The preset file `theme` renders when nothing else names one.

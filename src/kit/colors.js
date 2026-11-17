@@ -5,15 +5,10 @@ import { TERM_RGB, OK, CRIT, sgrBg } from "./ansi.js";
 
 const WARN = [224, 184, 64];
 
-// Default heat gradient: green (0) -> yellow (50) -> red (100). Higher = hotter,
-// the orientation every caller wants (context usage, rate limits, CPU, disk, RAM).
 const DEFAULT_STOPS = [[0, OK], [50, WARN], [100, CRIT]];
 
 const lerp1 = (a, b, t) => Math.round(a + (b - a) * t);
 
-// Interpolate an RGB colour at `pct` (0..100) across sorted [value, rgb] stops.
-// Below the first stop / above the last it clamps to that stop. A single stop is a
-// solid colour; adjacent stops (e.g. 50 then 51) make a near-hard transition.
 function interpStops(stops, pct) {
   if (pct <= stops[0][0]) return stops[0][1];
   const last = stops[stops.length - 1];
@@ -28,11 +23,6 @@ function interpStops(stops, pct) {
   return last[1];
 }
 
-// Resolve a metric's `color` spec to an RGB at `pct` (0..100):
-//   "threshold"        -> the default green->yellow->red gradient
-//   [[v, "#hex"], ...] -> a custom gradient (a single pair = a solid colour)
-//   "#rrggbb"          -> a solid colour
-//   unset / unknown    -> null, so the caller can pick its own default
 export function colorFor(spec, pct) {
   if (spec === "threshold") return interpStops(DEFAULT_STOPS, pct);
   if (Array.isArray(spec) && spec.length) {
@@ -51,6 +41,9 @@ export function rgbOf(spec) {
 }
 
 export const isTerm = (rgb) => rgb[0] === 0 && rgb[1] === 0 && rgb[2] === 0;
+
+// The background escape of a colour spec; "term-bg" is the terminal's own background.
+export const bgOf = (spec) => (spec === "term-bg" ? "\x1b[49m" : sgrBg(rgbOf(spec)));
 
 export function bgsgrBox(boxRgb) {
   return isTerm(boxRgb) ? "\x1b[49m" : sgrBg(boxRgb);

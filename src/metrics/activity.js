@@ -7,10 +7,10 @@ import { clip, _dur } from "./session.js";
 
 const GEIGER_WINDOW = 30.0; // must match the hook's window
 const GEIGER_BINS = 14;
+const TASK_TEXT_CLIP = 60;
 
-// The permission modes the bar shows; the default mode is left out.
 const PERM_MODES = new Set(["plan", "auto", "acceptEdits", "bypassPermissions"]);
-const TASK_ORDER = { completed: 0, deleted: 0, in_progress: 1, pending: 2 }; // settled (done+deleted, by time) first, then open
+const TASK_ORDER = { completed: 0, deleted: 0, in_progress: 1, pending: 2 };
 
 export function activityValues(st, now) {
   const v = {};
@@ -54,8 +54,7 @@ export function activityValues(st, now) {
   const ordered = (showList ? tasks.filter((t) => !t.cleaned) : [])
     .map((t) => ({ ...t }))
     .sort((a, b) => (TASK_ORDER[a.status] - TASK_ORDER[b.status]) || (a.ts - b.ts));
-  // generous clip: box width caps it, title marquees
-  v["act.tasklist"] = ordered.map((t) => ({ status: t.status, text: clip(t.title, 60) }));
+  v["act.tasklist"] = ordered.map((t) => ({ status: t.status, text: clip(t.title, TASK_TEXT_CLIP) }));
 
   if ("errors" in st) v["act.errors"] = Number(st.errors);
   // MSYS bash-flood gauge: live bash.exe count the async hook snapshotted (win32 only). The

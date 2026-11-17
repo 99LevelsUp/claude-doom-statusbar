@@ -90,6 +90,10 @@ export function readLearned(file, oldFileOf) {
 }
 
 // Do `a` and `b` name the same path? Without case on Windows, whose file systems ignore it.
+// The user directory: ~/.claude/claude-game-bar/, or GAMEBAR_USER_DIR.
+export const userDir = (env = process.env) =>
+  envGet("USER_DIR", env) || path.join(os.homedir(), ".claude", "claude-game-bar");
+
 export const samePath = (a, b) => process.platform === "win32"
   ? path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase()
   : path.resolve(a) === path.resolve(b);

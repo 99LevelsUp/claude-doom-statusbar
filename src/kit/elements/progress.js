@@ -46,7 +46,7 @@ export const progress = define({
     const full = Math.min(cells, Math.floor(units / steps));
     const rem = full < cells ? units % steps : 0;
 
-    const glyphs = []; // [character, "lit" | "empty" | "mid"], one per cell
+    const glyphs = [];
     for (let i = 0; i < full; i++) glyphs.push([p.fill, "lit"]);
     if (rem) glyphs.push([partials[rem], "lit"]);
     while (glyphs.length < cells) glyphs.push([p.empty, "empty"]);

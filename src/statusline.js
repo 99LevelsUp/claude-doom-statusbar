@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Claude Code statusLine — the live game HUD wired to real session data.
 // Port of statusline.py. Reads the statusline JSON on stdin and prints the bar that
-// renderSession (src/render.js) builds from it.
+// renderSessionWith (src/render-core.js) builds from it.
 //
 // settings.json:
 //   "statusLine": { "type": "command",
@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 import { ensureRuntimeDir, runtimeDir, FILE_PREFIX } from "./platform/runtime.js";
 import { envGet } from "./platform/env.js";
 import { SRC_DIR } from "./package-root.js";
-import { renderSession } from "./render.js";
+import { renderSessionWith } from "./render-core.js";
 import { fileStore } from "./kit/skin/warnings.js";
 
 // When each warning under the bar first appeared, kept between renders (each one is a new process)
@@ -64,7 +64,7 @@ function main() {
   if (!ensureRuntimeDir()) { process.stdout.write("gamebar: offline\n"); return; }
   let data = {};
   try { data = JSON.parse(readFileSync(0, "utf8")); } catch { data = {}; }
-  const lines = renderSession({ data, env: process.env, now: Date.now() / 1000,
+  const lines = renderSessionWith(null, { data, env: process.env, now: Date.now() / 1000,
     warningStore: fileStore(path.join(runtimeDir(), WARNINGS_FILE)),
     // No skin scripts here: a new process every render would pay a worker start every time, and a
     // script that hangs a full timeout every time. Their elements draw their defaults.

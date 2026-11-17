@@ -29,9 +29,8 @@ import { PACKAGE_ROOT, SRC_DIR } from "../src/package-root.js";
 import {
   clearTheme, migrateTheme, themeFile, removeOldThemeFile,
 } from "../src/theme.js";
-import { rootHash, runtimeDir } from "../src/platform/runtime.js";
+import { rootHash, runtimeDir, samePath } from "../src/platform/runtime.js";
 import { envGet, newName, oldName, bothNames } from "../src/platform/env.js";
-import { samePath } from "../src/platform/runtime.js";
 import { HOOK_EVENTS, die, settingsFile, load, save, install, uninstall } from "../src/install/settings.js";
 import {
   selectSkin, findSkin, listSkins, nextSkin, savedSkin, saveSkin, clearSkin, savedSkinFile, userDir,
@@ -47,7 +46,9 @@ import { sgrFg, sgrBg } from "../src/kit/ansi.js";
 import { ensureEmojiFont } from "../src/install/emoji-font.js";
 import { defaultGame } from "../src/games/index.js";
 import { loadSkin } from "../src/kit/skin/load.js";
-import { createAssetResolver, installSkinAssets, removeUnused, skinPackages } from "../src/platform/assets.js";
+import { isPlainObject } from "../src/kit/is.js";
+import { createAssetResolver, removeUnused } from "../src/platform/assets.js";
+import { installSkinAssets, skinPackages } from "../src/skin-assets.js";
 
 const HASH = rootHash(PACKAGE_ROOT); // this installation's daemon and its files
 
@@ -99,7 +100,6 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "install" || a === "uninstall") out.cmd = a;
-    // `theme` is the name releases before skins gave the switch.
     else if (["skin", "skins", "theme", "themes"].includes(a)) { out.cmd = "skin"; out.skinArg = argv[++i] ?? null; }
     else if (a === "test-card") out.cmd = "test-card";
     else if (a === "--uninstall") out.cmd = "uninstall";
@@ -140,7 +140,7 @@ function ownEnv() {
 function settingsEnv(file) {
   try {
     const env = JSON.parse(readFileSync(file, "utf8")).env;
-    return env && typeof env === "object" && !Array.isArray(env) ? env : {};
+    return isPlainObject(env) ? env : {};
   } catch { return {}; }
 }
 
@@ -186,7 +186,7 @@ async function skin(name) {
     const all = listSkins();
     console.log("skins:");
     for (const s of all.filter((x) => !x.user)) {
-      console.log(`  ${s.name === current ? "▶" : " "} ${s.name.padEnd(15)} ${s.game.about}`);
+      console.log(`  ${s.name === current ? "▶" : " "} ${s.name.padEnd(15)} ${s.game.description}`);
     }
     const own = all.filter((x) => x.user);
     if (own.length) {
@@ -199,7 +199,7 @@ async function skin(name) {
   const found = name === "next" ? findSkin(nextSkin(savedSkin() || current)) : findSkin(name) || findSkin(name.toLowerCase());
   if (!found) die(`! unknown skin: ${name} (see: claude-game-bar skin list)`);
   saveSkin(found.name);
-  console.log(`✓ skin: ${found.name}${found.game ? ` — ${found.game.about}` : ""}`);
+  console.log(`✓ skin: ${found.name}${found.game ? ` — ${found.game.description}` : ""}`);
   console.log("  the status bar switches on its next refresh (no restart needed).");
   for (const l of await installSkinAssets(found.name)) console.log(`  assets: ${l}`);
   for (const n of shadowNotes(found.name)) console.log(`  note: ${n}`);

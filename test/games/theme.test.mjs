@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Themes: the icon-row visual, the live switch (`theme`, the older name of `skin`), and the theme a
+// Themes: the live switch (`theme`, the older name of `skin`), and the theme a
 // release before skins saved. The Minecraft skin itself is pinned in minecraft-skin.test.mjs, its
 // chat in test/kit/chat.test.mjs.
 import "../_temp-sandbox.mjs"; // before the modules that name temp paths
@@ -8,7 +8,6 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { VISUALS } from "../../src/kit/elements/index.js";
 import { sandboxEnv } from "../_sandbox-env.mjs";
 
 const HERE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -16,14 +15,6 @@ const ROOT = path.join(HERE, "..");
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 const strip = (s) => s.replace(/\x1b\[[0-9;]*m/g, "");
-
-// icon-row visual: invert reads a used% as what is left.
-{
-  const row = VISUALS["icon-row"];
-  const p = row.validate({ glyph: "♥", empty_glyph: "♡", count: 10, invert: true }).params;
-  const hearts = strip(row.draw({ value: 70, params: p, width: row.widths(p).natural })[0]);
-  ok(hearts === "♥♥♥♡♡♡♡♡♡♡", `icon row: 70% used -> 3 of 10 hearts (${hearts})`);
-}
 
 // End to end: `theme` is the older name of `skin`. It saves the skin choice (skin.json in the user
 // directory), and the statusline picks it up on the next render. A game's name chooses its default

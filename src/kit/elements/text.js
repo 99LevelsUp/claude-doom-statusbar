@@ -3,16 +3,14 @@
 // forth with the render tick or is clipped with an ellipsis.
 
 import { sgrFg } from "../ansi.js";
-import { vlen, marquee } from "../text.js";
+import { vlen, marquee, wrapLink } from "../text.js";
 import { rgbOf } from "../colors.js";
 import { define, param } from "./schema.js";
+import { isPlainObject } from "../is.js";
 import { iconParam, alignParam, labelOf, labelWidth, block, pad, TEXT_HEX } from "./paint.js";
 
-const osc8 = (text, url) => `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\`;
-
-// A value as text and the address it links to, or null.
 export function textOf(value) {
-  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+  if (isPlainObject(value)) {
     return { text: String(value.text ?? ""), url: value.url || null };
   }
   return { text: String(value ?? ""), url: null };
@@ -39,7 +37,7 @@ export const text = define({
     const room = width - vlen(lbl);
     if (room < 0) return block([marquee(lbl, width, 0, "clip")], width, height);
     const { text: t, url } = textOf(value);
-    const shown = url && p.link ? osc8(t, url) : t;
+    const shown = url && p.link ? wrapLink(t, url) : t;
     const body = vlen(t) <= room ? pad(shown, room, p.align) : marquee(shown, room, ctx.tick ?? 0, p.overflow);
     return block([lbl + sgrFg(rgbOf(p.color)) + body], width, height);
   },

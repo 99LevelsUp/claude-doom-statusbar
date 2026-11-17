@@ -17,6 +17,8 @@
 //   list      a list of strings
 //   asset     a reference to an asset file or folder; "" for none
 
+import { isPlainObject } from "../is.js";
+
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const isHex = (v) => typeof v === "string" && HEX.test(v);
 
@@ -28,14 +30,13 @@ const CHECKS = {
   color: (v, s) => isHex(v) || (s.keywords || []).includes(v),
   gradient: (v) => v === "threshold" || v === "" || isHex(v) ||
     (Array.isArray(v) && v.length > 0 && v.every((p) => Array.isArray(p) && p.length === 2 && typeof p[0] === "number" && isHex(p[1]))),
-  map: (v) => v !== null && typeof v === "object" && !Array.isArray(v) && Object.values(v).every((x) => typeof x === "string"),
+  map: (v) => isPlainObject(v) && Object.values(v).every((x) => typeof x === "string"),
   list: (v) => Array.isArray(v) && v.every((x) => typeof x === "string"),
   asset: (v) => typeof v === "string",
 };
 
 export const PARAM_TYPES = Object.keys(CHECKS);
 
-// One schema entry.
 export const param = (type, def, meaning, extra = {}) => ({ type, default: def, meaning, ...extra });
 
 function valid(s, v) {

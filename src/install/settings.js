@@ -9,6 +9,7 @@ import { SRC_DIR } from "../package-root.js";
 import { registeredPreset } from "../games/index.js";
 import { bothNames, newName, newNameOf } from "../platform/env.js";
 import { samePath } from "../platform/runtime.js";
+import { isPlainObject } from "../kit/is.js";
 import { OLD_PACKAGE } from "./old-package.js";
 
 // Normalise to forward slashes, like install.py's `.replace("\\", "/")`. The marker we
@@ -104,7 +105,7 @@ const ours = (entry) => Array.isArray(entry?.hooks) && entry.hooks.some(ourHook)
 // new one wins and the old one goes. Returns how many old names went.
 export function renameOldEnv(cfg) {
   const env = cfg.env;
-  if (!env || typeof env !== "object" || Array.isArray(env)) return 0;
+  if (!isPlainObject(env)) return 0;
   const renamed = {};
   let n = 0;
   for (const [k, v] of Object.entries(env)) {
@@ -155,16 +156,6 @@ function ourMovableHook(h) {
   if (!script) return true;
   const root = /(?:^|\/)src\/hook\.js$/.test(script) ? path.dirname(path.dirname(script)) : path.dirname(script);
   return !existsSync(script) || isPackageRoot(root);
-}
-
-// The preset path to keep for a preset setting that is already there. One that names a registered
-// preset (by its file name) in another copy of this package or of the old one, or that no longer
-// exists, becomes that preset in this package. Anything else is the user's own file and is kept.
-export function migratedPreset(value) {
-  if (typeof value !== "string" || !value) return value;
-  const reg = registeredPreset(path.basename(value));
-  if (!reg || samePath(value, reg)) return value;
-  return !existsSync(value) || inPackageCopy(value) ? slash(reg) : value;
 }
 
 // Is `value` a preset setting an installer of this package or of the old one wrote: a registered

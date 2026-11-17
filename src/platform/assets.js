@@ -23,16 +23,7 @@
 //     says reaches npm's command line, and no package script runs;
 //   - compares the integrity npm recorded (node_modules/.package-lock.json) with the pin, and only
 //     then renames the folder to <game>@<version>, never over one that exists. Anything else
-//     discards the folder, so a version in the store is always a whole, checked one;
-//   - on failure writes <game>@<version>.retry, and no install of it starts for 10 minutes.
-// A reference that names a package rather than a game (`@scope/name...`) is refused with a warning:
-// only the packages manifests pin are ever installed.
-//
-// Each render records, per installation of the bar, the skin it drew and the packages of that
-// skin's whole smaller-skin chain (usage-<install hash>.json in the user directory), at most once a
-// minute per skin. `claude-game-bar install` merges every installation's record and removes the
-// versions no skin drawn within 30 days and not the saved skin's chain uses (removeUnused), and the
-// temporary folders of installs whose process is gone.
+//     discards the folder, so a version in the store is always a whole, checked one.
 
 import { spawn } from "node:child_process";
 import {
@@ -40,10 +31,9 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { PACKAGE_ROOT, SRC_DIR } from "../package-root.js";
-import { rootHash, writeAtomic } from "./runtime.js";
+import { rootHash, writeAtomic, userDir } from "./runtime.js";
 import { findGame, readGame } from "../games/index.js";
-import { findSkin, userDir } from "../skin-select.js";
-import { loadSkin } from "../kit/skin/load.js";
+import { makeWarning } from "../kit/warning.js";
 
 export const RETRY_MS = 10 * 60 * 1000;
 export const LOCK_STALE_MS = 10 * 60 * 1000;
@@ -61,7 +51,10 @@ const VERSION_DIR = /^[A-Za-z0-9][A-Za-z0-9_-]*@\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.+
 const INTEGRITY = /^sha512-[A-Za-z0-9+/]+={0,2}$/;
 const GAME_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 // A game asset reference: a game's name, a colon, a path. A drive letter is not a game's name.
-const GAME_REF = /^([A-Za-z0-9][A-Za-z0-9_-]+):(.*)$/;
+const REF_GAME = "[A-Za-z0-9][A-Za-z0-9_-]+";
+const GAME_REF = new RegExp(`^(${REF_GAME}):(.*)$`);
+// What every game asset reference starts with.
+export const GAME_PREFIX = new RegExp(`^${REF_GAME}:`);
 
 export const assetsDir = (env = process.env) => path.join(userDir(env), "assets");
 // Where a checkout keeps each game's assets; an installed package has no such folder.
@@ -83,26 +76,37 @@ export function pinOf(game) {
 const isDir = (p) => { try { return statSync(p).isDirectory(); } catch { return false; } };
 const packageIn = (folder, pkg) => path.join(folder, "node_modules", ...pkg.split("/"));
 
-// The game's folder of assets in a checkout, or null.
+// The checkout's folders of assets by game name, for this process: a checkout's folders do not
+// come or go while the bar runs.
+const checkoutRoots = new Map();
+
 export function checkoutRoot(game, gamesRoot = CHECKOUT_GAMES) {
   if (!game || !GAME_NAME.test(game.name || "")) return null;
+  const own = gamesRoot === CHECKOUT_GAMES;
+  if (own && checkoutRoots.has(game.name)) return checkoutRoots.get(game.name);
   const dir = path.join(gamesRoot, game.name, "assets");
-  return isDir(dir) ? dir : null;
+  const root = isDir(dir) ? dir : null;
+  if (own) checkoutRoots.set(game.name, root);
+  return root;
 }
 
-// The installed pinned version's package folder, or null.
 export function installedRoot(pin, env = process.env) {
   if (!pin) return null;
   const dir = packageIn(path.join(assetsDir(env), pin.key), pin.package);
   return isDir(dir) ? dir : null;
 }
 
+// Is `file` (an absolute path) anywhere but strictly inside `root`? `root` itself counts as outside.
+export function leadsOutside(root, file) {
+  const back = path.relative(root, file);
+  return back === "" || back === ".." || back.startsWith(`..${path.sep}`) || path.isAbsolute(back);
+}
+
 // `rel` inside `root`, when it exists there; null for a path that leads out of it.
 function inside(root, rel) {
   if (!root || typeof rel !== "string" || rel === "" || path.isAbsolute(rel)) return null;
   const file = path.resolve(root, rel);
-  const back = path.relative(root, file);
-  if (back === "" || back === ".." || back.startsWith(`..${path.sep}`) || path.isAbsolute(back)) return null;
+  if (leadsOutside(root, file)) return null;
   return existsSync(file) ? file : null;
 }
 
@@ -271,7 +275,7 @@ export function startInstall(game, { env = process.env, now = Date.now() } = {})
   }
 }
 
-const warning = (cause, subject, message) => Object.freeze({ key: `assets|${cause}|${subject}`, cause, skin: null, element: null, subject, message });
+const warning = (cause, subject, message) => makeWarning({ key: `assets|${cause}|${subject}`, cause, subject, message });
 const minutes = (ms) => Math.max(1, Math.ceil(ms / 60000));
 
 // One render's asset lookups. options:
@@ -334,85 +338,8 @@ export function createAssetResolver({ env = process.env, now = Date.now(), folde
   return { resolve, need, packages: () => [...used].sort(), warnings: () => [...warned.values()] };
 }
 
-// The games a skin's assets come from: those its `games` list names and those its references name
-// (scripts and asset parameters of its elements and frames). Names that are not games stay in the
-// list, so a lookup can say so.
-export function skinGames(skin) {
-  const names = new Set((skin && skin.games) || []);
-  const take = (ref) => {
-    if (typeof ref !== "string" || ref === "") return;
-    const r = parseAssetRef(ref);
-    if (r.kind === "game") names.add(r.game);
-    else if (r.kind === "package") names.add(r.name.startsWith("@") ? r.name : `npm:${r.name}`);
-  };
-  const assetParams = (descriptor, params) => {
-    const schema = (descriptor && descriptor.params) || {};
-    for (const [k, v] of Object.entries(params || {})) if (schema[k] && schema[k].type === "asset") take(v);
-  };
-  const walk = (node) => {
-    if (!node) return;
-    take(node.script);
-    assetParams(node.descriptor, node.params);
-    if (node.frame) assetParams(node.frame.descriptor, node.frame.params);
-    for (const c of node.children || []) walk(c);
-  };
-  walk(skin && skin.root);
-  return [...names];
-}
-
-// A loaded skin and the skins of its smaller chain, loaded, in order. A name that draws nothing
-// ends the chain, as does a skin met twice.
-export function skinChain(skin, env = process.env) {
-  const chain = [];
-  const seen = new Set();
-  let s = skin;
-  while (s && !seen.has(s.file)) {
-    seen.add(s.file);
-    chain.push(s);
-    const next = s.smaller ? findSkin(s.smaller, env) : null;
-    s = next && next.file ? loadSkin(next.file).skin : null;
-  }
-  return chain;
-}
-
-// The games of a skin chain's assets, each once.
-export const chainGames = (skin, env = process.env) => [...new Set(skinChain(skin, env).flatMap(skinGames))];
-
-// The skin called `name`, loaded, or null.
-function loadNamed(name, env) {
-  const s = findSkin(name, env);
-  return s && s.file ? loadSkin(s.file).skin : null;
-}
-
-// The store folders (<game>@<version>) the chain of the skin called `name` uses.
-export function skinPackages(name, env = process.env) {
-  const skin = loadNamed(name, env);
-  if (!skin) return [];
-  return [...new Set(chainGames(skin, env).map((g) => pinOf(findGame(g))).filter(Boolean).map((p) => p.key))].sort();
-}
-
-// Installs, now, every pinned package the chain of the skin called `name` uses and the store or
-// the checkout does not have yet (`install` and the `skin` command). Returns a line per package.
-export async function installSkinAssets(name, { env = process.env } = {}) {
-  const skin = loadNamed(name, env);
-  if (!skin) return [];
-  const lines = [];
-  for (const g of chainGames(skin, env)) {
-    const game = findGame(g);
-    const pin = pinOf(game);
-    if (!pin || checkoutRoot(game)) continue;
-    const r = await installAssets(game, { env, ignoreRetry: true });
-    const id = `${pin.package}@${pin.version}`;
-    if (r.status === "installed") lines.push(`installed the assets of ${game.name} (${id})`);
-    else if (r.status === "locked") lines.push(`the assets of ${game.name} (${id}) are being installed in the background`);
-    else if (r.status === "failed") lines.push(`could not install the assets of ${game.name} (${id}): ${r.message}; the bar tries again later`);
-  }
-  return lines;
-}
-
-// This installation's usage record.
 export const usageFile = (env = process.env, hash = rootHash()) => path.join(userDir(env), `usage-${hash}.json`);
-const lastUsage = new Map(); // usage file|skin -> { sig, time } of the last write by this process
+const lastUsage = new Map();
 
 const fresh = (seen, sig, now) => seen && seen.sig === sig && now >= seen.time && now - seen.time < USAGE_EVERY_MS;
 

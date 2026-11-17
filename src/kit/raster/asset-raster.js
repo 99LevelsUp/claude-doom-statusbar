@@ -11,8 +11,9 @@ import { readFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { RESET, sgrBg } from "../ansi.js";
+import { RESET, sgrFg, sgrBg } from "../ansi.js";
 import { decodePng } from "./png.js";
+import { isPlainObject } from "../is.js";
 import { convertImage } from "./glyph-render.js";
 import { writeAtomic, runtimeDir, FACES_PREFIX } from "../../platform/runtime.js";
 
@@ -21,7 +22,6 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CONVERTER_FILES = ["glyphs.js", "glyph-render.js", "png.js"].map((f) => path.join(HERE, f));
 const TERM_BG = "term-bg";
 
-// file -> { stamp, image (undefined until decoded, null when unreadable), rows: Map(key -> rows or null) }
 const _assets = new Map();
 
 function stampOf(file) {
@@ -52,7 +52,7 @@ let _disk = null;
 function diskCache() {
   if (!_disk) {
     try { _disk = JSON.parse(readFileSync(diskFile(), "utf8")); } catch { _disk = {}; }
-    if (!_disk || typeof _disk !== "object" || Array.isArray(_disk)) _disk = {};
+    if (!isPlainObject(_disk)) _disk = {};
   }
   return _disk;
 }
@@ -112,18 +112,16 @@ export function rasterize(file, rows, { step = "octant", background = [0, 0, 0] 
   return entry.rows.get(key);
 }
 
-const tc = (code, c) => `\x1b[${code};2;${c[0]};${c[1]};${c[2]}m`;
-
 // One cell over the background: a colour, or "term-bg" for the terminal's own, which a transparent
 // foreground can only show through reverse video.
 function emitCell(ch, efg, ebg, background) {
   if (background !== TERM_BG) {
-    return "\x1b[27m" + tc(38, efg !== null ? efg : background) + tc(48, ebg !== null ? ebg : background) + ch;
+    return "\x1b[27m" + sgrFg(efg !== null ? efg : background) + sgrBg(ebg !== null ? ebg : background) + ch;
   }
   if (efg === null && ebg === null) return "\x1b[27m\x1b[39m\x1b[49m" + ch;
-  if (efg === null) return "\x1b[7m" + tc(38, ebg) + "\x1b[49m" + ch;
-  if (ebg === null) return "\x1b[27m" + tc(38, efg) + "\x1b[49m" + ch;
-  return "\x1b[27m" + tc(38, efg) + tc(48, ebg) + ch;
+  if (efg === null) return "\x1b[7m" + sgrFg(ebg) + "\x1b[49m" + ch;
+  if (ebg === null) return "\x1b[27m" + sgrFg(efg) + "\x1b[49m" + ch;
+  return "\x1b[27m" + sgrFg(efg) + sgrBg(ebg) + ch;
 }
 
 const bgOf = (background) => (background === TERM_BG ? "\x1b[49m" : sgrBg(background));

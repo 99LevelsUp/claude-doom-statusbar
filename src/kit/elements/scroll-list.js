@@ -6,9 +6,9 @@ import { sgrFg } from "../ansi.js";
 import { vlen, marquee, scrollWindow } from "../text.js";
 import { rgbOf } from "../colors.js";
 import { define, param } from "./schema.js";
+import { isPlainObject } from "../is.js";
 import { iconParam, labelOf, labelWidth, block, blank, TEXT_HEX } from "./paint.js";
 
-const isTask = (item) => item !== null && typeof item === "object" && !Array.isArray(item);
 
 export const scrollList = define({
   name: "scroll-list",
@@ -36,7 +36,7 @@ export const scrollList = define({
     const text = sgrFg(rgbOf(p.color));
     const markerFg = sgrFg(rgbOf(p.marker_color));
     const items = Array.isArray(value) ? value : [];
-    const boundary = items.filter((it) => isTask(it) && p.settled.includes(it.status)).length;
+    const boundary = items.filter((it) => isPlainObject(it) && p.settled.includes(it.status)).length;
     const win = scrollWindow(items.length, height, p.anchor, boundary);
     const shown = items.slice(win.start, win.start + height);
     const lines = shown.map((item, k) => {
@@ -51,7 +51,7 @@ export const scrollList = define({
         return left + blank(width - vlen(left) - rightW) + text + right + (tail ? markerFg + tail : "");
       }
       let s;
-      if (isTask(item)) {
+      if (isPlainObject(item)) {
         const mark = Object.hasOwn(p.marks, item.status) ? p.marks[item.status] : "•";
         const markRgb = Object.hasOwn(p.mark_colors, item.status) ? rgbOf(p.mark_colors[item.status]) : null;
         const m = mark + (vlen(mark) < 2 ? " " : ""); // marks take 2 columns so the texts line up

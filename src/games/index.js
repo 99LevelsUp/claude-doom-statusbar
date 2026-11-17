@@ -9,7 +9,7 @@
 //   description   a one-line blurb for the theme and skin lists
 //   default       true for the game drawn when nothing is chosen (one game)
 //   default_skin  the skin drawn when the game is chosen without a skin
-//   [legacy]      what a release before skins saved:
+//   [legacy]
 //     aliases        older theme names that still choose this game
 //     reads_presets  the file name of the preset setting (GAMEBAR_PRESET) picks the size; a game
 //                    that does not read presets draws its default skin whatever the preset is
@@ -21,10 +21,9 @@
 // its file is missing; the bar then draws the default skin with a warning.
 //
 // An entry of the list:
-//   name, description, about (the same blurb), aliases, default, dir, defaultSkin, readsPresets,
-//   presetSkins (preset name -> skin name), assets, skins ([{ name, file | null }], in the order
-//   the manifest names them, then the other skin files)
-//   usesPresetSetting  the same as readsPresets
+//   name, description, aliases, default, dir, defaultSkin, readsPresets, presetSkins (preset
+//   name -> skin name), assets, skins ([{ name, file | null }], in the order the manifest names
+//   them, then the other skin files)
 //   presets            preset name -> absolute path of its .toml file in the game's presets/, where
 //                      an installer before skins pointed the preset setting; no game ships these
 //                      files any more, the paths only recognise the old settings
@@ -51,20 +50,24 @@ function skinFiles(dir) {
   });
 }
 
-// The registry entry for the game folder `dir`, read from its game.toml.
 export function readGame(dir) {
   const m = parseToml(readFileSync(path.join(dir, "game.toml"), "utf8"));
   const legacy = m.legacy || {};
   const presetSkins = { ...(legacy.presets || {}) };
   const presets = Object.fromEntries(Object.keys(presetSkins).map((n) => [n, path.join(dir, "presets", `${n}.toml`)]));
-  const files = skinFiles(dir);
-  const names = [...new Set([...Object.values(presetSkins), m.default_skin, ...files.map((f) => f.name)])]
-    .filter((n) => typeof n === "string" && n);
   const readsPresets = legacy.reads_presets === true;
+  // The skins are read on first use: naming them parses every skin file, and a lookup that finds its
+  // skin in an earlier game never needs a later game's.
+  let skins = null;
+  const listSkins = () => {
+    const files = skinFiles(dir);
+    const names = [...new Set([...Object.values(presetSkins), m.default_skin, ...files.map((f) => f.name)])]
+      .filter((n) => typeof n === "string" && n);
+    return names.map((name) => ({ name, file: (files.find((f) => f.name === name) || {}).file || null }));
+  };
   return {
     name: m.name,
     description: m.description || "",
-    about: m.description || "",
     aliases: [...(legacy.aliases || [])],
     default: m.default === true,
     dir,
@@ -72,8 +75,7 @@ export function readGame(dir) {
     readsPresets,
     presetSkins,
     assets: m.assets ? { package: m.assets.package, version: m.assets.version, integrity: m.assets.integrity } : null,
-    skins: names.map((name) => ({ name, file: (files.find((f) => f.name === name) || {}).file || null })),
-    usesPresetSetting: readsPresets,
+    get skins() { return (skins ??= listSkins()); },
     presets,
     defaultPreset: Object.keys(presets)[0] ?? null,
   };
@@ -102,6 +104,16 @@ export function bundledSkins() {
   return GAMES.flatMap((game) => game.skins
     .filter((s) => !seen.has(s.name) && seen.add(s.name))
     .map((s) => ({ ...s, game })));
+}
+
+// The bundled skin called `name`, as bundledSkins() gives it, or null. Stops at the first game that
+// has it.
+export function bundledSkin(name) {
+  for (const game of GAMES) {
+    const s = game.skins.find((x) => x.name === name);
+    if (s) return { ...s, game };
+  }
+  return null;
 }
 
 // The registered preset with this file name ("full.toml"), from any game, or null: where the

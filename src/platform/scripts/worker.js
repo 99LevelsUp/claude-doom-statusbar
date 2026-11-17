@@ -30,7 +30,6 @@ __gamebarOut = undefined;
   }
 }`, { filename: "gamebar-script-call" });
 
-// path -> { size, mtimeMs, ctx }
 const loaded = new Map();
 
 function describe(e) {

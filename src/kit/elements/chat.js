@@ -17,20 +17,19 @@
 // running model, another role a name of the cast or the name itself), any other line a plain line
 // in the system colour. Facts and cast roles in braces are filled in, as in a library's lines.
 
-import { sgrFg, sgrBg, TERM_RGB } from "../ansi.js";
+import { sgrFg, TERM_RGB } from "../ansi.js";
 import { vlen } from "../text.js";
-import { rgbOf, bgsgrBox } from "../colors.js";
+import { rgbOf, bgOf, bgsgrBox } from "../colors.js";
 import { define, param } from "./schema.js";
 import { blank } from "./paint.js";
 import { facts as metricFacts, conversations as metricsLibrary } from "../chat/metrics-library.js";
+import { isPlainObject } from "../is.js";
 
 // Timing feels like people typing: an answer to a question comes quickly, anything else after a
 // varied pause. The pauses are fixed per line (not truly random), so every render in the same
 // second shows the same chat.
-const ANSWER_DELAY = 2;              // seconds after a message ending in "?"
-const PAUSE_MIN = 3, PAUSE_MAX = 10; // seconds before any other message
-
-const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+const ANSWER_DELAY_S = 2;
+const PAUSE_MIN_S = 3, PAUSE_MAX_S = 10;
 
 // Fill {placeholders} from the cast and the facts; null when one is not known.
 function fill(text, cast, F) {
@@ -54,8 +53,8 @@ function message(line, cast, F) {
     return text === null ? null : [{ text, role: "system" }];
   }
   if (!Array.isArray(line) || !line.length) return null;
-  if (isObject(line[0])) {
-    const parts = line.map((p) => (isObject(p) ? { text: fill(p.text, cast, F), role: ROLES.has(p.role) ? p.role : "text" } : null));
+  if (isPlainObject(line[0])) {
+    const parts = line.map((p) => (isPlainObject(p) ? { text: fill(p.text, cast, F), role: ROLES.has(p.role) ? p.role : "text" } : null));
     return parts.every((p) => p && p.text !== null) ? parts : null;
   }
   const [role, said] = line;
@@ -85,9 +84,9 @@ function merge(libraries, p) {
   const cast = {};
   const keyed = new Map();
   for (const lib of libraries) {
-    if (!isObject(lib)) continue;
-    if (isObject(lib.cast)) for (const [role, name] of Object.entries(lib.cast)) if (typeof name === "string") cast[role] = name;
-    if (!isObject(lib.conversations)) continue;
+    if (!isPlainObject(lib)) continue;
+    if (isPlainObject(lib.cast)) for (const [role, name] of Object.entries(lib.cast)) if (typeof name === "string") cast[role] = name;
+    if (!isPlainObject(lib.conversations)) continue;
     for (const [key, conv] of Object.entries(lib.conversations)) {
       // A conversation of one plain line may be given as that line.
       const lines = typeof conv === "string" ? [conv] : conv;
@@ -99,14 +98,14 @@ function merge(libraries, p) {
   return { cast, lines: [...keyed.values()].flat() };
 }
 
-// Deterministic per-line "random" pause in [PAUSE_MIN, PAUSE_MAX].
+// Deterministic per-line "random" pause in [PAUSE_MIN_S, PAUSE_MAX_S].
 function pauseFor(i) {
   let x = Math.imul(i + 1, 0x9e3779b1) >>> 0;
   x = Math.imul(x ^ (x >>> 15), 0x85ebca77) >>> 0;
-  return PAUSE_MIN + ((x ^ (x >>> 13)) >>> 0) % (PAUSE_MAX - PAUSE_MIN + 1);
+  return PAUSE_MIN_S + ((x ^ (x >>> 13)) >>> 0) % (PAUSE_MAX_S - PAUSE_MIN_S + 1);
 }
 
-const textOf = (parts) => parts.map((p) => p.text).join("");
+const plainText = (parts) => parts.map((p) => p.text).join("");
 
 // What the chat plays at `now` (seconds):
 //   { script, messages, cycle }
@@ -124,7 +123,7 @@ export function playChat({ facts: F, libraries = [], params: p, now = 0, rows = 
   let t = 0;
   script.forEach((m, i) => {
     at.push(t);
-    t += textOf(m).trim().endsWith("?") ? ANSWER_DELAY : pauseFor(i);
+    t += plainText(m).trim().endsWith("?") ? ANSWER_DELAY_S : pauseFor(i);
   });
   const pos = ((now % t) + t) % t;
   let idx = 0;
@@ -139,10 +138,10 @@ export function playChat({ facts: F, libraries = [], params: p, now = 0, rows = 
 // starts with one space, so a wrapped message reads as one message.
 const WRAP_INDENT = " ";
 export function wrapMessage(parts, w) {
-  const tokens = []; // { text, role }, words and the spaces between them
+  const tokens = [];
   for (const p of parts) for (const t of p.text.split(/( +)/)) if (t) tokens.push({ text: t, role: p.role });
   const lines = [[]];
-  let used = 0, start = 0; // start = columns the line begins with (the indent on continuations)
+  let used = 0, start = 0;
   const push = (text, role) => { lines[lines.length - 1].push({ text, role }); used += vlen(text); };
   const newline = () => { lines.push([]); used = 0; push(WRAP_INDENT, "text"); start = used; };
   for (const { text, role } of tokens) {
@@ -176,7 +175,7 @@ export function paintChat(messages, { width, height, params: p, level = null, no
   const inner = Math.max(0, width - 2);
   const lines = inner > 0 ? messages.flatMap((m) => wrapMessage(m, inner)).slice(-height) : [];
   while (lines.length < height) lines.unshift([]);
-  const bg = p.background === "term-bg" ? "\x1b[49m" : sgrBg(rgbOf(p.background));
+  const bg = bgOf(p.background);
   const colorOf = { text: p.color, system: p.system_color, accent: p.accent_color };
   return lines.map((line) => {
     if (width < 2) return blank(width);
