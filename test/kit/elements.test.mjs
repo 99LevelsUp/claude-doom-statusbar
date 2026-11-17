@@ -154,6 +154,12 @@ try {
     ok(plain(line) === "♥♥♥♥♥♥♡♡♡♡", `60 % over 10 icons draws 6 full and 4 empty (${plain(line)})`);
     const food = VISUALS["icon-row"].validate({ glyph: "🍖", empty_glyph: "🦴", count: 5, invert: true, from_right: true, gap: 1 }).params;
     ok(plain(VISUALS["icon-row"].draw({ value: 60, params: food, width: 14 })[0]) === "🦴 🦴 🦴 🍖 🍖", "inverted and from the right, 60 % used leaves 2 of 5 lit at the right end");
+    const hearts = VISUALS["icon-row"].validate({ glyph: "♥", empty_glyph: "♡", count: 10, gap: 1 }).params;
+    const hw = VISUALS["icon-row"].widths(hearts);
+    ok(hw.min === 10 && hw.natural === 19 && hw.max === 19, `gaps make the row 19 columns, and it can close them up to 10 (${JSON.stringify(hw)})`);
+    ok(plain(VISUALS["icon-row"].draw({ value: 40, params: hearts, width: 19 })[0]) === "♥ ♥ ♥ ♥ ♡ ♡ ♡ ♡ ♡ ♡"
+      && plain(VISUALS["icon-row"].draw({ value: 40, params: hearts, width: 10 })[0]) === "♥♥♥♥♡♡♡♡♡♡",
+      "with room the hearts stand a space apart; in a narrow bar side by side");
   }
 
   console.log("icon:");

@@ -51,6 +51,9 @@ glyph = "♥"
 empty_glyph = "♡"
 color = "#ff3b3b"
 empty_color = "#c07070"
+# A heart is one column, a shank of hunger two: a space between the hearts gives both rows of ten
+# about the same length.
+gap = 1
 invert = true
 # A session without a 5h limit (an API key, or before the first answer) has every heart.
 when_absent = "full"
@@ -58,7 +61,7 @@ priority = 3
 
 [element.between]
 kind = "text"
-width = 43
+width = 34
 min_width = 1
 
 [element.hunger]

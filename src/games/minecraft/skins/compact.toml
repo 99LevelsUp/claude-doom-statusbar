@@ -28,12 +28,15 @@ glyph = "♥"
 empty_glyph = "♡"
 color = "#ff3b3b"
 empty_color = "#c07070"
+# A heart is one column, a shank of hunger two: a space between the hearts gives both rows of ten
+# about the same length.
+gap = 1
 invert = true
 when_absent = "full"
 
 [element.between]
 kind = "text"
-width = 43
+width = 34
 min_width = 1
 
 [element.hunger]

@@ -27,12 +27,17 @@ export const iconRow = define({
     empty_glyph: param("text", "■", "An empty glyph"),
     color: param("gradient", "threshold", "How the filled glyphs colour themselves by the value"),
     empty_color: param("color", "#5a5f78", "Colour of the empty glyphs"),
-    gap: param("integer", 0, "Spaces between glyphs", { min: 0 }),
+    gap: param("integer", 0, "Spaces between glyphs when there is room; a narrow bar closes them up first", { min: 0 }),
     invert: param("boolean", false, "Fill by what is left (100 minus the value), so a used percentage reads as what remains"),
     from_right: param("boolean", false, "Fill from the right end of the row"),
     show_pct: param("boolean", false, "Draw the percentage after the row"),
   },
-  widths: (p) => fixedWidth(labelWidth(p) + p.count * glyphWidth(p) + (p.count - 1) * p.gap + percentWidth(p)),
+  // The gaps are the only part that shrinks: at its minimum the glyphs stand side by side.
+  widths: (p) => {
+    const base = labelWidth(p) + p.count * glyphWidth(p) + percentWidth(p);
+    const natural = base + (p.count - 1) * p.gap;
+    return { min: base, natural, max: natural };
+  },
   rows: () => 1,
   // The stand-in percentage that draws the row full (every glyph lit) or empty, whichever way it fills.
   standIn: (p, mode) => ((mode === "full") !== p.invert ? 100 : 0),
@@ -47,7 +52,10 @@ export const iconRow = define({
       const lit = p.from_right ? i >= p.count - filled : i < filled;
       cells.push(lit ? on + pad(p.glyph, gw) : off + pad(p.empty_glyph, gw));
     }
-    let s = labelOf(p) + cells.join(blank(p.gap));
+    // As wide a gap as the width allows, up to the skin's.
+    const base = labelWidth(p) + p.count * gw + percentWidth(p);
+    const gap = p.count > 1 ? Math.max(0, Math.min(p.gap, Math.floor((width - base) / (p.count - 1)))) : 0;
+    let s = labelOf(p) + cells.join(blank(gap));
     if (p.show_pct) s += on + " " + String(v).padStart(3) + "%";
     return block([s + blank(width - vlen(s))], width, height);
   },
