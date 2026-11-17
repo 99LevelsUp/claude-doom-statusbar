@@ -196,6 +196,43 @@ try {
     ok(lock.reduce((a, b) => a + b, 0) <= 30 && lock[0] < 14 && lock[1] < 24 && lock[2] === 5, `in lockstep the elastic children shrink together (${lock})`);
     const fromEnd = CONTAINERS.row.share(CONTAINERS.row.validate({ shrink: "end" }).params, 30, kids);
     ok(JSON.stringify(fromEnd) === JSON.stringify([14, 11, 5]), `from the end the last elastic child shrinks first (${fromEnd})`);
+    ok(FRAMES.box.minWidth(bx) === 7 && FRAMES.box.minWidth({ ...bx, padding: 2 }) === 9, "a box is at least as wide as its title and padding");
+    ok(FRAMES.box.minWidth({ ...bx, header: false }) === 0, "a box without its title row asks for nothing more");
+  }
+
+  console.log("grow:");
+  {
+    const growing = [{ min: 2, natural: 4, max: Infinity }, { min: 3, natural: 3, max: 3 }, { min: 1, natural: 2, max: Infinity }];
+    const fill = (c) => c.validate({ grow: "fill" }).params;
+    ok(JSON.stringify(CONTAINERS.column.share(defaults(CONTAINERS.column), 10, growing)) === JSON.stringify([4, 3, 2]),
+      "a column's children keep their own widths by default");
+    ok(JSON.stringify(CONTAINERS.column.share(fill(CONTAINERS.column), 10, growing)) === JSON.stringify([10, 3, 10]),
+      "with grow = fill each takes the column's width, up to the most it can use");
+    ok(JSON.stringify(CONTAINERS.row.share(defaults(CONTAINERS.row), 15, growing)) === JSON.stringify([4, 3, 2]),
+      "a row leaves its surplus to its alignment by default");
+    ok(JSON.stringify(CONTAINERS.row.share(fill(CONTAINERS.row), 16, growing)) === JSON.stringify([8, 3, 5]),
+      "with grow = fill the surplus is shared evenly by the children that can grow, the first taking the odd column");
+    ok(JSON.stringify(CONTAINERS.row.share(fill(CONTAINERS.row), 7, growing)) === JSON.stringify(CONTAINERS.row.share(defaults(CONTAINERS.row), 7, growing)),
+      "a row short of width shrinks as it always does");
+  }
+
+  console.log("equalizer sizing:");
+  {
+    const eq = VISUALS.equalizer;
+    const cores = [0.1, 0.5, 0.9, 1];
+    const stretch = defaults(eq);
+    ok(JSON.stringify(eq.widths(stretch, cores)) === JSON.stringify(eq.widths(stretch, [0.1]))
+      && eq.widths(stretch, cores).natural === 16, "stretch, the default: the values spread over its columns, however many there are");
+    const per = eq.validate({ sizing: "values", icon: "🔥" }).params;
+    const w = eq.widths(per, cores);
+    ok(w.natural === 3 + 4 && w.max === 3 + 4 && w.min === 3 + 4, `values: one column per value, 4 cores in 4 columns (${JSON.stringify(w)})`);
+    ok(plain(eq.draw({ value: cores, params: per, width: w.natural })[0]) === "🔥 ▁▄▇█", "each value drawn in its own column");
+    const wide = eq.validate({ sizing: "values", column_width: 2 }).params;
+    ok(eq.widths(wide, cores).natural === 8 && plain(eq.draw({ value: cores, params: wide, width: 8 })[0]) === "▁▁▄▄▇▇██",
+      "column_width columns per value");
+    ok(eq.widths(per, Array(40).fill(0.5)).natural === 3 + 16 && eq.widths(per, Array(40).fill(0.5)).min === 3 + 4,
+      "at most `columns` wide, and min_columns when the bar is narrow");
+    ok(eq.widths(per, undefined).natural === 3, "no values, no columns");
   }
 
   console.log("animation:");

@@ -17,7 +17,7 @@ const SB = mkdtempSync(path.join(os.tmpdir(), "gamebar-skin-fit-"));
 Object.assign(process.env, { ...sandboxEnv(SB) });
 
 const { loadSkin, buildSkin } = await import("../../src/kit/skin/load.js");
-const { fitSkin } = await import("../../src/kit/skin/fit.js");
+const { fitSkin, isEmptyValue } = await import("../../src/kit/skin/fit.js");
 
 const FIX = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "skins");
 const fixture = (name) => path.join(FIX, name);
@@ -133,7 +133,7 @@ try {
     ok(missing.skin.name === "cycle-a" && missing.clipped, "a smaller skin that cannot be loaded ends the chain at the skin before it");
   }
 
-  console.log("widths come from parameters, not from values");
+  console.log("widths do not follow the length of texts or lists");
   {
     const wide = byName("fit-wide");
     const short = fitSkin(wide, { values: VALUES, width: 120, loadSmaller: byName });
@@ -181,6 +181,126 @@ try {
     ok(same(ids(f.tree), ["bar", "empty", "full", "name"]) && same(f.absent, ["hidden"]),
       `hide removes the element, empty and full keep it${show(ids(f.tree), ["bar", "empty", "full", "name"])}`);
     ok(same(widths(f.tree), { bar: 14, empty: 6, full: 5, name: 3 }), "a kept element takes its normal widths");
+  }
+
+  console.log("what counts as nothing to show");
+  {
+    for (const v of [undefined, null, [], ""]) ok(isEmptyValue(v), `${JSON.stringify(v) ?? "undefined"} is nothing to show`);
+    for (const v of [0, false, "x", [0], [[]], { text: "", url: null }, { text: "main", url: null }]) ok(!isEmptyValue(v), `${JSON.stringify(v)} is something to show`);
+  }
+
+  console.log("a box is never narrower than its title");
+  {
+    const skin = inline({
+      bar: { kind: "row", children: ["box"] },
+      box: { kind: "column", frame: { kind: "box", title: "ACTIVITY", padding: 1 }, children: ["n"] },
+      n: txt("model.name", 2),
+    });
+    const wide = fitSkin(skin, { values: { "model.name": "x" }, width: 100 });
+    ok(wide.width === 10 && same(widths(wide.tree), { bar: 10, box: 10, n: 2 }),
+      `a box whose children are narrower than its title takes the title and its padding${show(widths(wide.tree), { bar: 10, box: 10, n: 2 })}`);
+    const narrow = fitSkin(skin, { values: { "model.name": "x" }, width: 6 });
+    ok(narrow.clipped && narrow.width === 10, "and that is its minimum too: at 6 columns it is drawn clipped, not narrower");
+    const bare = inline({
+      bar: { kind: "row", children: ["box"] },
+      box: { kind: "column", frame: { kind: "box", title: "ACTIVITY", header: false }, children: ["n"] },
+      n: txt("model.name", 2),
+    });
+    ok(fitSkin(bare, { values: { "model.name": "x" }, width: 100 }).width === 4, "a box that draws no title row is as wide as its children and padding");
+  }
+
+  console.log("when_empty: a container with nothing to show");
+  {
+    const lists = (mode, more = {}) => inline({
+      bar: { kind: "row", children: ["agents", "name"] },
+      agents: { kind: "row", frame: { kind: "box", title: "AGENTS" }, children: ["list"], ...(mode ? { when_empty: mode } : {}), ...more },
+      list: { kind: "scroll-list", metric: "act.subagents", width: 20, min_width: 16, rows: 3 },
+      name: txt("model.name", 10),
+    });
+    const empty = { "model.name": "x", "act.subagents": [] };
+    const full = { "model.name": "x", "act.subagents": [["review", "12s"]] };
+
+    const keep = fitSkin(lists(null), { values: empty, width: 100 });
+    ok(same(widths(keep.tree), { bar: 32, agents: 22, list: 20, name: 10 }), `keep, the default, holds its fitted width${show(widths(keep.tree), { bar: 32, agents: 22, list: 20, name: 10 })}`);
+
+    const shrink = fitSkin(lists("shrink"), { values: empty, width: 100 });
+    ok(same(ids(shrink.tree), ["bar", "agents", "name"]) && same(widths(shrink.tree), { bar: 18, agents: 8, name: 10 }),
+      `shrink draws an empty box at its minimum, the title and padding, without its children${show(widths(shrink.tree), { bar: 18, agents: 8, name: 10 })}`);
+    ok(shrink.tree.children[0].rows === keep.tree.children[0].rows, "and as many rows tall as with its children, so the bar keeps its height");
+    const shown = fitSkin(lists("shrink"), { values: full, width: 100 });
+    ok(same(widths(shown.tree), widths(keep.tree)), "with something in its list it takes its fitted width again");
+    const absentList = fitSkin(lists("shrink"), { values: { "model.name": "x" }, width: 100 });
+    ok(same(widths(absentList.tree), widths(shrink.tree)), "an absent list is nothing to show as well");
+
+    const texts = inline({
+      bar: { kind: "row", children: ["box", "name"] },
+      box: { kind: "column", frame: { kind: "box", title: "GIT" }, when_empty: "shrink", children: ["branch", "pr"] },
+      branch: txt("git.branch", 10),
+      pr: txt("pr.state", 10),
+      name: txt("model.name", 10),
+    });
+    const gone = fitSkin(texts, { values: { "model.name": "x" }, width: 100 });
+    const there = fitSkin(texts, { values: { "model.name": "x", "git.branch": "main", "pr.state": "#1" }, width: 100 });
+    ok(same(ids(gone.tree), ["bar", "box", "name"]) && gone.tree.children[0].width === 5 && gone.tree.children[0].rows === there.tree.children[0].rows,
+      `a box shrinks, not vanishes, when its metrics are all absent: its title, as tall as with them${show(ids(gone.tree), ["bar", "box", "name"])}`);
+
+    const hide = fitSkin(lists("hide"), { values: empty, width: 100 });
+    ok(same(ids(hide.tree), ["bar", "name"]) && hide.width === 10 && hide.absent.includes("agents"),
+      `hide removes it like an absent element, its space going to the others${show(ids(hide.tree), ["bar", "name"])}`);
+
+    const long = { "model.name": "x", "act.subagents": Array.from({ length: 9 }, (_, i) => [`a much longer agent label ${i}`.repeat(3), "1h"]) };
+    ok(same(widths(fitSkin(lists("shrink"), { values: long, width: 100 }).tree), widths(shown.tree)),
+      "whether a list is empty moves the layout; how long it is or what it says does not");
+
+    const nested = inline({
+      bar: { kind: "row", children: ["outer", "name"] },
+      outer: { kind: "column", frame: { kind: "box", title: "LISTS" }, when_empty: "shrink", children: ["inner", "tasks"] },
+      inner: { kind: "row", when_empty: "hide", children: ["list"] },
+      list: { kind: "scroll-list", metric: "act.subagents", width: 20, rows: 1 },
+      tasks: { kind: "scroll-list", metric: "act.tasklist", width: 20, rows: 1 },
+      name: txt("model.name", 10),
+    });
+    const n = fitSkin(nested, { values: { ...empty, "act.tasklist": [] }, width: 100 });
+    ok(same(ids(n.tree), ["bar", "outer", "name"]) && n.tree.children[0].width === 7,
+      `a container whose children are a hidden container and an empty list is empty too${show(ids(n.tree), ["bar", "outer", "name"])}`);
+
+    const standIn = inline({
+      bar: { kind: "row", children: ["box", "name"] },
+      box: { kind: "row", frame: { kind: "box", title: "XP" }, when_empty: "hide", children: ["xp"] },
+      xp: { kind: "progress", metric: "ratelimit.7d", when_absent: "full" },
+      name: txt("model.name", 10),
+    });
+    ok(same(ids(fitSkin(standIn, { values: { "model.name": "x" }, width: 100 }).tree), ["bar", "name"]),
+      "an element drawing a when_absent stand-in has nothing to show");
+
+    const own = inline({
+      bar: { kind: "row", children: ["box", "name"] },
+      box: { kind: "row", frame: { kind: "box", title: "X" }, when_empty: "hide", children: ["label", "list"] },
+      label: { kind: "text", width: 4, min_width: 4 },
+      list: { kind: "scroll-list", metric: "act.subagents", width: 20, rows: 1 },
+      name: txt("model.name", 10),
+    });
+    ok(same(ids(fitSkin(own, { values: empty, width: 100 }).tree), ["bar", "box", "label", "list", "name"]),
+      "an element bound to no metric draws something of its own, so its container is not empty");
+  }
+
+  console.log("grow: children given the width a container has to spare");
+  {
+    const skin = (grow) => inline({
+      bar: { kind: "column", ...(grow ? { grow } : {}), children: ["cpu", "disk", "clock"] },
+      cpu: { kind: "row", separator: " ", ...(grow ? { grow } : {}), children: ["cores", "total"] },
+      cores: { kind: "equalizer", metric: "sys.cores", sizing: "values" },
+      total: { kind: "number", metric: "sys.cpu", width: 4, align: "right" },
+      disk: { kind: "progress", metric: "sys.disk", icon: "D" },
+      clock: txt("sys.clock", 5),
+    });
+    const values = { "sys.cores": [0.1, 0.2, 0.3, 0.4], "sys.cpu": 12, "sys.disk": 60, "sys.clock": "14:23" };
+    const own = fitSkin(skin(null), { values, width: 100 });
+    ok(same(widths(own.tree), { bar: 21, cpu: 9, cores: 4, total: 4, disk: 21, clock: 5 }),
+      `none, the default: each child of a column keeps its own width${show(widths(own.tree), { bar: 21, cpu: 9, cores: 4, total: 4, disk: 21, clock: 5 })}`);
+    const fill = fitSkin(skin("fill"), { values, width: 100 });
+    ok(same(widths(fill.tree), { bar: 21, cpu: 21, cores: 4, total: 16, disk: 21, clock: 21 }),
+      `fill: every child of the column takes its width; in the row the surplus goes to the children that can grow${show(widths(fill.tree), { bar: 21, cpu: 21, cores: 4, total: 16, disk: 21, clock: 21 })}`);
   }
 } finally {
   rmSync(SB, { recursive: true, force: true });

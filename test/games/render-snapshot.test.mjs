@@ -5,7 +5,8 @@
 // The skins come from the game registry (every bundled skin), plus a user skin fixture that mixes
 // two games' parts (test/fixtures/skins/mixed.toml). Each bundled skin is drawn at three terminal
 // widths while nothing happens, and every skin at the widest for each of four reactions: ouch, kill,
-// god, and dead (out of usage, with the 5h limit used up as the statusline would have it).
+// god, and dead (out of usage, with the 5h limit used up as the statusline would have it), and once
+// more calm with no subagents and no tasks, so the boxes of empty lists are pinned too.
 //
 // Each skin is drawn as the render daemon draws it: loaded, fitted down its smaller-skin chain, its
 // scripts run, drawn. renderSession itself is not called: it reads live CPU, RAM, git and the time,
@@ -57,12 +58,15 @@ const REACTION_WIDTH = 200;
 // The session at each moment drawn: its metric values and its reaction.
 const reactionTo = (o = {}, values = RAW_SAMPLE) => buildReaction({ st: {}, values, godUntil: 0, exhausted: false, now: NOW, ...o });
 const EXHAUSTED = Object.freeze({ ...RAW_SAMPLE, "ratelimit.5h": 100 });
+const NO_LISTS = Object.freeze({ ...RAW_SAMPLE, "act.subagents": [], "act.tasklist": [] });
 const MOMENTS = {
   calm: { values: RAW_SAMPLE, reaction: reactionTo() },
   ouch: { values: RAW_SAMPLE, reaction: reactionTo({ st: { expr: "ouch", ts: NOW - 0.5 } }) },
   kill: { values: RAW_SAMPLE, reaction: reactionTo({ st: { expr: "kill", ts: NOW - 0.5 } }) },
   god: { values: RAW_SAMPLE, reaction: reactionTo({ godUntil: NOW + 1 }) },
   dead: { values: EXHAUSTED, reaction: reactionTo({ exhausted: true }, EXHAUSTED) },
+  // No subagents running and no tasks: the boxes of those lists show only their titles.
+  "no-lists": { values: NO_LISTS, reaction: reactionTo({}, NO_LISTS) },
 };
 
 // Every skin drawn: the bundled ones in registry order, then the mixed user skin. `folder` is where

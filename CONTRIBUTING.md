@@ -76,7 +76,23 @@ in short:
   session does not report its metric), `children` (a container's) and `frame` (`{ kind = "box" |
   "grid", ... }` around a container);
 - the rest of the table is the kind's own parameters, described by its descriptor in
-  `src/kit/elements/` (name, meaning, type, default and allowed values of each).
+  `src/kit/elements/` (name, meaning, type, default and allowed values of each);
+- every container (`row`, `column`, framed or not) also has:
+  - `when_empty`, what it does when nothing under it has anything to show (every metric element
+    under it has an absent, null, empty-list or empty-string value; a `when_absent` stand-in counts
+    as nothing, an element bound to no metric always counts as something): `"keep"` (the default)
+    holds its fitted width, `"shrink"` draws it at its minimum without its children (a box shows
+    only its title) and as tall as before, `"hide"` leaves it out of the bar so its space goes to
+    the others;
+  - `grow`, what its children do with width it has to spare: `"none"` (the default) leaves the room
+    to `align`; `"fill"` gives each child of a column the column's whole width, and shares a row's
+    surplus evenly among the children that can grow. A visual that cannot grow (an equalizer with
+    `sizing = "values"`) keeps its width, and `align` places it.
+
+A box is never narrower than its title and padding. The equalizer's `sizing` says where its width
+comes from: `"stretch"` (the default) spreads the values over `columns`; `"values"` gives each value
+`column_width` columns (1 by default), at most `columns` in all, so 4 CPU cores take 4 columns. Use
+`"values"` for a list whose length holds while the bar runs; a series that grows would widen it.
 
 Kinds: the containers `row` and `column`, the frames `box` and `grid`, and the visuals `text`,
 `number`, `progress`, `sparkline`, `equalizer`, `icon`, `icon-row`, `scroll-list`, `chat`,

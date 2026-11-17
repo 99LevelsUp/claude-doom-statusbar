@@ -1,7 +1,9 @@
 // Containers and their frames.
 //
 // A container lays out its children side by side (row) or one under another (column), and decides
-// how its children shrink when the width runs short. It may wear a frame:
+// how its children shrink when the width runs short (`shrink`), what they do with width to spare
+// (`grow`), and what it does itself when nothing under it has anything to show (`when_empty`, which
+// the fit applies). It may wear a frame:
 //
 //   box   a titled box on a background, the children padded inside it
 //   grid  a cell per child with lines between and around the cells; one selected cell, chosen by a
@@ -20,6 +22,35 @@ import { block, blank, fitText } from "./paint.js";
 
 const sum = (xs) => xs.reduce((a, b) => a + b, 0);
 const childAlignParam = () => param("text", "start", "Where the children sit when the container is wider than they are", { allowed: ["start", "center", "end"] });
+// The fit reads these two (src/kit/skin/fit.js); emptiness is defined there, in isEmptyNode.
+const whenEmptyParam = () => param("text", "keep",
+  "What the container does when nothing under it has anything to show: keep its width, shrink to its minimum (a box to its title) without drawing its children, or hide from the bar so its space goes to the others",
+  { allowed: ["keep", "shrink", "hide"] });
+const growParam = (what) => param("text", "none", what, { allowed: ["none", "fill"] });
+
+// The most columns a child can use: its `max`, unbounded when it gives none.
+const maxOf = (k) => k.max ?? Infinity;
+
+// `ws` widened by `surplus` columns shared evenly among the children that can still grow, each up
+// to its most; an odd column goes to the earliest child that can take it.
+function spread(ws, kids, surplus) {
+  const out = [...ws];
+  let left = surplus;
+  for (;;) {
+    const open = out.map((w, i) => i).filter((i) => out[i] < maxOf(kids[i]));
+    if (left <= 0 || !open.length) return out;
+    const each = Math.floor(left / open.length);
+    if (each === 0) {
+      for (const i of open.slice(0, left)) out[i]++;
+      return out;
+    }
+    for (const i of open) {
+      const add = Math.min(each, maxOf(kids[i]) - out[i]);
+      out[i] += add;
+      left -= add;
+    }
+  }
+}
 
 function leftRoom(room, align) {
   if (align === "center") return Math.floor(room / 2);
@@ -66,12 +97,18 @@ export const row = define({
     separator_background: param("color", "term-bg", "Background of the separator", { keywords: ["term-bg"] }),
     align: childAlignParam(),
     shrink: param("text", "lockstep", "How children shrink when the width runs short: all together, from the start, or from the end", { allowed: ["lockstep", "start", "end"] }),
+    grow: growParam("What the row does with width it has to spare: none leaves it to `align`; fill shares it evenly among the children that can grow, each up to the most it can use"),
+    when_empty: whenEmptyParam(),
   },
   widths: (p, kids) => {
     const seps = vlen(p.separator) * Math.max(0, kids.length - 1);
     return { min: sum(kids.map((k) => k.min)) + seps, natural: sum(kids.map((k) => k.natural)) + seps };
   },
-  share: (p, width, kids) => shrink(kids, width - vlen(p.separator) * Math.max(0, kids.length - 1), p.shrink),
+  share: (p, width, kids) => {
+    const avail = width - vlen(p.separator) * Math.max(0, kids.length - 1);
+    const ws = shrink(kids, avail, p.shrink);
+    return p.grow === "fill" ? spread(ws, kids, avail - sum(ws)) : ws;
+  },
   rows: (p, kidRows) => Math.max(0, ...kidRows),
   draw({ params: p, width, height, children, surface = TERM_RGB }) {
     const sep = p.separator ? bgOf(p.separator_background) + fgOf(p.separator_color) + p.separator + bgsgrBox(surface) : "";
@@ -89,9 +126,11 @@ export const column = define({
   description: "Lays its children out one under another",
   params: {
     align: childAlignParam(),
+    grow: growParam("How wide each child is: none keeps its own width, placed by `align`; fill gives it the column's whole width, up to the most it can use (a visual that cannot grow keeps its width and `align` places it)"),
+    when_empty: whenEmptyParam(),
   },
   widths: (p, kids) => ({ min: Math.max(0, ...kids.map((k) => k.min)), natural: Math.max(0, ...kids.map((k) => k.natural)) }),
-  share: (p, width, kids) => kids.map((k) => Math.max(k.min, Math.min(width, k.natural))),
+  share: (p, width, kids) => kids.map((k) => Math.max(k.min, Math.min(width, p.grow === "fill" ? maxOf(k) : k.natural))),
   rows: (p, kidRows) => sum(kidRows),
   draw({ params: p, width, height, children }) {
     const lines = children.flatMap((c) => {
@@ -119,6 +158,8 @@ export const box = define({
     padding: param("integer", 1, "Columns of background on each side of the children", { min: 0 }),
   },
   extra: (p) => ({ columns: 2 * p.padding, rows: p.header ? 1 : 0 }),
+  // A box is never narrower than its title row, so its title is never clipped.
+  minWidth: (p) => (p.header ? vlen(p.title) + 2 * p.padding : 0),
   surface: (p) => surfaceOf(p.background),
   draw({ params: p, width, height, content }) {
     const bg = bgsgrBox(surfaceOf(p.background));
@@ -152,6 +193,7 @@ export const grid = define({
     background: param("color", "#262626", "Background of the cells", { keywords: ["term-bg"] }),
   },
   extra: (p, count) => ({ columns: count + 1, rows: 2 }),
+  minWidth: () => 0,
   surface: (p) => surfaceOf(p.background),
   // `selected` is the index of the selected cell; any other value selects none.
   draw({ params: p, width, height, children, selected: chosen = -1 }) {

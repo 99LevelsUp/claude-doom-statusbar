@@ -202,6 +202,26 @@ try {
       "a container's when_absent is unknown, a value other than hide, empty or full is invalid");
     ok((warnings.find((w) => w.element === "odd") || {}).message?.includes('"hide", "empty" or "full"'), "the warning names the values it allows");
   }
+
+  console.log("when_empty and grow: container parameters");
+  {
+    const { skin, warnings } = buildSkin({ version: 1, root: "bar", element: {
+      bar: { kind: "row", children: ["box", "col", "odd", "name"], when_empty: "hide", grow: "fill" },
+      box: { kind: "row", frame: { kind: "box", title: "AGENTS" }, when_empty: "shrink", children: [] },
+      col: { kind: "column", grow: "fill", children: [] },
+      odd: { kind: "column", when_empty: "collapse", grow: "always", children: [] },
+      name: { kind: "text", metric: "model.name", when_empty: "hide", grow: "fill" },
+    } }, "empty.toml");
+    const at = (id) => find(skin.root, id);
+    ok(skin.root.params.when_empty === "hide" && at("box").params.when_empty === "shrink" && at("col").params.when_empty === "keep",
+      "a container keeps the when_empty it gives; keep without one");
+    ok(skin.root.params.grow === "fill" && at("col").params.grow === "fill" && at("box").params.grow === "none", "and the grow it gives; none without one");
+    ok(at("odd").params.when_empty === "keep" && at("odd").params.grow === "none", "a value they do not allow keeps the default");
+    sameWarnings(warnings, ["invalid-param odd when_empty", "invalid-param odd grow", "unknown-param name when_empty", "unknown-param name grow"],
+      "it is invalid on a container, unknown on a metric element");
+    const eq = buildSkin({ version: 1, root: "cores", element: { cores: { kind: "equalizer", metric: "sys.cores", sizing: "per-core", column_width: 0 } } }, "eq.toml");
+    sameWarnings(eq.warnings, ["invalid-param cores sizing", "invalid-param cores column_width"], "an equalizer's sizing is stretch or values, its column_width at least 1");
+  }
 } finally {
   rmSync(SB, { recursive: true, force: true });
 }

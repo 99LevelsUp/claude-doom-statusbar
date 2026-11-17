@@ -52,19 +52,19 @@ const smaller = (name) => {
 };
 
 // A skin file fitted to `width`, its scripts run (unless `scripts` is false), and drawn.
-function draw(file, { width = 200, reaction = CALM, now = NOW, step = "octant", scripts = true, frames = null } = {}) {
+function draw(file, { width = 200, reaction = CALM, now = NOW, step = "octant", scripts = true, frames = null, values = RAW_SAMPLE } = {}) {
   const loaded = loadSkin(file);
-  const fit = fitSkin(loaded.skin, { values: RAW_SAMPLE, width, loadSmaller: smaller });
+  const fit = fitSkin(loaded.skin, { values, width, loadSmaller: smaller });
   const ctx = { tick: 0, step, resolveAsset: assets.resolve, reaction, now };
   let drawn = fit, outputs = frames ?? {};
   if (scripts && !frames) {
     // A pass no loaded machine uses up: these checks need the mugshot script to run, not to be timed.
     const pass = createScriptPass({ budgetMs: 60000, callBudgetMs: 10000 });
-    const run = runScripts(fit, { host, pass, values: RAW_SAMPLE, reaction, now, tick: 0, folderOf: () => doom.dir, resolveAsset: assets.resolve });
+    const run = runScripts(fit, { host, pass, values, reaction, now, tick: 0, folderOf: () => doom.dir, resolveAsset: assets.resolve });
     drawn = run.fit;
     outputs = run.scripts;
   }
-  return { loaded, fit, scripts: outputs, lines: drawFit(drawn, { values: RAW_SAMPLE, width, ctx, scripts: outputs }) };
+  return { loaded, fit, scripts: outputs, lines: drawFit(drawn, { values, width, ctx, scripts: outputs }) };
 }
 
 const skinFile = (name) => findSkin(name).file;
@@ -152,6 +152,25 @@ try {
     ok(draw(skinFile("doom-standard"), { width: 200 }).fit.skin.name === "doom-standard"
       && same(titles(draw(skinFile("doom-standard"), { width: 200 }).lines), ["MODEL", "USAGE", "PROJECT", "ACTIVITY", "AGENTS", "TASKS"]),
       "doom-standard at 200 columns is full without SAVE and SYSTEM");
+  }
+
+  console.log("empty lists, the cores and the rows of a box:");
+  {
+    const node = (t, id) => (t.id === id ? t : t.children.map((k) => node(k, id)).find(Boolean) || null);
+    for (const name of ["doom-full", "doom-standard"]) {
+      const empty = draw(skinFile(name), { values: { ...RAW_SAMPLE, "act.subagents": [], "act.tasklist": [] } });
+      const agents = node(empty.fit.tree, "agents"), tasks = node(empty.fit.tree, "tasks");
+      ok(agents.width === "AGENTS".length + 2 && tasks.width === "TASKS".length + 2 && !agents.children.length && !tasks.children.length,
+        `${name}: empty AGENTS and TASKS boxes shrink to their titles (${agents.width}, ${tasks.width})`);
+      ok(same(titles(empty.lines), titles(draw(skinFile(name)).lines)), `${name}: and keep their titles`);
+    }
+    const sys = (cores) => node(draw(skinFile("doom-full"), { values: { ...RAW_SAMPLE, "sys.cores": cores } }).fit.tree, "system");
+    ok(node(sys([0.1, 0.5, 0.9, 1]), "cores").width === 3 + 4 && node(sys(RAW_SAMPLE["sys.cores"]), "cores").width === 3 + 8,
+      "the CPU equalizer has a column per core: 4 cores, 4 columns");
+    const s = sys([0.1, 0.5, 0.9, 1]);
+    const inner = s.width - 2;
+    ok(s.children.every((k) => k.width === inner), `every row of the SYSTEM box is as wide as the box (${s.children.map((k) => `${k.id} ${k.width}`).join(", ")} of ${inner})`);
+    ok(node(s, "cpu-total").width > 4, "the CPU total takes what the equalizer leaves, so it ends at the box's edge");
   }
 
   console.log("without scripts (the one-shot status line):");

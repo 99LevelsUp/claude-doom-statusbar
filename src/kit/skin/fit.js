@@ -5,11 +5,38 @@
 // lowest first; of equal priorities the one later in the skin's tree (depth first) drops first. An
 // element marked "keep", or given no priority at all, is never dropped on its own account, only
 // with its container; the root is never dropped.
+//
+// Widths come from the elements' parameters, and from the values in two ways only: whether a
+// container has anything to show (its `when_empty`, see isEmptyNode), and a visual's own `widths`,
+// which gets its value (the equalizer's sizing = "values" counts the values). The length of a text or
+// of a list never moves the layout.
+//
+// A container's `grow` gives its children width it has to spare (src/kit/elements/containers.js);
+// a frame is never narrower than its own minimum (a box's title).
 
 import path from "node:path";
 import { makeWarning } from "./warnings.js";
+import { metricValue } from "./draw.js";
 
 const NONE = Object.freeze({ columns: 0, rows: 0 });
+
+// Whether a metric value is nothing to show: absent (undefined), null, an empty list or an empty
+// string. Anything else is something, 0 and false included; so is a link ({ text, url }) whatever its
+// text.
+export const isEmptyValue = (v) => v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
+
+// Whether nothing under `node` has anything to show, from the session's `values`:
+//   - a metric element bound to no metric draws something of its own (a label, the mugshot): never
+//     empty;
+//   - a metric element is empty when its metric's value is (isEmptyValue); a metric the session does
+//     not report is empty even while `when_absent` keeps the element with a stand-in;
+//   - a container is empty when every child is, so a container whose children are all containers
+//     hidden for being empty is empty too (and one without children is empty).
+export function isEmptyNode(node, values) {
+  if (node.container) return node.children.every((c) => isEmptyNode(c, values));
+  if (node.metric === null || node.metric === undefined) return false;
+  return !Object.hasOwn(values, node.metric) || isEmptyValue(values[node.metric]);
+}
 
 // A visual that shows only lists keeps its place when the list is absent.
 const keepsPlaceEmpty = (desc) => Array.isArray(desc.accepts) && desc.accepts.length === 1 && desc.accepts[0] === "list";
@@ -17,6 +44,7 @@ const keepsPlaceEmpty = (desc) => Array.isArray(desc.accepts) && desc.accepts.le
 const keptAbsent = (node) => node.whenAbsent === "empty" || node.whenAbsent === "full";
 
 const extraOf = (node, count) => (node.frame ? node.frame.descriptor.extra(node.frame.params, count) : NONE);
+const frameMin = (node) => (node.frame ? node.frame.descriptor.minWidth(node.frame.params) : 0);
 
 // The parameters a container lays its children out with. A frame that arranges the children itself
 // (a grid) draws its own lines between them, in place of the container's separator.
@@ -24,20 +52,35 @@ export function layoutParams(node) {
   return node.frame && node.frame.descriptor.arranges ? { ...node.params, separator: "" } : node.params;
 }
 
-// A working copy of the tree that drops can change: { node, parent, order, kids, m }.
+// A working copy of the tree that drops can change: { node, parent, order, kids, shrunk, m }.
+// `shrunk` holds the children of a container shrunk for being empty: they are not drawn, and only
+// their rows are measured, so the bar keeps its height.
 function grow(node, parent, counter) {
-  const t = { node, parent, order: counter.n++, kids: [], m: null };
+  const t = { node, parent, order: counter.n++, kids: [], shrunk: null, m: null };
   t.kids = node.children.map((c) => grow(c, t, counter));
   return t;
 }
 
-// `t` without the elements whose metric is absent, or null when nothing of it is left.
+// `t` without the elements whose metric is absent and the empty containers that hide, or null when
+// nothing of it is left. An empty container that shrinks keeps its children aside in `shrunk`.
 function prune(t, values, absent) {
   const { node } = t;
   if (!node.container) {
     if (node.metric === null || Object.hasOwn(values, node.metric) || keepsPlaceEmpty(node.descriptor) || keptAbsent(node)) return t;
     absent.push(node.id);
     return null;
+  }
+  const mode = node.params.when_empty;
+  if (mode !== "keep" && isEmptyNode(node, values)) {
+    if (mode === "hide") {
+      absent.push(node.id);
+      return null;
+    }
+    // Shrunk before its children are pruned: children whose metrics are absent still count for
+    // its rows, and it stays in the bar even when none of them would.
+    t.shrunk = t.kids;
+    t.kids = [];
+    return t;
   }
   const had = t.kids.length;
   t.kids = t.kids.map((k) => prune(k, values, absent)).filter(Boolean);
@@ -48,22 +91,26 @@ function prune(t, values, absent) {
   return t;
 }
 
-// Minimum and natural width and rows of `t` and everything under it, kept on each node as `m`.
-function measure(t) {
+// Minimum, natural and most width, and rows, of `t` and everything under it, kept on each node as
+// `m`. A container can always use more width (it aligns or grows its children into it).
+function measure(t, values) {
   const { node } = t;
   if (!node.container) {
-    const w = node.descriptor.widths(node.params);
-    t.m = { min: w.min, natural: w.natural, rows: node.descriptor.rows(node.params) };
+    const w = node.descriptor.widths(node.params, metricValue(node, values).value);
+    t.m = { min: w.min, natural: w.natural, max: w.max ?? Infinity, rows: node.descriptor.rows(node.params) };
     return t.m;
   }
-  const kids = t.kids.map(measure);
+  const kids = t.kids.map((k) => measure(k, values));
   const p = layoutParams(node);
   const w = node.descriptor.widths(p, kids);
   const extra = extraOf(node, t.kids.length);
+  const least = frameMin(node);
+  const rowsOf = t.shrunk ? t.shrunk.map((k) => measure(k, values).rows) : kids.map((k) => k.rows);
   t.m = {
-    min: w.min + extra.columns,
-    natural: w.natural + extra.columns,
-    rows: node.descriptor.rows(p, kids.map((k) => k.rows)) + extra.rows,
+    min: Math.max(least, w.min + extra.columns),
+    natural: Math.max(least, w.natural + extra.columns),
+    max: Infinity,
+    rows: node.descriptor.rows(p, rowsOf) + extra.rows,
   };
   return t.m;
 }
@@ -99,9 +146,9 @@ function fitOne(skin, values, width) {
   const tree = prune(grow(skin.root, null, { n: 0 }), values, absent);
   if (!tree) return { tree: null, fits: true, dropped, absent };
   // A root whose children have all dropped has nothing left to show: it does not fit.
-  const emptied = () => tree.node.container && tree.node.children.length > 0 && tree.kids.length === 0;
+  const emptied = () => tree.node.container && tree.node.children.length > 0 && tree.kids.length === 0 && !tree.shrunk;
   for (;;) {
-    measure(tree);
+    measure(tree, values);
     if (tree.m.min <= width && !emptied()) return { tree, fits: true, dropped, absent };
     const next = nextDrop(tree);
     if (!next) return { tree, fits: false, dropped, absent };

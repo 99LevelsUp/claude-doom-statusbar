@@ -9,7 +9,11 @@
 //   accepts      the value types it can show (src/metrics/catalogue.js)
 //   params       its parameter schema
 //   validate(given) -> { params, problems }   the parameters to draw with, and what was skipped
-//   widths(params) -> { min, natural }         columns, from its parameters only, never its value
+//   widths(params, value) -> { min, natural, max? }   columns, from its parameters. `value` is
+//                 what the draw gets (src/kit/skin/draw.js metricValue); a visual may size by it
+//                 only where it holds while the bar runs (the equalizer's count of CPU cores), never
+//                 by the length of a text or a list. `max` is the most columns it can use (none:
+//                 any width; it pads); a container's `grow` gives it no more.
 //   rows(params)   -> the rows it asks for
 //   draw({ value, params, width, height, surface, ctx, script, values }) -> `height` lines, each
 //                 exactly `width` columns. `surface` is the background it is drawn on ([r, g, b];
@@ -27,9 +31,18 @@
 //                 `script.conversations`
 //
 // A container (row, column):
-//   params, validate, as above
+//   params, validate, as above; every container has `when_empty` and `grow`:
+//     when_empty  what it does when nothing under it has anything to show (src/kit/skin/fit.js
+//                 isEmptyNode: every metric element under it has an absent, null, empty-list or
+//                 empty-string value, a when_absent stand-in counting as nothing; an element bound
+//                 to no metric always has something): "keep" (the default) its fitted width,
+//                 "shrink" to its minimum without its children (a box to its title), as tall as
+//                 before, or "hide" from the bar like an absent element
+//     grow        what its children do with width it has to spare: "none" (the default) leaves it
+//                 to `align`; "fill" gives a column's children its whole width, and shares a row's
+//                 surplus evenly among the children that can grow; neither past a child's `max`
 //   widths(params, children widths) -> { min, natural }
-//   share(params, width, children widths) -> each child's width
+//   share(params, width, children widths { min, natural, max }) -> each child's width
 //   rows(params, children rows) -> rows
 //   draw({ params, width, height, children: [{ lines, width }], surface }) -> lines
 //
@@ -38,6 +51,8 @@
 //   layouts      the containers it can frame
 //   arranges     true when it draws the children itself instead of the container
 //   extra(params, children count) -> { columns, rows } it adds around the children
+//   minWidth(params) -> the fewest columns the framed container takes, whatever its children (a
+//                 box: its title and padding, so the title is never clipped)
 //   surface(params) -> the background its children are drawn on
 //   draw({ params, width, height, content | children, selected }) -> lines
 

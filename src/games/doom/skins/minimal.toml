@@ -13,11 +13,13 @@ children = ["model", "usage", "mugshot", "project", "activity"]
 # --- MODEL --------------------------------------------------------------------------------------
 [element.model]
 kind = "column"
+grow = "fill"
 frame = { kind = "box", title = "MODEL", background = "#1c2036" }
 children = ["model-line", "model-mode", "model-permission", "model-style", "advisor"]
 
 [element.model-line]
 kind = "row"
+grow = "fill"
 separator = " "
 separator_background = "#1c2036"
 children = ["model-name", "model-effort"]
@@ -61,6 +63,7 @@ min_width = 6
 # --- USAGE --------------------------------------------------------------------------------------
 [element.usage]
 kind = "column"
+grow = "fill"
 frame = { kind = "box", title = "USAGE", background = "#1c2036" }
 children = ["context", "limit-5h", "limit-7d", "ram", "cost"]
 
@@ -71,6 +74,7 @@ icon = "🧠"
 
 [element.limit-5h]
 kind = "row"
+grow = "fill"
 separator = " "
 separator_background = "#1c2036"
 children = ["limit-5h-bar", "limit-5h-reset"]
@@ -89,6 +93,7 @@ min_width = 5
 
 [element.limit-7d]
 kind = "row"
+grow = "fill"
 separator = " "
 separator_background = "#1c2036"
 children = ["limit-7d-bar", "limit-7d-reset"]
@@ -120,6 +125,7 @@ min_width = 5
 # --- PROJECT ------------------------------------------------------------------------------------
 [element.project]
 kind = "column"
+grow = "fill"
 frame = { kind = "box", title = "PROJECT", background = "#1c2036" }
 children = ["session", "cwd", "branch", "work", "churn", "pr"]
 
@@ -177,9 +183,9 @@ glyphs = "octant"
 background = "#000000"
 
 # --- ACTIVITY -----------------------------------------------------------------------------------
-# Every row of a box is at least as wide as its title, so a box left with one row keeps its title whole.
 [element.activity]
 kind = "column"
+grow = "fill"
 frame = { kind = "box", title = "ACTIVITY", background = "#1c2036" }
 children = ["geiger", "agent-count", "task-count", "errors"]
 
@@ -190,7 +196,6 @@ icon = "📟"
 style = "octant"
 max = 1
 width = 15
-min_width = 5
 
 [element.agent-count]
 kind = "number"

@@ -20,6 +20,11 @@
 //             widths and draw it with a stand-in value (src/kit/skin/draw.js). Containers have none.
 //   children  a container's child ids, in the order they are drawn
 //   frame     the frame a container wears: { kind = "box" | "grid", ...its parameters }
+// Every container also has the parameters `when_empty` ("keep", "shrink" or "hide": what it does
+// when nothing under it has anything to show) and `grow` ("none" or "fill": what its children do
+// with width it has to spare); their meaning is in src/kit/elements/index.js, and the fit applies
+// them (src/kit/skin/fit.js). Like any parameter, a value they do not allow is an invalid-param
+// warning, and either given to a metric element is an unknown-param warning.
 // A shared setting a descriptor declares as its own parameter (an animation's `script`) also reaches
 // that descriptor. Asset references stay the strings the skin wrote; resolving them is not the
 // loader's work.
@@ -45,7 +50,8 @@
 // A loaded skin: { file, name, version, games, smaller, root }, root an element node:
 //   { id, kind, container, descriptor, params, metric, priority, script, whenAbsent, frame, children }
 //   container   true for a row or column, false for a metric element
-//   params      the descriptor's validated parameters, defaults filled in
+//   params      the descriptor's validated parameters, defaults filled in (a container's
+//               `when_empty` and `grow` among them)
 //   metric      the bound catalogue id, or null (a metric element may bind none)
 //   priority    a whole number, "keep", or null when the skin gives none
 //   script      the script reference as written, or null
