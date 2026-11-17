@@ -171,6 +171,13 @@ try {
       `a 56x5 panel draws doom-compact whole (${panel.fit.skin.name}: ${ids(panel).join(" ")})`);
     ok(panel.lines.length === 3 && panel.lines.every((l) => vlen(l) <= 56), "doom-compact is 3 rows within the width");
     ok(!/[A-Z]{4,}/.test(strip(panel.lines.join("\n")).replace(/Opus/g, "")), "doom-compact's boxes have no title rows");
+    const byId = (t, id) => (t.id === id ? t : t.children.map((k) => byId(k, id)).find(Boolean) || null);
+    for (const width of [44, 56, 70, 90]) {
+      const fitted = draw(skinFile("doom-compact"), { width }).fit.tree;
+      const w = ["context-bar", "limit-5h-bar", "limit-7d-bar"].map((id) => byId(fitted, id)?.width);
+      ok(w[0] > 0 && w.every((x) => x === w[0]), `at ${width} columns doom-compact's three USAGE bars are as long (${w.join(", ")})`);
+    }
+    ok(strip(panel.lines[0]).includes("Opus") && !strip(panel.lines[0]).includes("4.8"), "doom-compact names the model without its version");
     const narrow = draw(full, { width: 44, rows: 5 });
     ok(narrow.fit.skin.name === "doom-compact" && same(ids(narrow), ["model", "usage", "mugshot"]),
       `at 44 columns doom-compact has dropped PROJECT (${ids(narrow).join(" ")})`);

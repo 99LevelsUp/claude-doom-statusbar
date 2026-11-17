@@ -76,12 +76,29 @@ grow = "fill"
 frame = { kind = "box", header = false, background = "#1c2036" }
 children = ["context", "limit-5h", "limit-7d"]
 
+# Built like the two limits below, a bar and its value beside it, so all three bars are as long.
 [element.context]
+kind = "row"
+grow = "fill"
+separator = " "
+separator_background = "#1c2036"
+children = ["context-bar", "context-pct"]
+
+[element.context-bar]
 kind = "progress"
 metric = "context.hp"
 icon = "🧠"
-cells = 6
-min_cells = 3
+percent = "none"
+cells = 4
+min_cells = 2
+
+[element.context-pct]
+kind = "number"
+metric = "context.hp"
+suffix = "%"
+color = "threshold"
+align = "right"
+width = 5
 
 [element.limit-5h]
 kind = "row"
@@ -101,7 +118,7 @@ min_cells = 2
 [element.limit-5h-reset]
 kind = "text"
 metric = "usage.reset5h"
-width = 6
+width = 5
 min_width = 5
 
 [element.limit-7d]
@@ -122,7 +139,7 @@ min_cells = 2
 [element.limit-7d-reset]
 kind = "text"
 metric = "usage.reset7d"
-width = 6
+width = 5
 min_width = 5
 
 # --- the mugshot --------------------------------------------------------------------------------
