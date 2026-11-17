@@ -124,6 +124,7 @@ min_cells = 2
 [element.limit-5h-reset]
 kind = "text"
 metric = "usage.reset5h"
+align = "right"
 width = 5
 min_width = 5
 
@@ -145,6 +146,7 @@ min_cells = 2
 [element.limit-7d-reset]
 kind = "text"
 metric = "usage.reset7d"
+align = "right"
 width = 5
 min_width = 5
 

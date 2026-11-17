@@ -178,6 +178,14 @@ try {
       const w = ["context-bar", "limit-5h-bar", "limit-7d-bar"].map((id) => byId(fitted, id)?.width);
       ok(w[0] > 0 && w.every((x) => x === w[0]), `at ${width} columns doom-compact's three USAGE bars are as long (${w.join(", ")})`);
     }
+    for (const skin of ["doom-full", "doom-standard", "doom-minimal"]) {
+      for (const width of [100, 140, 200]) {
+        const fitted = draw(skinFile(skin), { width }).fit.tree;
+        if (!byId(fitted, "usage")) continue;
+        const w = ["context-bar", "limit-5h-bar", "limit-7d-bar", "ram-bar"].map((id) => byId(fitted, id)?.width);
+        ok(w[0] > 0 && w.every((x) => x === w[0]), `at ${width} columns ${skin}'s four USAGE bars are as long (${w.join(", ")})`);
+      }
+    }
     ok(strip(panel.lines[0]).includes("Opus") && !strip(panel.lines[0]).includes("4.8"), "doom-compact names the model without its version");
     // The face is 5 or 6 columns in every frame; in 7 columns with no separator beside it, its own
     // black margin of one column is the only gap to USAGE and PROJECT.
