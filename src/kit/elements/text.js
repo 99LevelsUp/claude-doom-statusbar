@@ -29,6 +29,7 @@ export const text = define({
     align: alignParam(),
     overflow: param("text", "scroll", "How a value longer than its columns fits: scroll back and forth, or clip it with an ellipsis", { allowed: ["scroll", "clip"] }),
     link: param("boolean", true, "Draw a value that links somewhere as a terminal hyperlink"),
+    words: param("integer", 0, "Draw only the value's first this many words (a model's name without its version); 0 draws it all", { min: 0 }),
   },
   widths: (p) => ({ min: labelWidth(p) + Math.min(p.min_width, p.width), natural: labelWidth(p) + p.width }),
   rows: () => 1,
@@ -36,7 +37,8 @@ export const text = define({
     const lbl = labelOf(p);
     const room = width - vlen(lbl);
     if (room < 0) return block([marquee(lbl, width, 0, "clip")], width, height);
-    const { text: t, url } = textOf(value);
+    const { text: all, url } = textOf(value);
+    const t = p.words > 0 ? all.trim().split(/\s+/).slice(0, p.words).join(" ") : all;
     const shown = url && p.link ? wrapLink(t, url) : t;
     const body = vlen(t) <= room ? pad(shown, room, p.align) : marquee(shown, room, ctx.tick ?? 0, p.overflow);
     return block([lbl + sgrFg(rgbOf(p.color)) + body], width, height);

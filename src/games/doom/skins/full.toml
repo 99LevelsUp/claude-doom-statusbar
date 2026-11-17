@@ -19,7 +19,7 @@ children = ["model", "usage", "save", "project", "mugshot", "activity", "agents"
 kind = "column"
 grow = "fill"
 frame = { kind = "box", title = "MODEL", background = "#1c2036" }
-children = ["model-line", "model-mode", "model-permission", "model-style", "advisor"]
+children = ["model-line", "model-flags", "model-permission", "advisor"]
 
 [element.model-line]
 kind = "row"
@@ -39,23 +39,31 @@ min_width = 10
 kind = "icon"
 metric = "model.effort"
 
+[element.model-flags]
+kind = "row"
+separator = " "
+separator_background = "#1c2036"
+children = ["model-mode", "model-style"]
+
+# Thinking (💡 on, 👄 off) and fast mode (🏃 on, 🚶 off), as icons only.
 [element.model-mode]
 kind = "icon"
 metric = "model.mode"
-width = 13
+sep = " "
+width = 5
+
+# The output style: 👷 default, 💁 explanatory, 🙋 learning, 🎨 a style of the user's own.
+[element.model-style]
+kind = "icon"
+metric = "model.style"
+other = "🎨"
+width = 2
 
 [element.model-permission]
 kind = "icon"
 metric = "model.permission"
 show_text = true
 width = 10
-
-[element.model-style]
-kind = "text"
-metric = "model.style"
-icon = "🎨"
-width = 10
-min_width = 6
 
 [element.advisor]
 kind = "text"

@@ -2,7 +2,8 @@
 //
 //   icon-row  a row of glyphs filled by a percentage: hearts, food, a power gauge
 //   icon      a value drawn as the icon its map gives it (an effort level as a moon, a permission
-//             mode as its sign), and a list of [name, value] pairs as each name's icon and value
+//             mode as its sign, an output style as its figure), and a list of [name, value] pairs
+//             as each pair's own icon (thinking on as a light bulb) or the name's icon and the value
 
 import { TEXT, sgrFg, pyround } from "../ansi.js";
 import { vlen } from "../text.js";
@@ -58,17 +59,26 @@ export const PLATFORM_ICONS = Object.freeze({
   low: "🌒", medium: "🌓", high: "🌔", xhigh: "🌕", max: "🌞",
   plan: "📋", auto: "⏩", acceptEdits: "⏩", bypassPermissions: "⏩",
   thinking: "💭", fast: "🚀",
+  // A list item [name, state] with an icon of its own for that state is drawn as that icon alone:
+  // thinking on is a light bulb, off a talking mouth; fast mode on is a runner, off a walker.
+  "thinking.on": "💡", "thinking.off": "👄", "fast.on": "🏃", "fast.off": "🚶",
+  // Output styles, Claude Code's own three as people: a worker, one who explains (the information
+  // desk person) and a student raising a hand. A style of the user's own has no icon here; a skin
+  // gives it one with `other`. Every icon is a single code point: a joined emoji (👨‍🔧) is drawn
+  // as two pictures by terminals that do not join it, VTE among them.
+  default: "👷", explanatory: "💁", learning: "🙋",
   changed: "✎", behind: "↓", ahead: "↑",
 });
 
 export const icon = define({
   name: "icon",
   title: "Icon",
-  description: "The value as the icon its map gives it; a list of [name, value] pairs as each name's icon and value",
+  description: "The value as the icon its map gives it; a list of [name, value] pairs as each name's icon and value, or as the icon of `name.value` alone when the map has one",
   accepts: ["text", "list"],
   params: {
     icon: iconParam(),
-    icons: param("map", PLATFORM_ICONS, "The icon for each value or name; a value without one is drawn as it is"),
+    icons: param("map", PLATFORM_ICONS, "The icon for each value or name, and for a list item's `name.value`; a value without one is drawn as it is"),
+    other: param("text", "", "The icon for a single value the map has none for; empty draws the value as it is"),
     show_text: param("boolean", false, "Draw a single value's text after its icon"),
     sep: param("text", "  ", "What separates the items of a list"),
     color: param("color", TEXT_HEX, "Colour of the text beside the icons"),
@@ -82,12 +92,12 @@ export const icon = define({
     let s;
     if (Array.isArray(value)) {
       s = value.map((item) => {
-        if (Array.isArray(item)) return `${iconOf(String(item[0])) ?? item[0]} ${item[1]}`;
+        if (Array.isArray(item)) return iconOf(`${item[0]}.${item[1]}`) ?? `${iconOf(String(item[0])) ?? item[0]} ${item[1]}`;
         return iconOf(String(item)) ?? String(item);
       }).join(p.sep);
     } else {
       const t = textOf(value).text;
-      const ic = iconOf(t);
+      const ic = iconOf(t) ?? (p.other || null);
       s = ic === null ? t : p.show_text ? `${ic} ${t}` : ic;
     }
     const lbl = labelOf(p);

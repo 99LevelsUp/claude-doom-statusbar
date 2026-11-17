@@ -160,7 +160,25 @@ try {
   {
     const p = VISUALS.icon.validate({ width: 13 }).params;
     ok(plain(VISUALS.icon.draw({ value: "high", params: p, width: 13 })[0]).trim() === "🌔", "an effort level is drawn as its moon by default");
-    ok(plain(VISUALS.icon.draw({ value: [["thinking", "on"], ["fast", "off"]], params: p, width: 13 })[0]) === "💭 on  🚀 off", "mode flags are drawn as their icons and states");
+    ok(plain(VISUALS.icon.draw({ value: [["thinking", "on"], ["fast", "off"]], params: p, width: 13 })[0]).trim() === "💡  🚶",
+      "mode flags with an icon for their state are drawn as that icon alone (thinking on 💡, fast off 🚶)");
+    ok(plain(VISUALS.icon.draw({ value: [["thinking", "off"], ["fast", "on"]], params: p, width: 13 })[0]).trim() === "👄  🏃",
+      "and the other states as theirs (thinking off 👄, fast on 🏃)");
+    ok(plain(VISUALS.icon.draw({ value: [["thinking", "maybe"]], params: p, width: 13 })[0]).trim() === "💭 maybe",
+      "a state without an icon of its own keeps the name's icon and the state's text");
+    ok(["default", "explanatory", "learning"].map((v) => plain(VISUALS.icon.draw({ value: v, params: p, width: 2 })[0])).join(" ") === "👷 💁 🙋",
+      "Claude Code's output styles have their figures");
+    const other = VISUALS.icon.validate({ width: 2, other: "🎨" }).params;
+    ok(plain(VISUALS.icon.draw({ value: "my-style", params: other, width: 2 })[0]) === "🎨" && plain(VISUALS.icon.draw({ value: "my-style", params: p, width: 8 })[0]).trim() === "my-style",
+      "`other` gives a value the map has no icon for its icon; without it the value is drawn as it is");
+  }
+
+  console.log("text, first words:");
+  {
+    const p = VISUALS.text.validate({ width: 8, min_width: 4, words: 1 }).params;
+    ok(plain(VISUALS.text.draw({ value: "Opus 5.5", params: p, width: 8 })[0]).trim() === "Opus", "words = 1 draws a model's name without its version");
+    const all = VISUALS.text.validate({ width: 8, min_width: 4 }).params;
+    ok(plain(VISUALS.text.draw({ value: "Opus 5.5", params: all, width: 8 })[0]).trim() === "Opus 5.5", "by default the whole value is drawn");
   }
 
   console.log("grid frame:");
