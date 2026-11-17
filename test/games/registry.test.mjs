@@ -34,7 +34,7 @@ const USER_DIR = path.join(SB, "user");
 Object.assign(process.env, { ...sandboxEnv(TMPDIR), PATH: "", GAMEBAR_MSYS_REAP: "0", GAMEBAR_RATELIMITS_SHARE: "0", GAMEBAR_USER_DIR: USER_DIR });
 for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "GAMEBAR_GLYPHS", "GAMEBAR_THEME", "GAMEBAR_PRESET", "GAMEBAR_SKIN"]) delete process.env[k];
 
-const { GAMES, readGame, defaultGame, gameNames } = await import("../../src/games/index.js");
+const { GAMES, readGame, defaultGame, gameNames, skinName } = await import("../../src/games/index.js");
 const { THEME_NAMES, nextTheme, resolveTheme, currentTheme } = await import("../../src/theme.js");
 const { renderSession } = await import("../../src/render.js");
 const { selectSkin } = await import("../../src/skin-select.js");
@@ -147,6 +147,52 @@ try {
       ok(lines[0].includes("MODEL") && lines.at(-1).trim().startsWith("gamebar:") && lines.at(-1).includes("ghost"),
         `GAMEBAR_SKIN=ghost, a skin without a file, draws doom-full with a line naming ghost (${lines.at(-1).trim()})`);
     });
+  }
+
+  // A bundled skin's name is read without parsing the whole file: the same name a full parse gives
+  // (its `name` when that is a non-empty string, else the file name), for every skin file the
+  // repository has and for the ways a name can be written.
+  {
+    const nameByParse = (file) => {
+      let name = null;
+      try { name = parseToml(readFileSync(file, "utf8")).name; } catch { /* the file name */ }
+      return typeof name === "string" && name ? name : path.basename(file, ".toml");
+    };
+    const tomls = (dir) => readdirSync(dir, { recursive: true }).map((f) => path.join(dir, f))
+      .filter((f) => f.endsWith(".toml") && path.basename(path.dirname(f)) === "skins");
+    const odd = path.join(SB, "odd-skins", "skins");
+    mkdirSync(odd, { recursive: true });
+    const written = {
+      "escaped.toml": 'version = 1\nname = "a \\"quoted\\" name"\n[element.bar]\nkind = "row"\n',
+      "literal.toml": "version = 1\nname = 'literal-name' # a comment\n",
+      "quoted-key.toml": '"name" = "quoted-key"\n',
+      "crlf.toml": '# a comment\r\nname = "crlf-name"\r\n[element.bar]\r\nkind = "row"\r\n',
+      "in-table.toml": 'version = 1\n[element.bar]\nname = "not-the-skin"\n',
+      "empty.toml": 'name = ""\n',
+      "number.toml": "name = 3\n",
+      "multiline.toml": 'description = """\n[not a table]\nname = "inside"\n"""\nname = "after-multiline"\n',
+    };
+    for (const [f, text] of Object.entries(written)) writeFileSync(path.join(odd, f), text);
+    const files = [...tomls(path.join(ROOT, "src", "games")), ...tomls(path.join(ROOT, "test")), ...tomls(odd)];
+    const differ = files.filter((f) => skinName(f) !== nameByParse(f)).map((f) => `${path.relative(ROOT, f)}: ${skinName(f)} != ${nameByParse(f)}`);
+    ok(files.length >= 20 && differ.length === 0, `every skin's name is the one a full parse gives (${files.length} files${differ.length ? `; ${differ.join("; ")}` : ""})`);
+  }
+
+  // A game whose manifest has no [legacy] table (no presets at all) is all a new game needs: the
+  // theme module, loaded while that game is registered, lists it and does not throw.
+  {
+    const dir = path.join(SB, "skin-era-game");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, "game.toml"), 'name = "skinera"\ndescription = "a game with skins and no presets"\ndefault_skin = "skinera"\n');
+    const entry = readGame(dir);
+    GAMES.push(entry);
+    let theme = null, threw = null;
+    try {
+      // A fresh copy of the theme module, evaluated while the game is in the shared registry.
+      theme = await import(new URL("../../src/theme.js?no-legacy", import.meta.url).href);
+    } catch (e) { threw = e; } finally { GAMES.splice(GAMES.indexOf(entry), 1); }
+    ok(!threw && entry.defaultPreset === null, `loading the theme module with it registered does not throw${threw ? ` (${threw.message})` : ""}`);
+    ok(theme && theme.THEME_NAMES.includes("skinera"), "and the game is one of the themes");
   }
 
   // A game that reads no presets follows its theme, whatever preset is set; a game that reads presets

@@ -2,7 +2,7 @@
 // The warning line under the bar in the one-shot status line (src/statusline.js). Each render is a
 // new process, so when a warning first appeared is kept in a file in the runtime directory: the
 // line shows while the warning is younger than WARNING_SECONDS, then goes, and a new process does
-// not show it again.
+// not show it again while the cause lasts; a cause that ended and came back shows again.
 
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, copyFileSync, existsSync, readFileSync, writeFileSync, rmSync } from "node:fs";
@@ -39,12 +39,18 @@ try {
   const second = render();
   ok(second.some((l) => l.startsWith("gamebar: ")), "a render right after it, in a new process, still shows it");
 
-  // The same file, as it would read WARNING_SECONDS later.
+  // The same file, as it would read WARNING_SECONDS later, the cause there on every render since.
   const times = JSON.parse(readFileSync(seen, "utf8"));
-  writeFileSync(seen, JSON.stringify(Object.fromEntries(Object.entries(times).map(([k, t]) => [k, t - WARNING_SECONDS]))));
+  const shifted = (back) => Object.fromEntries(Object.entries(times).map(([k, t]) => [k, back(t)]));
+  writeFileSync(seen, JSON.stringify(shifted((t) => ({ first: t.first - WARNING_SECONDS, last: t.last }))));
   const later = render();
   ok(!later.some((l) => l.startsWith("gamebar: ")) && later.length === first.length - 1,
     `${WARNING_SECONDS} s after it first appeared, the warning line is gone (${JSON.stringify(later)})`);
+
+  // The cause ended (not seen for more than WARNING_SECONDS) and is back: it shows again.
+  writeFileSync(seen, JSON.stringify(shifted((t) => ({ first: t.first - 10 * WARNING_SECONDS, last: t.last - WARNING_SECONDS - 1 }))));
+  const back = render();
+  ok(back.some((l) => l.startsWith("gamebar: ") && l.includes("glow")), `a cause that ended and came back shows again (${JSON.stringify(back)})`);
 
   ok(staleStateFiles([WARNINGS_FILE], () => 1e12).length === 0, "the stale-state sweep never takes the file");
 } finally {

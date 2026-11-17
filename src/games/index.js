@@ -37,6 +37,40 @@ import path from "node:path";
 import { parse as parseToml } from "smol-toml";
 import { SRC_DIR } from "../package-root.js";
 
+// A table header line ([a.b], [[a]], keys bare or quoted), which ends the top-level keys.
+const TABLE_HEADER = /^\[\[?\s*(?:[A-Za-z0-9_-]+|"[^"]*"|'[^']*')(?:\s*\.\s*(?:[A-Za-z0-9_-]+|"[^"]*"|'[^']*'))*\s*\]\]?\s*(?:#.*)?$/;
+const NAME_LINE = /^(?:name|"name"|'name')\s*=\s*(.*)$/;
+// A string without escapes, then at most a comment.
+const PLAIN_STRING = /^(?:"([^"\\]*)"|'([^']*)')\s*(?:#.*)?$/;
+
+// The name of the skin in `file`: its top-level `name` when that is a non-empty string, else the
+// file name without .toml. The status line names the skins on every run, so the name is read from
+// the lines before the first table; only a file whose head this cannot read for certain (an escape
+// in the name, a multi-line string, a line starting with "[" that is no table header) is parsed in
+// full. A file that does not parse is named by its file name, unless its name line comes first;
+// the loader reports it when it is drawn.
+export function skinName(file) {
+  const byFile = path.basename(file, ".toml");
+  let text;
+  try { text = readFileSync(file, "utf8"); } catch { return byFile; }
+  const parsed = () => {
+    let name = null;
+    try { name = parseToml(text).name; } catch { /* named by its file */ }
+    return typeof name === "string" && name ? name : byFile;
+  };
+  for (const raw of text.replace(/^\uFEFF/, "").split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.startsWith("[")) return TABLE_HEADER.test(line) ? byFile : parsed();
+    if (line.includes('"""') || line.includes("'''")) return parsed();
+    const m = NAME_LINE.exec(line);
+    if (!m) continue;
+    const v = PLAIN_STRING.exec(m[1]);
+    if (!v) return parsed();
+    return (v[1] ?? v[2]) || byFile;
+  }
+  return byFile;
+}
+
 // The bundled skin files of a game folder, sorted by file name: [{ name, file }].
 function skinFiles(dir) {
   const skinsDir = path.join(dir, "skins");
@@ -44,9 +78,7 @@ function skinFiles(dir) {
   try { names = readdirSync(skinsDir).filter((n) => n.endsWith(".toml")).sort(); } catch { return []; }
   return names.map((n) => {
     const file = path.join(skinsDir, n);
-    let name = null;
-    try { name = parseToml(readFileSync(file, "utf8")).name; } catch { /* the loader reports it when drawn */ }
-    return { name: typeof name === "string" && name ? name : n.slice(0, -".toml".length), file };
+    return { name: skinName(file), file };
   });
 }
 
@@ -56,7 +88,7 @@ export function readGame(dir) {
   const presetSkins = { ...(legacy.presets || {}) };
   const presets = Object.fromEntries(Object.keys(presetSkins).map((n) => [n, path.join(dir, "presets", `${n}.toml`)]));
   const readsPresets = legacy.reads_presets === true;
-  // The skins are read on first use: naming them parses every skin file, and a lookup that finds its
+  // The skins are read on first use: naming them reads every skin file, and a lookup that finds its
   // skin in an earlier game never needs a later game's.
   let skins = null;
   const listSkins = () => {

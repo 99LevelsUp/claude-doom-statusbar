@@ -2,7 +2,8 @@
 //
 //   animation     2D frames: a selection script picks a frame of the frames folder by name each
 //                 render; without a frame from the script (the script is missing, disabled or not
-//                 run) the default frame is drawn, and without that a blank
+//                 run, or names a path rather than a file of the folder) the default frame is
+//                 drawn, and without that a blank
 //   animation-3d  a 3D model; until there is a renderer for models it draws its default visual
 //
 // The frame is drawn at the glyph step the image asks for, never above what the session's terminal
@@ -35,6 +36,10 @@ function lowerStep(own, terminal) {
 
 const fileOf = (ref, ctx) => (ref && typeof ctx.resolveAsset === "function" ? ctx.resolveAsset(ref) : null);
 
+// A frame name a script returns is a plain file name in the frames folder: no folder part, no
+// separator of any system, not "." or "..". Anything else would lead out of the folder.
+const plainName = (name) => name !== "" && name !== "." && name !== ".." && !/[\\/]/.test(name) && path.basename(name) === name;
+
 // The image at `file` drawn as the element's lines, or null when it cannot be drawn.
 function drawImage(file, p, width, height, ctx, surface) {
   if (!file) return null;
@@ -64,8 +69,8 @@ export const animation = define({
   widths,
   rows: (p) => p.rows,
   draw({ params: p, width, height = p.rows, ctx = {}, script = {}, surface = TERM_RGB }) {
-    const dir = script.frame ? fileOf(p.frames, ctx) : null;
-    const name = dir ? String(script.frame) : "";
+    const name = script.frame ? String(script.frame) : "";
+    const dir = plainName(name) ? fileOf(p.frames, ctx) : null;
     const file = dir ? path.join(dir, path.extname(name) ? name : `${name}.png`) : null;
     return drawImage(file, p, width, height, ctx, surface) ?? drawDefault(p, width, height, ctx, surface);
   },

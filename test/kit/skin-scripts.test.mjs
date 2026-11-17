@@ -336,6 +336,18 @@ script = "face.js"
       `the rest of the render does not use up the scripts' time (${pass.left().toFixed(1)} ms left)`);
   }
 
+  console.log("a script host that throws");
+  {
+    const skin = load(userSkin("host-throws", oneText("ht.js"), { "ht.js": "function render() { return { params: { icon: \"RAN\" } }; }" }));
+    const fit = fitOf(skin);
+    const throwing = { runBatch() { throw new Error("the host broke"); } };
+    let r = null, threw = null;
+    try { r = run(fit, { host: throwing }); } catch (e) { threw = e; }
+    ok(!threw, `the render does not throw${threw ? ` (${threw.message})` : ""}`);
+    ok(r && r.warnings.length === 0 && same(draw(r), drawFit(fit, { values: VALUES, width: WIDTH, ctx: CTX })),
+      "every element draws its default this pass, with no warning");
+  }
+
   console.log("a skin without scripts");
   {
     const fresh = createScriptHost();

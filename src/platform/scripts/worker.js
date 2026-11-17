@@ -71,6 +71,8 @@ function runCall({ script, fn, input }, timeout) {
     ctx.__gamebarIn = input;
     CALL.runInContext(ctx, { timeout });
     if (ctx.__gamebarThenable) throw new Error(`${fn}() returned a promise; a script must return its result directly`);
+    // A function, a Symbol or an object whose toJSON returns nothing serialises to no text at all.
+    if (typeof ctx.__gamebarOut !== "string") throw new Error(`${fn}() returned a value that is not JSON`);
     return { status: "ok", output: ctx.__gamebarOut };
   } catch (e) {
     // A failed script's context may be left half-run; a later load starts it fresh.

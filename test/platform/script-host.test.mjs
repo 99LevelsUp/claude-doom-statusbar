@@ -313,6 +313,26 @@ console.log("a batch cut short by the pass, not by the script:");
   roomy.close();
 }
 
+console.log("a script returning a value that is not JSON:");
+{
+  // JSON.stringify turns a function, a Symbol, or an object whose toJSON returns nothing into no
+  // text at all: the script failed, as if it had thrown, and the rest of the batch is unharmed.
+  const kinds = [
+    ["a function", script(`function render() { return function () {}; }`, "returns-function.js")],
+    ["a Symbol", script(`function render() { return Symbol("x"); }`, "returns-symbol.js")],
+    ["an object whose toJSON returns nothing", script(`function render() { return { toJSON: function () {} }; }`, "returns-nothing.js")],
+  ];
+  for (const [what, s] of kinds) {
+    let r = null, threw = null;
+    try { r = host.runBatch([call(s), call(FRAME)]); } catch (e) { threw = e; }
+    ok(!threw, `${what}: the batch does not throw${threw ? ` (${threw.message})` : ""}`);
+    ok(r && r[0].status === "error" && r[0].message.includes(path.basename(s)) && /not JSON/.test(r[0].message),
+      `${what}: an error result naming the script and saying it is not JSON (${r && JSON.stringify(r[0])})`);
+    ok(host.isDisabled(s), `${what}: the script is disabled until its file changes`);
+    ok(r && r[1].status === "ok" && r[1].output.frame === "STFST01", `${what}: the other call in the batch returns`);
+  }
+}
+
 console.log("a batch of 20 trivial calls:");
 {
   host.runBatch(Array.from({ length: 20 }, () => call(ECHO, { width: 1 })));

@@ -7,8 +7,9 @@
 // backstop: the host reads which call was running and since when, disables that script when it
 // has run past its budget, and replaces the worker without waiting for the old one to stop.
 //
-// A script that throws, fails to load or returns a promise is disabled until its file changes
-// (size or mtime) or it is called for another skin. A script that runs past its budget (stopped by
+// A script that throws, fails to load, or returns a promise or a value that is not JSON (a
+// function, a Symbol) is disabled until its file changes (size or mtime) or it is called for
+// another skin. A script that runs past its budget (stopped by
 // the vm timeout or pinned by the backstop) is disabled only for a cooldown, since one spike of
 // load on the machine is enough to make it late: 30 s, doubling each time it runs past its budget
 // again (1, 2, 4 ... min) up to 10 min. A call that returns resets the cooldown to 30 s; a change
@@ -127,7 +128,8 @@ export function createScriptHost({ callBudgetMs = CALL_BUDGET_MS, graceMs = 40, 
   }
 
   // Reads the worker's replies; disables the scripts that failed in them, clears the cooldown of
-  // those that returned, and returns the reply to batch `want`, if it is there.
+  // those that returned, and returns the reply to batch `want`, if it is there. An output that is
+  // not JSON text is an error, so no reply can throw out of a batch.
   function receive(want) {
     let found = null;
     for (let m; (m = receiveMessageOnPort(w.port));) {
@@ -136,6 +138,15 @@ export function createScriptHost({ callBudgetMs = CALL_BUDGET_MS, graceMs = 40, 
       pending.delete(s);
       if (!calls) continue;
       results.forEach((r, i) => {
+        if (r.status === "ok") {
+          try {
+            if (typeof r.output !== "string") throw new Error("no output");
+            r.value = JSON.parse(r.output);
+          } catch {
+            r.status = "error";
+            r.message = "returned a value that is not JSON";
+          }
+        }
         if (r.status === "error" || r.status === "timeout") {
           const ms = disable(calls[i], r.status);
           if (r.status === "timeout") r.retryMs = ms;
@@ -221,7 +232,7 @@ export function createScriptHost({ callBudgetMs = CALL_BUDGET_MS, graceMs = 40, 
         reply.results.forEach((r, j) => {
           const c = sent[j];
           out[send[j]] = r.status === "ok"
-            ? { status: "ok", output: JSON.parse(r.output) }
+            ? { status: "ok", output: r.value }
             : r.status === "disabled"
               ? disabledResult(c.script)
               : r.status === "timeout"

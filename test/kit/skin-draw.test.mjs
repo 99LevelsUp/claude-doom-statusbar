@@ -4,7 +4,7 @@
 // past it. A warning shows as one dim line naming the first cause and the count of others, for 60
 // seconds after its cause first appeared.
 
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -136,6 +136,40 @@ try {
     ok(warningLine(first, { store: fileStore(file), now: 100, width: 200 }) !== null, "a damaged file counts as no causes seen yet");
     ok(warningLine(first, { store: fileStore(path.join(SB, "missing-dir", "w.json")), now: 0, width: 200 }) !== null,
       "a file that cannot be written still shows the line");
+
+    // A cause that lasts (a script in its cooldown reports every render) shows for 60 seconds, then
+    // stays quiet however long it lasts. One that ends and comes back more than 60 seconds later
+    // is a new episode and shows again. Both stores, the file store from a new store per render as
+    // the one-shot status line uses it.
+    const recurring = [w("r", "script s.js failed")];
+    const stores = [["the memory store", () => { const s = memoryStore(); return () => s; }],
+      ["the file store", () => { const f = path.join(SB, "recurring.json"); return () => fileStore(f); }]];
+    for (const [what, make] of stores) {
+      const store = make();
+      const shown = (now) => warningLine(recurring, { store: store(), now, width: 200 }) !== null;
+      let quiet = true;
+      for (let t = 2000; t <= 2059; t++) if (!shown(t)) quiet = false;
+      for (let t = 2060; t <= 2600; t++) if (shown(t)) quiet = false;
+      ok(quiet, `${what}: a cause present on every render shows for its first 60 s, then stays quiet for 9 minutes more`);
+      ok(shown(2600 + WARNING_SECONDS + 1), `${what}: gone for more than 60 s and back, it shows again`);
+      ok(shown(2600 + WARNING_SECONDS + 30), `${what}: and keeps showing for that episode's 60 s`);
+      ok(!shown(2600 + WARNING_SECONDS + 1 + WARNING_SECONDS), `${what}: then stays quiet again`);
+    }
+
+    // A file written before episodes were kept (key -> the time first seen) is still read.
+    const old = path.join(SB, "old-format.json");
+    writeFileSync(old, JSON.stringify({ r: 3000 }));
+    let fromOld = null, threw = null;
+    try { fromOld = warningLine(recurring, { store: fileStore(old), now: 3030, width: 200 }); } catch (e) { threw = e; }
+    ok(!threw && fromOld !== null, `an old file is read without throwing, its time as the cause's first (${threw ? threw.message : "shown at 30 s"})`);
+    ok(warningLine(recurring, { store: fileStore(old), now: 3061, width: 200 }) === null, "and that cause is quiet 61 s after it");
+
+    // The file keeps only causes seen in the last 60 seconds.
+    const bounded = path.join(SB, "bounded.json");
+    warningLine([w("gone", "a cause that ended")], { store: fileStore(bounded), now: 4000, width: 200 });
+    warningLine(recurring, { store: fileStore(bounded), now: 4000 + WARNING_SECONDS + 1, width: 200 });
+    const kept = Object.keys(JSON.parse(readFileSync(bounded, "utf8")));
+    ok(kept.join(",") === "r", `a cause not seen for more than 60 s is dropped from the file (${kept.join(",")})`);
   }
 
   console.log("an element kept without its value draws a stand-in");

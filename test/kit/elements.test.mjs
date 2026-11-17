@@ -212,6 +212,13 @@ try {
     ok(JSON.stringify(missing) === JSON.stringify(idle), "a frame the folder does not have draws the default frame");
     const dead = a.draw({ params: withDefault, width: w, height: 4, ctx: CTX, script: { frame: "dead" } });
     ok(JSON.stringify(dead) !== JSON.stringify(idle) && dead.every((l) => vlen(l) === w), "a frame from the script is drawn instead");
+    // A frame name that is not a plain file name never reaches outside the frames folder: an image
+    // beside the folder exists, and the escaped name still draws the default frame.
+    copyFileSync(path.join(SPRITES, "STFDEAD0.png"), path.join(SB, "outside.png"));
+    for (const frame of ["../outside", "../outside.png", path.join(SB, "outside.png"), "sub/../dead", "sub\\..\\dead", ".", ".."]) {
+      const escaped = a.draw({ params: withDefault, width: w, height: 4, ctx: CTX, script: { frame } });
+      ok(JSON.stringify(escaped) === JSON.stringify(idle), `a frame named ${JSON.stringify(frame)} draws the default frame`);
+    }
     const half = a.draw({ params: withDefault, width: w, height: 4, ctx: { ...CTX, step: "half" } });
     const glyphs = new Set(half.flatMap((l) => [...plain(l)]));
     ok([...glyphs].every((ch) => " █▀▄▌▐".includes(ch)), "the terminal's glyph step is the ceiling");

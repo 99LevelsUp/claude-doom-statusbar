@@ -217,8 +217,15 @@ export function runScripts(fit, { host, pass = createScriptPass(), state = new M
     let results = calls.map(() => ({ status: "skipped" }));
     if (left > 0) {
       const started = performance.now();
-      results = (host ?? sharedScriptHost()).runBatch(calls, { deadlineMs: Math.min(left, pass.callBudgetMs * calls.length) });
-      pass.spend(performance.now() - started);
+      // A host that throws costs this pass its scripts, nothing more: every element draws its
+      // default, nothing is turned off and the bar is still drawn.
+      try {
+        results = (host ?? sharedScriptHost()).runBatch(calls, { deadlineMs: Math.min(left, pass.callBudgetMs * calls.length) });
+      } catch {
+        results = calls.map(() => ({ status: "skipped" }));
+      } finally {
+        pass.spend(performance.now() - started);
+      }
     }
     results.forEach((r, i) => {
       const { t, ref, file, stamp, library } = runs[i];
