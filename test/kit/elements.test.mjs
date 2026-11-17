@@ -194,9 +194,11 @@ try {
     const kids = Array.from({ length: 9 }, (_, i) => ({ lines: [` ${i} `], width: 3 }));
     const width = 9 * 3 + g.extra(p, 9).columns;
     const lines = g.draw({ params: p, width, height: 3, children: kids, selected: 4 }).map(plain);
-    ok(lines[0] === "┏━━━┳━━━┳━━━┳━━━╦═══╦━━━┳━━━┳━━━┳━━━┓", `the selected cell's top has its highlight lines (${lines[0]})`);
+    ok(lines[0] === "┏━━━┳━━━┳━━━┳━━━╔═══╗━━━┳━━━┳━━━┳━━━┓", `the selected cell's top has its highlight lines, its joints drawn as its corners (${lines[0]})`);
     ok(lines[1] === "┃ 0 ┃ 1 ┃ 2 ┃ 3 ║ 4 ║ 5 ┃ 6 ┃ 7 ┃ 8 ┃", `the selected cell's sides have its highlight lines (${lines[1]})`);
-    ok(lines[2] === "┗━━━┻━━━┻━━━┻━━━╩═══╩━━━┻━━━┻━━━┻━━━┛", "and so does its bottom");
+    ok(lines[2] === "┗━━━┻━━━┻━━━┻━━━╚═══╝━━━┻━━━┻━━━┻━━━┛", "and so does its bottom");
+    const ends = (sel) => g.draw({ params: p, width, height: 3, children: kids, selected: sel }).map(plain);
+    ok(ends(0)[0].startsWith("╔═══╗━━━┳") && ends(8)[2].endsWith("┻━━━╚═══╝"), "a selected cell at either end has its own corners");
     const raw = g.draw({ params: p, width, height: 3, children: kids, selected: 4 })[1];
     ok(raw.includes("\x1b[38;2;255;255;255m║"), "the highlight lines are drawn in the selected colour");
     for (const selected of [undefined, -1, 9]) {

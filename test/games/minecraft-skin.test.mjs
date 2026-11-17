@@ -143,7 +143,7 @@ try {
     const text = wide.plain.join("\n");
     ok(["🪓", "💎", "🌿", "🧱", "🐺", "🏆", "💥", "🔥", "🕓"].every((icon) => text.includes(icon)), "each slot shows its item");
     ok(["1M", "$1.83", "185", "2/5", "12%", "14:23"].every((v) => text.includes(v)), "and the value of its metric under it");
-    ok(/┏━+┳/.test(wide.plain[2]) && /┗━+┻/.test(wide.plain[5]), "the slots are drawn with heavy lines");
+    ok(/┏━+[┳┓]/.test(wide.plain[2]) && /┗━+[┻┛]/.test(wide.plain[5]), "the slots are drawn with heavy lines");
     ok(/━ 31 ━/.test(wide.plain[1]), "the XP bar carries the 7-day percentage as its level");
     // RAW_SAMPLE: 5h at 64 % -> 4 of 10 hearts; context at 78 % -> 2 of 10 shanks.
     ok(count(wide.plain[0], "♥") === 4 && count(wide.plain[0], "♡") === 6, `the hearts show what is left of the 5h limit (${wide.plain[0].trim()})`);

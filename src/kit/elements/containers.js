@@ -227,9 +227,12 @@ export const grid = define({
       : lineFg + plain[HORIZONTAL].repeat(children[k].width));
     const used = sum(children.map((c) => c.width)) + n + 1;
     const tail = blank(width - used);
+    // A joint beside the selected cell is drawn as that cell's corner, without the plain cell's
+    // half of the line: a joint glyph has one colour, so its far half would wear the wrong one.
+    const jointAt = (k, left, joint, right) => (k === 0 ? left : k === selected ? left : k - 1 === selected ? right : joint);
     const rule = (left, joint, right) => {
       let s = "";
-      for (let k = 0; k < n; k++) s += edge(k, k === 0 ? left : joint) + across(k);
+      for (let k = 0; k < n; k++) s += edge(k, jointAt(k, left, joint, right)) + across(k);
       return s + edge(n, right) + RESET + tail;
     };
     const cellBg = bgOf(p.background);
