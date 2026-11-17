@@ -9,10 +9,16 @@ games = ["doom"]
 root = "bar"
 smaller = "doom-line"
 
+# The mugshot sits right against its neighbours: its own black margin, one column on each side of
+# the face, is the only gap there. MODEL and USAGE keep a column between them.
 [element.bar]
 kind = "row"
+children = ["boxes", "mugshot", "project"]
+
+[element.boxes]
+kind = "row"
 separator = " "
-children = ["model", "usage", "mugshot", "project"]
+children = ["model", "usage"]
 
 # --- MODEL --------------------------------------------------------------------------------------
 [element.model]
@@ -149,7 +155,7 @@ kind = "animation"
 frames = "doom:images/mugshot"
 script = "doom:scripts/mugshot.js"
 default_frame = "doom:images/mugshot/STFST01.png"
-width = 8
+width = 7
 rows = 3
 glyphs = "octant"
 background = "#000000"

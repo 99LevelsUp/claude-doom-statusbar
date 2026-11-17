@@ -159,7 +159,8 @@ try {
   console.log("the skins at each height:");
   {
     const full = skinFile("doom-full");
-    const ids = (r) => r.fit.tree.children.map((k) => k.id);
+    // The boxes and the mugshot in order; doom-compact holds MODEL and USAGE in a row of their own.
+    const ids = (r) => r.fit.tree.children.flatMap((k) => (k.id === "boxes" ? k.children.map((c) => c.id) : [k.id]));
     const tall = draw(full, { width: 200, rows: 7 });
     ok(tall.fit.skin.name === "doom-full" && tall.lines.length === 7, "with room for 7 rows doom-full is drawn whole");
     const six = draw(full, { width: 200, rows: 6 });
@@ -178,6 +179,10 @@ try {
       ok(w[0] > 0 && w.every((x) => x === w[0]), `at ${width} columns doom-compact's three USAGE bars are as long (${w.join(", ")})`);
     }
     ok(strip(panel.lines[0]).includes("Opus") && !strip(panel.lines[0]).includes("4.8"), "doom-compact names the model without its version");
+    // The face is 5 or 6 columns in every frame; in 7 columns with no separator beside it, its own
+    // black margin of one column is the only gap to USAGE and PROJECT.
+    ok(byId(panel.fit.tree, "mugshot").width === 7 && panel.fit.tree.node.params.separator === "",
+      "doom-compact's mugshot is 7 columns and sits right against its neighbours");
     const narrow = draw(full, { width: 44, rows: 5 });
     ok(narrow.fit.skin.name === "doom-compact" && same(ids(narrow), ["model", "usage", "mugshot"]),
       `at 44 columns doom-compact has dropped PROJECT (${ids(narrow).join(" ")})`);
