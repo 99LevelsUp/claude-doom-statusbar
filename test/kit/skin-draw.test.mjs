@@ -43,7 +43,12 @@ try {
       const lines = drawFit(fit, { values: VALUES, width, ctx: CTX });
       ok(lines.length === fit.tree.rows, `${width}: as many lines as the fitted tree has rows (${lines.length})`);
       ok(lines.every((l) => vlen(l) <= width), `${width}: no line is wider than the terminal`);
-      ok(lines.every((l) => vlen(l) === Math.floor((width - fit.width) / 2) + fit.width), `${width}: every line is the bar centred in the terminal`);
+      // Trailing plain spaces are left out of each line, so a line ends where its drawing does: it
+      // starts at the centred bar's left edge and stops at its right edge at the latest.
+      const offset = Math.floor((width - fit.width) / 2);
+      ok(lines.every((l) => plain(l).startsWith(" ".repeat(offset)) && vlen(l) <= offset + fit.width),
+        `${width}: every line is the bar centred in the terminal`);
+      ok(lines.every((l) => !l.replace(/\x1b\[0m$/, "").endsWith(" ")), `${width}: no line ends in plain spaces`);
     }
     const at200 = drawFit(fitSkin(wide, { values: VALUES, width: 200, loadSmaller: byName }), { values: VALUES, width: 200, ctx: CTX });
     const top = plain(at200[0]);
@@ -81,9 +86,13 @@ try {
       tasks: { kind: "scroll-list", metric: "act.tasklist", width: 8, min_width: 8, rows: 2 },
     });
     const values = { "model.name": "Opus" };
-    const lines = drawFit(fitSkin(skin, { values, width: 14 }), { values, width: 14, ctx: CTX });
-    ok(lines.length === 2 && lines.every((l) => vlen(l) === 14), "the absent text takes no space and the empty list keeps its 8 columns");
-    ok(plain(lines[0]) === "Opus" + " ".repeat(10), "the list with no items draws blank");
+    const emptyFit = fitSkin(skin, { values, width: 14 });
+    const lines = drawFit(emptyFit, { values, width: 14, ctx: CTX });
+    ok(lines.length === 2 && emptyFit.width === 14 && emptyFit.tree.children.map((k) => k.width).join(",") === "6,8",
+      "the absent text takes no space and the empty list keeps its 8 columns");
+    // The blank list is at the end of the line: plain spaces there are the terminal's background,
+    // and drawFit leaves them out.
+    ok(plain(lines[0]) === "Opus" && plain(lines[1]) === "", "the list with no items draws blank");
 
     const face = inline({
       bar: { kind: "row", children: ["left", "mug", "right"] },

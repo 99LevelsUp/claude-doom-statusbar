@@ -12,10 +12,12 @@ games = ["minecraft"]
 root = "bar"
 smaller = "minecraft-compact"
 
+# The chat at the terminal's left edge, the HUD in the middle of the terminal.
 [element.bar]
 kind = "row"
 separator = "  "
 shrink = "start"
+center = "hud"
 children = ["chat", "hud"]
 
 # --- the chat -----------------------------------------------------------------------------------

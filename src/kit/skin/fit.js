@@ -205,7 +205,10 @@ export function fitSkin(skin, { values = {}, width, rows = Infinity, loadSmaller
     result = fitOne(next, values, width);
   }
   const { tree, fits, dropped, absent } = result;
-  const used = !tree ? 0 : fits ? Math.min(tree.m.natural, width) : tree.m.min;
+  // A root row with a centre (src/kit/elements/containers.js) takes the whole width, so its centre
+  // child sits in the middle of the terminal.
+  const whole = tree && tree.node.container && Boolean(tree.node.params.center);
+  const used = !tree ? 0 : fits ? (whole ? width : Math.min(tree.m.natural, width)) : tree.m.min;
   return {
     skin: current,
     tree: tree ? place(tree, used) : null,

@@ -101,6 +101,24 @@ try {
     }
   }
 
+  console.log("the chat at the left edge, the HUD in the middle:");
+  {
+    // From 157 columns the 40-column chat and its separator leave room for the 73-column HUD in the middle.
+    for (const width of [200, 170]) {
+      const r = draw({ width });
+      const hud = findNode(r.fit.tree, "hud");
+      const chat = findNode(r.fit.tree, "chat");
+      const line = r.plain[0];
+      const hudAt = vlen(line.slice(0, line.indexOf("♥")));
+      ok(r.fit.width === width && chat && /^\s?\S/.test(line), `at ${width} columns the bar takes the whole width and the chat starts at its left edge`);
+      ok(hudAt === Math.floor((width - hud.width) / 2), `and the HUD sits in the middle of the terminal (column ${hudAt} of ${width}, ${hud.width} wide)`);
+    }
+    const narrow = draw({ width: 118 });
+    const line = narrow.plain[0];
+    ok(vlen(line.slice(0, line.indexOf("♥"))) === findNode(narrow.fit.tree, "chat").width + 2,
+      "when the chat leaves no room to centre it, the HUD follows the chat after the separator");
+  }
+
   console.log("a short terminal:");
   {
     ok(draw({ rows: 6 }).fit.skin.name === "minecraft", "with room for six rows the full skin is drawn");

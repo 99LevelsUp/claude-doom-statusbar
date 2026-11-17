@@ -95,17 +95,22 @@ function drawNode(t, height, surface, env) {
   if (f && f.descriptor.arranges) {
     return f.descriptor.draw({ params: f.params, width: t.width, height, children, selected: script?.selected });
   }
-  const content = node.descriptor.draw({ params: node.params, width: innerWidth, height: innerHeight, children, surface: inner });
+  const content = node.descriptor.draw({ params: node.params, width: innerWidth, height: innerHeight, children, ids: t.children.map((k) => k.id), surface: inner });
   return f ? f.descriptor.draw({ params: f.params, width: t.width, height, content }) : content;
 }
 
 // The bar's lines for `fit` in a terminal `width` columns wide. `values` are the session's metric
 // values, `ctx` the render context the visuals read (tick, step, resolveAsset), `scripts` each
 // element's script output by element id.
+// Plain spaces at the end of a line are the terminal's background, so they are left out: a line
+// padded to the terminal's edge could be cut by Claude Code, which counts some glyphs wider than
+// the terminal draws them, and would end in its ellipsis.
+const trimEnd = (l) => l.replace(/ +$/, "");
+
 export function drawFit(fit, { values = {}, width, ctx = {}, scripts = {} } = {}) {
   if (!fit.tree) return [];
   const lines = drawNode(fit.tree, fit.tree.rows, TERM_RGB, { values, ctx, scripts });
   if (fit.width > width) return lines.map((l) => clipLine(RESET + l + RESET, width));
   const outer = blank(Math.floor((width - fit.width) / 2));
-  return lines.map((l) => RESET + outer + l + RESET);
+  return lines.map((l) => RESET + outer + trimEnd(l) + RESET);
 }

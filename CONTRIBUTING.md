@@ -89,7 +89,11 @@ in short:
   - `grow`, what its children do with width it has to spare: `"none"` (the default) leaves the room
     to `align`; `"fill"` gives each child of a column the column's whole width, and shares a row's
     surplus evenly among the children that can grow. A visual that cannot grow (an equalizer with
-    `sizing = "values"`) keeps its width, and `align` places it.
+    `sizing = "values"`) keeps its width, and `align` places it;
+  - a row's `center`, the id of a child drawn in the middle of the row, the children before it at
+    the row's start and those after it right behind it; when they leave no room, the children sit
+    side by side. The bar's root row with a `center` takes the terminal's whole width, so its
+    centre child sits in the middle of the terminal (Minecraft's HUD, with the chat at the edge).
 
 A box is never narrower than its title and padding. The equalizer's `sizing` says where its width
 comes from: `"stretch"` (the default) spreads the values over `columns`; `"values"` gives each value
