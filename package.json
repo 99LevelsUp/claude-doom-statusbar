@@ -1,6 +1,6 @@
 {
   "name": "claude-game-bar",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "A status bar for the Claude Code CLI that draws the session as a game HUD: usage, rate limits, model, project, agents, tasks and system, as DOOM or Minecraft.",
   "type": "module",
   "bin": {

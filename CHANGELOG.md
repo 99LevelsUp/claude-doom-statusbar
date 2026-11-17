@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-17
+
 Games become skins. The bar is a tree of shared elements, and a skin describes that tree as data:
 which metrics it shows, in which visuals, how they are laid out, and the scripts and game assets
 it uses. DOOM and Minecraft are rebuilt as skins, and you can compose, name and keep your own. This
