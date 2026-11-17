@@ -31,7 +31,8 @@ is a major release: presets in the old format no longer draw.
 
 ### Changed
 - **Skins replace themes and presets.** The bundled skins are `doom-full` (the default),
-  `doom-standard`, `doom-minimal` and `minecraft`. `claude-game-bar skin <name|next|list>` switches
+  `doom-standard`, `doom-minimal`, `doom-compact`, `doom-line`, `minecraft` and
+  `minecraft-compact`. `claude-game-bar skin <name|next|list>` switches
   between them; `theme` still works as another name for it, and a game's name picks its default
   skin. The choice is saved in `~/.claude/claude-game-bar/skin.json`.
 - **`GAMEBAR_SKIN` replaces `GAMEBAR_PRESET`.** It is forwarded per session, so a project can set
@@ -42,9 +43,17 @@ is a major release: presets in the old format no longer draw.
   its release pins, with npm's package scripts disabled, into
   `~/.claude/claude-game-bar/assets/`, and `install` removes versions no skin drawn within 30 days
   uses.
-- **Narrow terminals:** elements shrink first, then drop in the order of the priorities the skin
-  gives them, and then the bar switches to the smaller skin the skin names (`doom-full`, then
-  `doom-standard`, then `doom-minimal`).
+- **Narrow and short terminals:** elements shrink first, then drop in the order of the priorities
+  the skin gives them, and then the bar switches to the smaller skin the skin names (`doom-full`,
+  `doom-standard`, `doom-minimal`, `doom-compact`, `doom-line`; `minecraft`, `minecraft-compact`).
+  The bar also takes at most a third of the terminal's rows, so a short terminal gets a lower
+  skin: `doom-compact` is three rows high and `doom-line` one. `GAMEBAR_MAX_ROWS` sets the limit
+  yourself.
+- **The MODEL box shows the thinking, fast-mode and output-style settings as icons:** 💡 thinking
+  on, 👄 off; 🏃 fast mode on, 🚶 off; 👷 default style, 💁 explanatory, 🙋 learning, 🎨 a style of
+  your own.
+- **Minecraft's chat stays at the terminal's left edge** and its HUD sits in the middle of the
+  terminal. The hearts stand a space apart, as long as the hunger row.
 - **DOOM and Minecraft look different in places.** They are rebuilt from the shared elements and
   were not made to match 1.x exactly.
 - **Configuration can now run code.** A skin can attach scripts to its elements: DOOM's mugshot
@@ -77,14 +86,12 @@ is a major release: presets in the old format no longer draw.
 
 ### For maintainers
 - Asset packages publish from `master` through `.github/workflows/publish-assets.yml`, with
-  trusted publishing and provenance, from the GitHub environment `npm-assets`. Before this release
-  can be tagged, the owner does a one-time bootstrap: create the npm organisation
-  `claude-game-bar`, publish the first version of `@claude-game-bar/doom` and
-  `@claude-game-bar/minecraft` by hand, configure trusted publishing for both against
+  trusted publishing and provenance, from the GitHub environment `npm-assets`. The npm
+  organisation `claude-game-bar` exists, and `@claude-game-bar/doom` and
+  `@claude-game-bar/minecraft` 1.0.0 are published and pinned with their integrity in the game
+  manifests. Before the first asset change, configure trusted publishing for both packages against
   `publish-assets.yml` and the `npm-assets` environment, then require two-factor authentication
-  and disallow tokens for both, and pin the published versions and their integrity in the game
-  manifests. Until then an installed bar cannot fetch game assets; a checkout works from its own
-  `games/` folders. `CONTRIBUTING.md` has the steps.
+  and disallow tokens for both. `CONTRIBUTING.md` has the steps.
 - With two installations wired at once (a checkout with `install --local` over a global
   install), both sets of hooks wrote every event into the session's journal, so the bar counted
   activity and errors twice. The hooks of the installation that does not draw the session now
