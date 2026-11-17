@@ -45,7 +45,7 @@ const SANDBOX_ENV = {
   GAMEBAR_THEME_FILE: path.join(SB, "no-theme.json"), GAMEBAR_RATELIMITS_SHARE: "0",
   GAMEBAR_RATELIMITS: path.join(SB, "rl.json"), GAMEBAR_TASKS_DIR: path.join(SB, "tasks"),
   GAMEBAR_EVENTS: path.join(SB, "events.jsonl"), GAMEBAR_LLMLINGUA: path.join(SB, "ling.json"),
-  GAMEBAR_PRESET: path.join(PRESETS, "minimal.toml"),
+  GAMEBAR_PRESET: path.join(PRESETS, "minimal.toml"), GAMEBAR_USER_DIR: path.join(SB, "user"),
 };
 Object.assign(process.env, SANDBOX_ENV);
 // The terminal that runs the tests must not pick the mugshot's glyphs for one side of a comparison.
@@ -55,6 +55,19 @@ const { sessionPaths, daemonPaths, rootHash, daemonSocket, procStartTicks } = aw
 const { parseFrame } = await import("../../src/platform/frame.js");
 const { envGet } = await import("../../src/platform/env.js");
 const { createState, runPass, pipePath, maybeStartReaper, FORWARDED_ENV } = await import("../../src/daemon.js");
+const { createScriptHost } = await import("../../src/platform/scripts/host.js");
+const { createScriptPass } = await import("../../src/kit/skin/scripts.js");
+
+// The skins compared below run scripts (doom-full's mugshot names one). A comparison needs every
+// script to run on both sides, so the daemon and renderSession each get a host and a pass no
+// loaded machine runs a trivial call past; only the cases about the scripts' time keep the
+// product's budgets.
+const ROOMY = { callBudgetMs: 2000, graceMs: 2000, startupMs: 10000 };
+const DAEMON_HOST = createScriptHost(ROOMY);
+const RENDER_HOST = createScriptHost(ROOMY);
+const roomyState = (options) => createState({ version: VERSION, scriptHost: DAEMON_HOST, scriptPassMs: 60000, callBudgetMs: 10000, ...options });
+const renderAt = (data, env, nowMs) => renderSession({ data, env, now: nowMs / 1000,
+  scripts: { host: RENDER_HOST, pass: createScriptPass({ budgetMs: 60000, callBudgetMs: 10000 }), state: new Map() } });
 
 const HASH = rootHash();
 const OTHER = rootHash(path.join(SB, "elsewhere"));
@@ -88,10 +101,16 @@ function session(key, { label = key, env = {}, hash = HASH, dir = TMPDIR } = {})
   return s;
 }
 const heartbeat = (hash, dir) => { try { return JSON.parse(readFileSync(heartbeatFile(hash, dir), "utf8")); } catch { return null; } };
-const expected = (s, nowMs) => renderSession({ data: s.data, env: { ...process.env, ...s.fwd }, now: nowMs / 1000 });
+const expected = (s, nowMs) => renderAt(s.data, { ...process.env, ...s.fwd }, nowMs);
 const readFrame = (s) => { try { return readFileSync(frameFile(s.key, s.hash, s.dir), "utf8"); } catch { return null; } };
 const frameOf = (s) => parseFrame(readFrame(s) ?? "");
-const sameLines = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+// Compares two frames' lines, and notes any warning line either carries: a compared frame with a
+// warning means a script failed on one side, and two equal frames would then prove little.
+const warned = new Set();
+const sameLines = (a, b) => {
+  for (const l of [...(a || []), ...(b || [])]) if (strip(l).includes("gamebar:")) warned.add(strip(l).trim());
+  return JSON.stringify(a) === JSON.stringify(b);
+};
 const hhmm = (ms) => { const d = new Date(ms); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
 
 const children = [];
@@ -111,7 +130,7 @@ try {
   {
     const s = session("first");
     const now = Date.now();
-    const state = createState({ version: VERSION, now });
+    const state = roomyState({ now });
     runPass(state, { dir: TMPDIR, hash: HASH, now });
     const f = frameOf(s);
     ok(f !== null, "a payload for a new session produces a frame in one pass");
@@ -131,7 +150,7 @@ try {
     const a = session("steady");
     const b = session("wide", { env: { GAMEBAR_FRAME_WINDOW: "5" } });
     const t0 = Math.ceil(Date.now() / 60000) * 60000 - 20000;
-    const state = createState({ version: VERSION, now: t0 });
+    const state = roomyState({ now: t0 });
     let renewed = true, matches = true, wide = true, prev = -1;
     const clocks = new Set();
     for (let now = t0; now <= t0 + 60000; now += 500) {
@@ -158,12 +177,14 @@ try {
   {
     const good = session("good"), bad = session("bad");
     const t0 = Date.now();
-    const state = createState({ version: VERSION, now: t0 });
+    const state = roomyState({ now: t0 });
     runPass(state, { dir: TMPDIR, hash: HASH, now: t0 });
     const before = readFrame(bad);
-    // A preset that is not TOML: renderSession throws (a missing one draws a line instead).
-    bad.fwd.GAMEBAR_PRESET = path.join(SB, "broken.toml");
-    writeFileSync(bad.fwd.GAMEBAR_PRESET, "[[[ not toml\n");
+    // A payload whose cost is not an object: renderSession throws.
+    const cost = bad.data.cost;
+    bad.data.cost = "not an object";
+    ok((() => { try { renderSession({ data: bad.data, env: { ...process.env, ...bad.fwd } }); return false; } catch { return true; } })(),
+      "renderSession throws on that payload (the checks below can fail)");
     bad.write();
     let kept = true, others = true;
     for (let i = 1; i <= 6; i++) {
@@ -175,7 +196,7 @@ try {
     }
     ok(before !== null && kept, "the failing session keeps its previous frame, deadline included");
     ok(others, "the other session keeps renewing while one session's render throws");
-    bad.fwd.GAMEBAR_PRESET = path.join(PRESETS, "full.toml");
+    bad.data.cost = cost;
     bad.write();
     const now = t0 + 4000;
     runPass(state, { dir: TMPDIR, hash: HASH, now });
@@ -188,7 +209,7 @@ try {
   {
     const s = session("half", { label: "whole" });
     const t0 = Date.now();
-    const state = createState({ version: VERSION, now: t0 });
+    const state = roomyState({ now: t0 });
     runPass(state, { dir: TMPDIR, hash: HASH, now: t0 });
     const full = payloadText(s.data, s.fwd);
     let used = true;
@@ -215,7 +236,7 @@ try {
   {
     const other = session("foreign", { hash: OTHER });
     const now = Date.now();
-    const state = createState({ version: VERSION, now });
+    const state = roomyState({ now });
     runPass(state, { dir: TMPDIR, hash: HASH, now });
     ok(!existsSync(frameFile("foreign", OTHER)) && !existsSync(frameFile("foreign", HASH)),
       "a payload with another install's hash is neither rendered nor answered");
@@ -234,14 +255,14 @@ try {
       delete s.fwd.GAMEBAR_STATE;
       s.write();
       const now = Date.now();
-      const state = createState({ version: VERSION, now });
+      const state = roomyState({ now });
       runPass(state, { dir: TMPDIR, hash: HASH, now });
       const own = { ...process.env, ...s.fwd };
       delete own.GAMEBAR_THEME;
       delete own.GAMEBAR_STATE;
       delete own.WT_SESSION;
-      const want = renderSession({ data: s.data, env: own, now: now / 1000 });
-      const inherited = renderSession({ data: s.data, env: { ...process.env, ...s.fwd }, now: now / 1000 });
+      const want = renderAt(s.data, own, now);
+      const inherited = renderAt(s.data, { ...process.env, ...s.fwd }, now);
       ok(!sameLines(want, inherited), "the daemon's own GAMEBAR_THEME would change the render (so the next case can tell)");
       ok(sameLines(frameOf(s)?.slots[0].lines, want), "a session without GAMEBAR_THEME renders the default theme, not the daemon's");
       ok(state.sessions.get("unset")?.env.GAMEBAR_STATE === undefined,
@@ -273,7 +294,7 @@ try {
       Object.assign(s.fwd, { DOOMBAR_EVENTS: own.events, GAMEBAR_LLMLINGUA: own.ling });
       s.write();
       const now = Date.now();
-      const state = createState({ version: VERSION, now });
+      const state = roomyState({ now });
       runPass(state, { dir: TMPDIR, hash: HASH, now });
       const env = state.sessions.get("savings-own")?.env ?? {};
       ok(envGet("EVENTS", env) === own.events, `a session's own DOOMBAR_EVENTS wins over the daemon's GAMEBAR_EVENTS (got ${envGet("EVENTS", env)})`);
@@ -302,37 +323,158 @@ try {
         s.fwd[forwarded] = minimal;
         s.write();
         const now = Date.now();
-        const state = createState({ version: VERSION, now });
+        const state = roomyState({ now });
         runPass(state, { dir: TMPDIR, hash: HASH, now });
         const base = { ...process.env, ...s.fwd };
         delete base.GAMEBAR_PRESET;
         delete base.DOOMBAR_PRESET;
-        const want = renderSession({ data: s.data, env: { ...base, GAMEBAR_PRESET: minimal }, now: now / 1000 });
-        const other = renderSession({ data: s.data, env: { ...base, GAMEBAR_PRESET: full }, now: now / 1000 });
+        const want = renderAt(s.data, { ...base, GAMEBAR_PRESET: minimal }, now);
+        const other = renderAt(s.data, { ...base, GAMEBAR_PRESET: full }, now);
         ok(!sameLines(want, other), `the inherited ${inherited} would change the render (so the next case can tell)`);
         ok(sameLines(frameOf(s)?.slots[0].lines, want),
           `a session forwarding only ${forwarded} renders with it, though the daemon inherited a different ${inherited}`);
         unlinkSync(payloadFile(`only-${forwarded}`));
       }
-      // Nor does an old name the daemon inherited reach a session that sets neither name.
+      // Nor does an old name the daemon inherited reach a session that sets neither name (which
+      // draws the default skin, the full one).
       delete process.env.GAMEBAR_PRESET;
-      process.env.DOOMBAR_PRESET = full;
+      process.env.DOOMBAR_PRESET = minimal;
       const s = session("neither");
       delete s.fwd.GAMEBAR_PRESET;
       s.write();
       const now = Date.now();
-      runPass(createState({ version: VERSION, now }), { dir: TMPDIR, hash: HASH, now });
+      runPass(roomyState({ now }), { dir: TMPDIR, hash: HASH, now });
       const base = { ...process.env, ...s.fwd };
       delete base.GAMEBAR_PRESET;
       delete base.DOOMBAR_PRESET;
-      const want = renderSession({ data: s.data, env: base, now: now / 1000 });
-      ok(!sameLines(want, renderSession({ data: s.data, env: { ...base, DOOMBAR_PRESET: full }, now: now / 1000 })),
+      const want = renderAt(s.data, base, now);
+      ok(!sameLines(want, renderAt(s.data, { ...base, DOOMBAR_PRESET: minimal }, now)),
         "the inherited DOOMBAR_PRESET would change the render (so the next case can tell)");
       ok(sameLines(frameOf(s)?.slots[0].lines, want), "a session that sets neither name does not take the daemon's DOOMBAR_PRESET");
       unlinkSync(payloadFile("neither"));
     } finally {
       if (saved.now === undefined) delete process.env.GAMEBAR_PRESET; else process.env.GAMEBAR_PRESET = saved.now;
       if (saved.old === undefined) delete process.env.DOOMBAR_PRESET; else process.env.DOOMBAR_PRESET = saved.old;
+    }
+  }
+
+  // The skin is the session's own: one session's GAMEBAR_SKIN draws that skin, and a session without
+  // one never takes the GAMEBAR_SKIN the daemon inherited.
+  {
+    const { defaultGame } = await import("../../src/games/index.js");
+    const sizes = defaultGame().presetSkins;
+    const saved = process.env.GAMEBAR_SKIN;
+    process.env.GAMEBAR_SKIN = sizes.minimal;
+    try {
+      const own = session("skin-own", { env: { GAMEBAR_SKIN: sizes.standard } });
+      const none = session("skin-none");
+      const now = Date.now();
+      runPass(roomyState({ now }), { dir: TMPDIR, hash: HASH, now });
+      const base = { ...process.env };
+      delete base.GAMEBAR_SKIN;
+      const render = (s, env = {}) => renderAt(s.data, { ...base, ...s.fwd, ...env }, now);
+      ok(!sameLines(render(own), render(own, { GAMEBAR_SKIN: sizes.minimal })),
+        "the daemon's own GAMEBAR_SKIN would change the render (so the next cases can tell)");
+      ok(sameLines(frameOf(own)?.slots[0].lines, render(own)), `a session forwarding GAMEBAR_SKIN=${sizes.standard} draws that skin`);
+      ok(sameLines(frameOf(none)?.slots[0].lines, render(none)), "a session without GAMEBAR_SKIN does not take the daemon's");
+      unlinkSync(payloadFile("skin-own"));
+      unlinkSync(payloadFile("skin-none"));
+    } finally {
+      if (saved === undefined) delete process.env.GAMEBAR_SKIN; else process.env.GAMEBAR_SKIN = saved;
+    }
+  }
+
+  ok(warned.size === 0, `no compared frame carries a warning line, so every script ran on both sides${warned.size ? ` (${[...warned].join("; ")})` : ""}`);
+
+  // Skin scripts run in the daemon's one script worker, under a time budget for the whole pass that
+  // every session shares. The order in which sessions get their scripts run turns from pass to
+  // pass, so none of them is always last.
+  {
+    // A user skin of text elements bound to the model's name, each running `script` from the skin's
+    // folder.
+    const scripted = (name, source, count = 1) => {
+      const dir = path.join(SANDBOX_ENV.GAMEBAR_USER_DIR, "skins", name);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(path.join(dir, "s.js"), source);
+      const ids = Array.from({ length: count }, (_, i) => `e${i}`);
+      writeFileSync(path.join(dir, `${name}.toml`), [
+        "version = 1", 'root = "bar"', "[element.bar]", 'kind = "row"', `children = ${JSON.stringify(ids)}`,
+        ...ids.flatMap((id) => [`[element.${id}]`, 'kind = "text"', 'metric = "model.name"', "width = 12", "min_width = 12", 'script = "s.js"']),
+      ].join("\n"));
+      return path.join(dir, "s.js");
+    };
+    const text = (s) => strip((frameOf(s)?.slots[0].lines || []).join("\n"));
+    const timed = (state, now) => { const t = performance.now(); runPass(state, { dir: TMPDIR, hash: HASH, now }); return performance.now() - t; };
+
+    // Three sessions, each with a script that picks what to show from the time (a looping
+    // animation): every pass renews every session's frame with what its script returned, and the
+    // pass stays within its budget (plus the backstop's grace for the last batch).
+    {
+      scripted("ticker", 'function render(i) { return { params: { icon: "T" + (i.tick % 10) + " " } }; }');
+      const ss = ["tick-a", "tick-b", "tick-c"].map((k) => session(k, { env: { GAMEBAR_SKIN: "ticker" } }));
+      const t0 = Date.now();
+      const state = createState({ version: VERSION, now: t0 });
+      let renewed = true, drawn = true, slowest = 0;
+      for (let k = 0; k < 6; k++) {
+        const now = t0 + k * 1000;
+        slowest = Math.max(slowest, timed(state, now));
+        const tick = Math.floor(now / 1000) % 10;
+        for (const s of ss) {
+          if (frameOf(s)?.deadline !== now * 1000 + 3e6) renewed = false;
+          if (!text(s).includes(`T${tick} `)) drawn = false;
+        }
+      }
+      ok(renewed, "with a script in each of three sessions, every pass renews every frame within its window");
+      ok(drawn, "and every frame shows what its session's script returned for that pass");
+      ok(slowest < 200 + 40 + 100, `and the pass stays within its budget (slowest ${slowest.toFixed(0)} ms)`);
+      state.scripts.host.close();
+      for (const s of ss) unlinkSync(payloadFile(s.key));
+    }
+
+    // A script stuck where its timeout cannot reach it: the backstop restarts the worker, which uses
+    // up the pass. The next session's healthy script draws its default for that pass, with no
+    // warning, and runs on the following pass.
+    {
+      const hang = scripted("stuck", 'function render() { return { params: { icon: "NEVER" } }; }');
+      scripted("calm", 'function render() { return { params: { icon: "CALM " } }; }');
+      const host = createScriptHost({ simulateNativeHang: hang });
+      const a = session("a-stuck", { env: { GAMEBAR_SKIN: "stuck" } });
+      const b = session("b-calm", { env: { GAMEBAR_SKIN: "calm" } });
+      const t0 = Date.now();
+      const state = createState({ version: VERSION, now: t0, scriptHost: host, scriptPassMs: 20 });
+      timed(state, t0);
+      ok(/gamebar: .*s\.js/.test(text(a)) && !text(a).includes("NEVER"), "the stuck script's element draws its default and a warning shows");
+      ok(!text(b).includes("CALM") && !text(b).includes("gamebar:") && host.spawns === 2,
+        "the next session's script is skipped for that pass, with no warning, once the restart used up the pass");
+      timed(state, t0 + 1000);
+      ok(text(b).includes("CALM"), "and runs on the following pass");
+      host.close();
+      unlinkSync(payloadFile(a.key));
+      unlinkSync(payloadFile(b.key));
+    }
+
+    // Two sessions whose scripts each need most of the pass: over successive passes both get them
+    // run, because the session that went last goes first on the next pass. The pass's budget is
+    // what is tested; each call's own budget is one no stall of the machine runs a 15 ms call past,
+    // so no script is turned off for a cooldown, and the host's grace stays the product's, so the
+    // pass still cuts the second session short.
+    {
+      scripted("hog", 'function render(i) { var t = Date.now(); while (Date.now() - t < 15) {} return { params: { icon: "R" + (i.tick % 10) + " " } }; }', 4);
+      const ss = ["hog-x", "hog-y"].map((k) => session(k, { env: { GAMEBAR_SKIN: "hog" } }));
+      const t0 = Date.now();
+      const host = createScriptHost({ callBudgetMs: 2000, startupMs: 10000 });
+      const state = createState({ version: VERSION, now: t0, scriptHost: host, scriptPassMs: 70, callBudgetMs: 40 });
+      const full = new Map(ss.map((s) => [s.key, 0]));
+      for (let k = 0; k < 4; k++) {
+        const now = t0 + k * 1000;
+        timed(state, now);
+        const want = `R${Math.floor(now / 1000) % 10} `;
+        for (const s of ss) if (text(s).split(want).length - 1 === 4) full.set(s.key, full.get(s.key) + 1);
+      }
+      // Each goes first in every other pass; going last, its scripts would not fit after the other's.
+      ok([...full.values()].every((n) => n >= 2), `both sessions get all their scripts run in every other pass at least (${[...full.entries()].map(([k, n]) => `${k} ${n}`).join(", ")})`);
+      host.close();
+      for (const s of ss) unlinkSync(payloadFile(s.key));
     }
   }
 
@@ -671,6 +813,8 @@ try {
     }
   }
 } finally {
+  DAEMON_HOST.close();
+  RENDER_HOST.close();
   await stopAll();
   rmSync(SB, { recursive: true, force: true });
 }

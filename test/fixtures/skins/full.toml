@@ -1,0 +1,55 @@
+# A skin that uses every kind of setting the loader knows, with nothing wrong in it.
+version = 1
+name = "full"
+games = ["doom", "minecraft"]
+root = "bar"
+smaller = "small"
+
+[element.bar]
+kind = "row"
+align = "center"
+separator = "│"
+children = ["model", "mugshot", "hotbar"]
+
+[element.model]
+kind = "row"
+frame = { kind = "box", title = "MODEL", background = "#1c2036", title_color = "#dec880" }
+children = ["model-name", "context"]
+priority = 3
+
+[element.model-name]
+kind = "text"
+metric = "model.name"
+width = 20
+script = "doom:scripts/blink.js"
+
+[element.context]
+kind = "progress"
+metric = "context.hp"
+cells = 10
+color = [[50, "#00ff00"], [80, "#ff0000"]]
+priority = 1
+
+[element.mugshot]
+kind = "animation"
+metric = "health.headroom"
+frames = "doom:images/mugshot"
+script = "doom:scripts/mugshot.js"
+default_frame = "doom:images/mugshot/STFST01.png"
+priority = "keep"
+
+[element.hotbar]
+kind = "row"
+frame = { kind = "grid", background = "#262626" }
+script = "minecraft:scripts/hotbar.js"
+children = ["branch", "files"]
+priority = 2
+
+[element.branch]
+kind = "text"
+metric = "git.branch"
+
+[element.files]
+kind = "number"
+metric = "git.status"
+suffix = " files"

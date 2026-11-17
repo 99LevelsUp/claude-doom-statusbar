@@ -1,0 +1,18 @@
+# The Minecraft game: the manifest the game registry (src/games/index.js) reads.
+name = "minecraft"
+description = "the in-game look: chat, hearts, hunger, XP bar and a 9-slot hotbar"
+default_skin = "minecraft"
+
+# What a release before skins saved, and the skins it maps to.
+[legacy]
+# 0.12.x called this theme "minecraft-hud".
+aliases = ["minecraft-hud"]
+# One skin only: every preset file name draws it.
+reads_presets = false
+presets = { minecraft = "minecraft" }
+
+# The npm package of the game's assets, pinned to one version and its npm integrity.
+[assets]
+package = "@claude-game-bar/minecraft"
+version = "1.0.0"
+integrity = "sha512-NfuFx/6mctqAa1hwasedgRHKGqsyCAXDZ2yaCYjRpFiOJYv6P0b9hV0CqBkwog5HPfifhGZmdm7ByeuGtNu3Hw=="

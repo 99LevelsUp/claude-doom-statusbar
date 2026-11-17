@@ -1,11 +1,12 @@
 // Themes: which game the HUD dresses up as. Switched live with
 //   claude-game-bar theme <name|next>
+// A chosen skin (src/skin-select.js) wins over the theme; while none is chosen, the theme picks the
+// game whose default skin is drawn.
 //
 // The choice lives in a tiny JSON file the statusline reads on every render, so a switch
 // shows up on the next refresh (about a second), with no restart and no settings.json edit.
 // The themes are the games in the registry (src/games/index.js), in its order. The default game
-// is the default theme; a game that uses the preset setting follows GAMEBAR_PRESET, so the
-// installer's --preset choice keeps working exactly as before.
+// is the default theme.
 
 import { readFileSync, writeFileSync, rmSync, mkdirSync, existsSync } from "node:fs";
 import os from "node:os";
@@ -13,14 +14,9 @@ import path from "node:path";
 import { GAMES, findGame, defaultGame } from "./games/index.js";
 import { envGet } from "./platform/env.js";
 
-const gameNamed = (theme) => GAMES.find((g) => g.name === theme);
-
-// theme -> preset file name (null = follow GAMEBAR_PRESET), plus a one-line blurb for the CLI.
-// Taken from the registry when this module loads; the functions below read the registry live.
-export const THEMES = Object.fromEntries(GAMES.map((g) => [g.name, {
-  preset: g.usesPresetSetting ? null : path.basename(g.presets[g.defaultPreset]),
-  about: g.about,
-}]));
+// theme -> a one-line blurb for the CLI. Taken from the registry when this module loads, so it reads
+// nothing a game may leave out (a game needs no presets); the functions below read the registry live.
+export const THEMES = Object.fromEntries(GAMES.map((g) => [g.name, { about: g.description }]));
 export const THEME_NAMES = Object.keys(THEMES);
 
 // Canonical theme name for `name` (old names, such as 0.12.x's "minecraft-hud", resolved), or null
@@ -54,18 +50,6 @@ export function currentTheme(env = process.env) {
   let t = envGet("THEME", env);
   if (!t) t = savedTheme(env);
   return resolveTheme(t) || defaultGame().name;
-}
-
-// The preset file to render for `theme`, or null to keep the caller's default (GAMEBAR_PRESET).
-export function themePreset(theme) {
-  const g = gameNamed(theme);
-  return g && !g.usesPresetSetting ? g.presets[g.defaultPreset] : null;
-}
-
-// The preset file `theme` renders when nothing else names one.
-export function defaultPreset(theme) {
-  const g = gameNamed(theme) || defaultGame();
-  return g.presets[g.defaultPreset];
 }
 
 // The old theme file is not removed here: the old package may still run (`install --keep-old`, or

@@ -1,0 +1,192 @@
+# doom-compact: a low DOOM bar for a short or narrow terminal, three rows high. MODEL, USAGE, a
+# smaller mugshot and PROJECT, as boxes without their title rows.
+#
+# When the terminal is too narrow PROJECT drops, then MODEL; when even that does not fit, or the
+# terminal is too short for three rows, the bar switches to doom-line.
+version = 1
+name = "doom-compact"
+games = ["doom"]
+root = "bar"
+smaller = "doom-line"
+
+# The mugshot sits right against its neighbours: its own black margin, one column on each side of
+# the face, is the only gap there. MODEL and USAGE keep a column between them.
+[element.bar]
+kind = "row"
+children = ["boxes", "mugshot", "project"]
+
+[element.boxes]
+kind = "row"
+separator = " "
+children = ["model", "usage"]
+
+# --- MODEL --------------------------------------------------------------------------------------
+[element.model]
+kind = "column"
+grow = "fill"
+frame = { kind = "box", header = false, background = "#1c2036" }
+children = ["model-line", "model-flags", "cost"]
+priority = 2
+
+[element.model-line]
+kind = "row"
+grow = "fill"
+separator = " "
+separator_background = "#1c2036"
+children = ["model-name", "model-effort"]
+
+# The model's name without its version: "Opus", not "Opus 5.5".
+[element.model-name]
+kind = "text"
+metric = "model.name"
+icon = "🤖"
+words = 1
+width = 6
+min_width = 4
+
+[element.model-effort]
+kind = "icon"
+metric = "model.effort"
+
+[element.model-flags]
+kind = "row"
+separator = " "
+separator_background = "#1c2036"
+children = ["model-mode", "model-style"]
+
+# Thinking (💡 on, 👄 off) and fast mode (🏃 on, 🚶 off), as icons only.
+[element.model-mode]
+kind = "icon"
+metric = "model.mode"
+sep = " "
+width = 5
+
+# The output style: 👷 default, 💁 explanatory, 🙋 learning, 🎨 a style of the user's own.
+[element.model-style]
+kind = "icon"
+metric = "model.style"
+other = "🎨"
+width = 2
+
+[element.cost]
+kind = "text"
+metric = "cost.total"
+icon = "💰"
+width = 7
+min_width = 5
+
+# --- USAGE --------------------------------------------------------------------------------------
+[element.usage]
+kind = "column"
+grow = "fill"
+frame = { kind = "box", header = false, background = "#1c2036" }
+children = ["context", "limit-5h", "limit-7d"]
+
+# Built like the two limits below, a bar and its value beside it, so all three bars are as long.
+[element.context]
+kind = "row"
+grow = "fill"
+separator = " "
+separator_background = "#1c2036"
+children = ["context-bar", "context-pct"]
+
+[element.context-bar]
+kind = "progress"
+metric = "context.hp"
+icon = "🧠"
+percent = "none"
+cells = 4
+min_cells = 2
+
+[element.context-pct]
+kind = "number"
+metric = "context.hp"
+suffix = "%"
+color = "threshold"
+align = "right"
+width = 5
+
+[element.limit-5h]
+kind = "row"
+grow = "fill"
+separator = " "
+separator_background = "#1c2036"
+children = ["limit-5h-bar", "limit-5h-reset"]
+
+[element.limit-5h-bar]
+kind = "progress"
+metric = "ratelimit.5h"
+icon = "🕔"
+percent = "none"
+cells = 4
+min_cells = 2
+
+[element.limit-5h-reset]
+kind = "text"
+metric = "usage.reset5h"
+align = "right"
+width = 5
+min_width = 5
+
+[element.limit-7d]
+kind = "row"
+grow = "fill"
+separator = " "
+separator_background = "#1c2036"
+children = ["limit-7d-bar", "limit-7d-reset"]
+
+[element.limit-7d-bar]
+kind = "progress"
+metric = "ratelimit.7d"
+icon = "📅"
+percent = "none"
+cells = 4
+min_cells = 2
+
+[element.limit-7d-reset]
+kind = "text"
+metric = "usage.reset7d"
+align = "right"
+width = 5
+min_width = 5
+
+# --- the mugshot --------------------------------------------------------------------------------
+# Three rows high: the face drawn smaller than in the other DOOM skins.
+[element.mugshot]
+kind = "animation"
+frames = "doom:images/mugshot"
+script = "doom:scripts/mugshot.js"
+default_frame = "doom:images/mugshot/STFST01.png"
+width = 7
+rows = 3
+glyphs = "octant"
+background = "#000000"
+
+# --- PROJECT ------------------------------------------------------------------------------------
+[element.project]
+kind = "column"
+grow = "fill"
+frame = { kind = "box", header = false, background = "#1c2036" }
+children = ["cwd", "branch", "churn"]
+priority = 1
+
+[element.cwd]
+kind = "text"
+metric = "loc.cwd"
+icon = "📁"
+width = 14
+min_width = 8
+
+[element.branch]
+kind = "text"
+metric = "git.branch"
+icon = "🌿"
+width = 14
+min_width = 8
+
+[element.churn]
+kind = "text"
+metric = "loc.churn"
+icon = "📝"
+width = 12
+min_width = 8

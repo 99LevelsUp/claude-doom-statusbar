@@ -1,0 +1,13 @@
+# The smaller skin of fit-wide.toml: one text, 20 to 30 columns.
+version = 1
+root = "bar"
+
+[element.bar]
+kind = "row"
+children = ["model-name"]
+
+[element.model-name]
+kind = "text"
+metric = "model.name"
+width = 30
+min_width = 20

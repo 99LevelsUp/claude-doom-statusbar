@@ -1,0 +1,48 @@
+# A skin whose elements need 140 columns at their minimum widths (150 at their natural widths),
+# with the AGENTS box at the lowest priority. MODEL keeps its place and CONTEXT has no priority, so
+# once AGENTS is gone nothing is left to drop and the bar turns to the smaller skin.
+#   MODEL    box of a text 38..48 wide: 40..50 columns
+#   CONTEXT  box of a text 38 wide:     40 columns
+#   AGENTS   box of a list 58 wide:     60 columns
+version = 1
+root = "bar"
+smaller = "fit-narrow"
+
+[element.bar]
+kind = "row"
+children = ["model", "context", "agents"]
+
+[element.model]
+kind = "row"
+frame = { kind = "box", title = "MODEL" }
+children = ["model-name"]
+priority = "keep"
+
+[element.model-name]
+kind = "text"
+metric = "model.name"
+width = 48
+min_width = 38
+
+[element.context]
+kind = "row"
+frame = { kind = "box", title = "CONTEXT" }
+children = ["window"]
+
+[element.window]
+kind = "text"
+metric = "model.window"
+width = 38
+min_width = 38
+
+[element.agents]
+kind = "column"
+frame = { kind = "box", title = "AGENTS" }
+children = ["subagents"]
+priority = 1
+
+[element.subagents]
+kind = "scroll-list"
+metric = "act.subagents"
+width = 58
+min_width = 58

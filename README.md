@@ -4,35 +4,36 @@ A status bar for the [Claude Code](https://docs.claude.com/en/docs/claude-code) 
 
 ## Games
 
-There are two games: **DOOM** (the default) and **Minecraft**. See [Switching themes](#switching-themes) to change between them.
+There are two games: **DOOM** (the default) and **Minecraft**. Each game comes as one or more **skins**, and you can compose your own skin from the same parts, mixing games if you like. See [Skins](#skins) to switch between them.
 
 ### DOOM
 
 <p align="center">
-  <img src="assets/images/hud.png" alt="The DOOM theme: MODEL, USAGE, PROJECT, the DOOM mugshot, ACTIVITY, AGENTS, TASKS and SYSTEM boxes">
+  <img src="assets/images/hud.png" alt="The doom-full skin: MODEL, USAGE, PROJECT, the DOOM mugshot, ACTIVITY, AGENTS, TASKS and SYSTEM boxes">
 </p>
 
 The Doomguy HUD: a mugshot whose face tracks your health, boxes for usage, model, project and system, and live lists of running agents and tasks. The mugshot is the real DOOM (1993) status-face sprite, rasterised into the terminal at runtime. It is not ASCII art of it.
 
-The HUD is a row of boxes centred on the mugshot. Each box is configurable; the `full` preset turns everything on:
+The HUD is a row of boxes with the mugshot among them. DOOM has three skins with titled boxes: `doom-full` shows every box, `doom-standard` leaves out SAVE and SYSTEM, and `doom-minimal` keeps MODEL, USAGE, the mugshot, PROJECT and ACTIVITY. Two low skins take over in a short or narrow terminal: `doom-compact` (three rows, no titles, a smaller mugshot) and `doom-line` (one row). In `doom-full`:
 
 - **mugshot**: the Doomguy face. Its HP (how bloodied it looks) follows your *usage headroom*: `min(5h, 7d) rate-limit room`, with context as a fallback. It glances around when idle, winces on errors, snarls on writes, grins on a clean finish, dies when you're tapped out, and flashes invulnerable just after an advisor consult.
-- **MODEL**: model name and reasoning effort (a waxing-moon to sun icon), thinking and fast toggles, output style, and the configured `/advisor` model.
+- **MODEL**: model name and reasoning effort (a waxing-moon to sun icon: 🌒 low, 🌓 medium, 🌔 high, 🌕 xhigh, 🌞 max), then one row of icons: thinking (💡 on, 👄 off), fast mode (🏃 on, 🚶 off) and the output style (👷 default, 💁 explanatory, 🙋 learning, 🎨 a style of your own), and the configured `/advisor` model.
 - **USAGE**: context window (HP bar), the 5h and 7d rate-limit bars (with reset countdowns), RAM, session cost.
+- **SAVE**: tokens saved by context tools such as lean-ctx and LLMLingua, when they report it.
 - **PROJECT**: session name, cwd, git branch, a merged work line (changed files, ahead/behind), lines added and removed, PR state. The cwd, branch and PR are **clickable** (OSC 8 hyperlinks): Ctrl/Cmd-click to open the folder, the branch on the host, or the pull request (see [Clickable links](#clickable-links)). Long names are clipped to 24 characters so the box can't blow up.
 - **ACTIVITY**: a tool-activity "geiger" sparkline (duty cycle over the last 30 s), running-agent count, task progress, error count.
 - **AGENTS**: a live list of running subagents (type or description, and a ticking runtime), always visible. Long lists scroll within the box height, with ↑/↓ markers counting the rows hidden off-screen.
 - **TASKS**: the session's todo list. Settled items (✅ done, ❌ removed) are on top, open items (⏩ in progress, 🎯 pending) below. It scrolls like AGENTS, anchored on the boundary between open and settled items.
 - **SYSTEM**: a per-core CPU equalizer (one threshold-coloured column per core) with the aggregate CPU % right-aligned beside it, disk, session length, wall clock.
 
-Anything the session can't supply is hidden automatically, so the same config degrades cleanly. The layout comes from a preset; see [Presets](#presets).
+Anything the session can't supply is hidden automatically, so the same skin degrades cleanly. Where the bar runs without its render daemon (see [How it works](#how-it-works)), the mugshot shows its idle face and does not react.
 
 **Credit:** the status-face sprites are from **DOOM** (1993), id Software.
 
 ### Minecraft
 
 <p align="center">
-  <img src="assets/images/minecraft.png" alt="The minecraft theme: a Minecraft-style chat on the left, hearts and hunger, the XP bar with its level, and a 9-slot hotbar of session stats">
+  <img src="assets/images/minecraft.png" alt="The minecraft skin: a Minecraft-style chat on the left, hearts and hunger, the XP bar with its level, and a 9-slot hotbar of session stats">
 </p>
 
 The in-game survival screen instead of the boxes. The same session data, mapped to Minecraft:
@@ -46,13 +47,15 @@ The in-game survival screen instead of the boxes. The same session data, mapped 
 
 The selected hotbar slot jumps to what just happened (💥 on an error, 🧱 on a write, 🏆 when a task finishes) and wanders on its own when idle. Hearts flash on errors, turn gold while invulnerable, and "You died!" appears when you're out of usage.
 
-On the left is a chat in Minecraft's format. It's a long pre-written script that loops, so it costs no tokens. The model you're running is always one of the speakers. Between the banter they talk about everything the status bar knows about your session: its name, the project and branch, changes, PR, effort and modes, context and usage with reset times, cost, agents and what they're doing, tasks, errors, token savings and the machine. Lines whose facts aren't known are skipped, and some only show when they fit, like a warning when context is nearly full. Answers to questions come quickly, other messages after a varied pause.
+On the left is a chat in Minecraft's format. Its conversations are written ahead and picked by what the session's metrics say, so it costs no tokens. The model you're running is always one of the speakers. Between the banter they talk about everything the status bar knows about your session: its name, the project and branch, changes, PR, effort and modes, context and usage with reset times, cost, agents and what they're doing, tasks, errors, token savings and the machine. Lines whose facts aren't known are skipped, and some only show when they fit, like a warning when context is nearly full. Answers to questions come quickly, other messages after a varied pause.
+
+The questions and answers about the metrics are the platform's own and play in any chat. The Minecraft skin adds its game's library on top: the same talk in a Minecraft server's words, with players joining and leaving. That library is a script, so where the bar runs without its render daemon the chat plays the platform's conversations only.
 
 The colour of your model's name in the chat follows Claude Code's reasoning effort, so `/effort` changes it: low is red, medium orange, high green, xhigh aqua and max a rainbow.
 
-To change what's in the hotbar, edit the `[[slot]]` entries in `src/games/minecraft/presets/minecraft.toml`. To change the chat, edit the `SCRIPT` in `src/games/minecraft/chat.js`.
+To change what's in the hotbar or the chat, make your own skin from `src/games/minecraft/skins/minecraft.toml` (see [Your own skin](#your-own-skin)). A chat can drop, replace or add conversations by key.
 
-**Credit:** the Minecraft theme is a fan-made look. This project isn't affiliated with Mojang.
+**Credit:** the Minecraft skin is a fan-made look. This project isn't affiliated with Mojang.
 
 ## Requirements
 
@@ -60,6 +63,7 @@ To change what's in the hotbar, edit the `[[slot]]` entries in `src/games/minecr
 - A terminal with **truecolor**. The DOOM mugshot is converted to block glyphs inside the bar at any height, with no external tool. Terminals that draw the Unicode legacy-computing glyphs (sextants, wedges, octants) get a finer face, and the rest get half blocks (see [Glyph test card](#glyph-test-card)). Windows Terminal, WezTerm, kitty, Ghostty and foot all work.
 - For the render daemon and its fast client: **Git Bash** on Windows, **bash 5 or newer** on Linux and macOS (every Linux distribution ships one; macOS ships 3.2, so a Mac needs Homebrew's `bash`). Without it the bar still works, with the slower one-shot renderer (see [How it works](#how-it-works)).
 - A **colour emoji font**. Windows and macOS ship one. On Linux the installer checks for one and installs Noto Color Emoji for you if it is missing (see [Emoji font on Linux](#emoji-font-on-linux)).
+- **npm and the npm registry** the first time a skin needs a game's assets (see [Game assets](#game-assets)).
 
 ## Install
 
@@ -68,12 +72,13 @@ npm i -g claude-game-bar
 claude-game-bar install
 ```
 
-That writes the `statusLine`, the lifecycle hooks and the preset into `~/.claude/settings.json` for you, merging into whatever's already there, with a one-level `.bak`. Restart Claude Code and the HUD is live.
+That writes the `statusLine` and the lifecycle hooks into `~/.claude/settings.json` for you, merging into whatever's already there, with a one-level `.bak`, saves the skin you draw and installs the game assets it needs. Restart Claude Code and the HUD is live.
 
 If you used the bar under its old package name, the same two commands move you over. See [Moving from the old package](#moving-from-claude-doom-statusbar).
 
 ```bash
-claude-game-bar install --preset full   # full | standard | minimal (default: keep the current one, else full)
+claude-game-bar install --skin minecraft # the skin to draw (default: keep the current one, else doom-full)
+claude-game-bar install --preset minimal # the size of the current game's skin, as before skins: full | standard | minimal
 claude-game-bar install --project       # write ./.claude/settings.json instead of ~/.claude
 claude-game-bar install --local         # write ./.claude/settings.local.json (overrides settings.json)
 claude-game-bar install --refresh 5     # redraw every 5 s as well as on events (default 1; 0 = events only)
@@ -148,21 +153,87 @@ The cwd, branch and PR are emitted as OSC 8 hyperlinks. They render in any termi
 $env:FORCE_HYPERLINK = "1"; claude
 ```
 
-## Themes
+## Skins
 
-A theme is the game the bar is drawn as: `doom` (the default) or `minecraft`. Switch at any time. The status bar changes on its next refresh, with no restart.
+A skin is the whole look of the bar: which elements it shows, how they are laid out, their characters, colours and icons, and the game assets they draw with. The bundled skins are `doom-full` (the default), `doom-standard`, `doom-minimal`, `doom-compact`, `doom-line`, `minecraft` and `minecraft-compact`; the compact and line skins are the ones a short terminal switches to (see [Narrow and short terminals](#narrow-and-short-terminals)), and can be chosen like any other. Switch at any time. The status bar changes on its next refresh, with no restart.
 
-### Switching themes
+### Switching skins
 
 ```bash
-claude-game-bar theme minecraft   # doom | minecraft
-claude-game-bar theme next        # cycle to the next one
-claude-game-bar theme             # list them and show the current one
+claude-game-bar skin minecraft    # a skin's name, or a game's name for its default skin
+claude-game-bar skin next         # cycle to the next one
+claude-game-bar skin              # list them and show the current one (also: skin list)
 ```
 
-From inside Claude Code, put `!` in front to run it without leaving the chat: `! claude-game-bar theme next`. In a clone of this repo, `npm run theme minecraft` does the same with the local code. Going back to `doom` restores whichever `--preset` you installed with (`full`, `standard` or `minimal`).
+From inside Claude Code, put `!` in front to run it without leaving the chat: `! claude-game-bar skin next`. In a clone of this repo, `npm run skin minecraft` does the same with the local code. `theme` is the older name of the command and still works.
 
-The choice is saved in `~/.claude/gamebar-theme.json`. Set `GAMEBAR_THEME` to override it for one shell.
+The choice is saved in `~/.claude/claude-game-bar/skin.json`. `GAMEBAR_SKIN` overrides it: set it in a shell, or in the `env` block of a project's settings to give that project its own skin. `install --skin <name>` writes it into the settings it installs into, and `install --project` and `--local` always do. `skin <name>` tells you when such a setting overrides the choice you just made.
+
+A bar that was set up before skins keeps its look: a saved theme picks the game, and the `GAMEBAR_PRESET` an older `install` wrote picks the DOOM size (`full.toml` draws `doom-full`, and so on). A preset file you wrote yourself no longer draws; the bar draws the chosen game's skin instead and says so in a warning. Rebuild it as a skin of your own (below).
+
+### Your own skin
+
+Your own skins live in `~/.claude/claude-game-bar/skins/<name>/`, each in its own folder as `<name>.toml`, with any images or scripts of its own beside it. An update replaces the bundled skins and never touches yours. A name a bundled skin already has is taken by the bundled one.
+
+The easiest start is a copy of a bundled skin (`src/games/<game>/skins/` in the package):
+
+```bash
+mkdir -p ~/.claude/claude-game-bar/skins/mine
+cp "$(npm root -g)/claude-game-bar/src/games/doom/skins/full.toml" ~/.claude/claude-game-bar/skins/mine/mine.toml
+# set name = "mine" in the file, then:
+claude-game-bar skin mine
+```
+
+A skin is a tree of elements in TOML. Containers (`row`, `column`) lay their children out side by side or one under another, and can wear a frame (`box`, with a title and background, or `grid`, with lines between cells). Metric elements show one value with a visual: `text`, `number`, `progress`, `sparkline`, `equalizer`, `icon`, `icon-row` (hearts and the like), `scroll-list`, `chat` or `animation` (image frames, such as the mugshot). Each one binds a `metric` from the catalogue in `src/metrics/catalogue.js` and sets its visual's parameters. [CONTRIBUTING.md](CONTRIBUTING.md#skins) describes the format; the element descriptors in `src/kit/elements/` list every parameter with its meaning and allowed values.
+
+```toml
+version = 1
+name = "mine"
+games = ["doom"]
+root = "bar"
+
+[element.bar]
+kind = "row"
+separator = " "
+children = ["context", "mugshot"]
+
+[element.context]
+kind = "progress"
+metric = "context.hp"
+icon = "🧠"
+
+[element.mugshot]
+kind = "animation"
+frames = "doom:images/mugshot"
+script = "doom:scripts/mugshot.js"
+default_frame = "doom:images/mugshot/STFST01.png"
+width = 14
+rows = 4
+```
+
+A skin may use the assets of any game: `doom:images/mugshot` is the DOOM game's mugshot frames, wherever the bar keeps them. A plain path is a file in your skin's own folder.
+
+Colours are `"#rrggbb"`. A colour that follows the value (a gradient parameter, such as the `color` of `number` or `progress`) can also be `"threshold"` (green at 0, yellow at 50, red at 100) or a list of stops such as `[[0, "#60c868"], [50, "#e0b840"], [100, "#e05440"]]`, interpolated between them.
+
+An element whose metric the session does not report is left out, unless its `when_absent` keeps it: `"empty"` or `"full"` draws it at its usual width as if the value were empty or full (the Minecraft hearts are full in a session without a 5-hour limit).
+
+A container whose elements have nothing to show (an empty list, say) follows its `when_empty`: `"keep"` (the default) holds its width, `"shrink"` draws it at its minimum (a box shows only its title; the DOOM AGENTS and TASKS boxes do this), and `"hide"` leaves it out so the others get its space. A container's `grow = "fill"` makes its children use the width it has to spare: every row of a DOOM box is as wide as the box, so its bars and right-aligned values end at the box's edge. A row's `center` names a child to draw in the middle of the terminal, the ones before it at the left edge: the Minecraft HUD sits in the middle with the chat at the edge, and follows the chat when the terminal is too narrow for that. The `equalizer` with `sizing = "values"` takes one column per value (`column_width` sets how many), so 4 CPU cores take 4 columns and 16 take 16.
+
+Elements can run scripts that change how they look on each render, such as the mugshot's face or Minecraft's highlighted hotbar slot. **Scripts are trusted code**, like any program you install: the bar runs them from your own skin folders and from the game packages it installed, and never downloads code from anywhere else. Put only scripts you trust into your skins. [CONTRIBUTING.md](CONTRIBUTING.md#skin-scripts) describes what a script gets and returns, its time budget, and what happens when it fails.
+
+When something in a skin does not hold (an unknown element, metric or parameter, often after an update), or a script fails, or an asset is missing, the bar skips that part, draws the rest, and shows one dim line under the bar for a minute: `gamebar: <the first problem> (+N more)`.
+
+### Narrow and short terminals
+
+As the terminal narrows, the elements first shrink to their minimum widths, each container by its own rule. When that is not enough, elements drop in the order of the `priority` numbers the skin gives them, lowest first; an element with no priority stays. When even that does not fit, the bar switches to the smaller skin the skin names in `smaller`: `doom-full`, then `doom-standard`, `doom-minimal`, `doom-compact` and `doom-line`. Widening the terminal brings the full skin back. Each refresh re-reads the terminal width (`COLUMNS`), so it follows live resizes.
+
+The height counts too. The bar takes at most a third of the terminal's rows (`LINES`, which Claude Code sets), so it leaves room for the conversation and the prompt. A skin that is taller goes down the same chain: in a terminal of 16 rows, like a small built-in display, the DOOM bar is `doom-compact`, three rows of boxes without titles and a smaller mugshot, and in one of 8 rows or fewer it is `doom-line`, one row without the mugshot. Minecraft goes from `minecraft` (six rows) to `minecraft-compact` (three rows: hearts and hunger, the XP bar, and the hotbar's items in one row). Set `GAMEBAR_MAX_ROWS` to a number of rows to choose the limit yourself, for example `GAMEBAR_MAX_ROWS=7` for the full DOOM bar in any terminal tall enough to show it. The warning line under the bar does not count. The last skin of a chain is drawn even when it is still too tall or too wide (then cut at the terminal's edge).
+
+### Game assets
+
+The game images, scripts and conversation libraries are not part of the `claude-game-bar` package. Each game's assets are an npm package of their own, `@claude-game-bar/<game>`, and the bar installs the version its release pins the first time a skin you use needs it. The install runs in the background with npm's package scripts disabled, into `~/.claude/claude-game-bar/assets/`; until it is done the affected elements draw a plain default (the mugshot a blank) and the warning line names the package. A failed install is retried after 10 minutes. `install` and `skin <name>` install what the chosen skin needs right away.
+
+`claude-game-bar install` also removes asset packages that no skin drawn within the last 30 days, and not your saved skin, needs. A clone of this repository uses its own `games/<game>/assets/` folders and installs nothing.
 
 ### Glyph test card
 
@@ -183,39 +254,11 @@ The steps, from plainest to richest: `half`, `quadrant`, `sextant`, `wedge`, `oc
 | VS Code, WezTerm, VTE-based terminals (GNOME Terminal, Tilix, …) | `wedge` |
 | anything else | `half` |
 
-Set `GAMEBAR_GLYPHS` to one of the step names to override the pick, for example `GAMEBAR_GLYPHS=sextant` when the font lacks octants. The preset's `[mugshot] glyphs` key caps the step for the image itself; the face uses the lower of the two.
-
-## Presets
-
-A preset is the layout of a game, in a TOML file under `src/games/<game>/presets/`. The DOOM theme draws the preset named by `GAMEBAR_PRESET`, which `install` writes (with it unset, the bar uses `src/games/doom/presets/standard.toml`). A missing path in the package's old top-level `presets/` folder still finds the bundled preset of the same name, and `install` moves a path into another copy of the package, or into the old package, to this package's preset. The Minecraft theme always draws `src/games/minecraft/presets/minecraft.toml`.
-
-DOOM has three presets:
-
-- **`minimal`**: a couple of bars, blends into the terminal.
-- **`standard`**: balanced HUD.
-- **`full`**: every box, the look in the DOOM screenshot above.
-
-A DOOM preset is TOML: a `[bar]` style block, a `[mugshot]` block, and a list of `[[segment]]` boxes. Each box lists metrics with a render type: `bar`, `number`, `text`, `spark`, `equalizer`, `ammo`, `icons`, `list`, `scroll`, or a `group`.
-
-- `icons` draws a row of glyphs filled by value, such as Minecraft hearts: `glyph`, `empty_glyph`, `count`, and `invert = true` to count what's left of a used-% metric.
-- `equalizer` draws an array of `0..1` values as a one-row VU meter: one block column per channel, each coloured by its own value, for example `sys.cores` for per-core CPU.
-- `[bar].title_color` recolours box titles.
-
-Copy one and rearrange the boxes, swap icons, or change which metrics show.
-
-A value-carrying metric (`bar`, `ammo`, `equalizer`, `number`, `text`) can set `color`:
-
-- `color = "threshold"`: the default heat gradient, green at 0, yellow at 50, red at 100, smoothly interpolated.
-- `color = "#rrggbb"`: a solid colour.
-- `color = [[0, "#60c868"], [50, "#e0b840"], [100, "#e05440"]]`: custom gradient stops as `[value, "#hex"]` pairs, interpolated between stops. A single pair is a solid colour; adjacent stops (such as `[50, "#..."], [51, "#..."]`) make a hard step instead of a smooth blend.
-
-### Responsive width
-
-As the terminal narrows, the HUD shrinks: bars contract and text columns shrink together, and whatever overflows scrolls (the marquee). When even the smallest layout no longer fits, the preset falls back to a smaller one through its `[bar].fallback` key: `full`, then `standard`, then `minimal`. Your chosen preset is the ceiling; widening the terminal recovers it. It's stateless: each refresh re-reads the terminal width (`COLUMNS`), so it follows live resizes.
+Set `GAMEBAR_GLYPHS` to one of the step names to override the pick, for example `GAMEBAR_GLYPHS=sextant` when the font lacks octants. An `animation` element's `glyphs` parameter caps the step for its own images; the mugshot uses the lower of the two.
 
 ## How it works
 
-The bar has one general part and one part per game. The general part collects the session data, computes the metric values, runs the render daemon, the client and the hooks, and installs the bar. Each game, under `src/games/<game>/`, holds its layout, presets and assets. The game registry, `src/games/index.js`, connects the two.
+The bar has one general part, the platform, and one part per game. The platform collects the session data, computes the metric values, owns the elements every skin is built from, runs the render daemon, the client, the hooks and the skins' scripts, and installs the bar and the game assets. A game is data: a manifest and its skins under `src/games/<game>/`, and its assets (images, scripts, conversation libraries) as the npm package `@claude-game-bar/<game>`, kept in the repository under `games/<game>/assets/`. The game registry, `src/games/index.js`, finds the games' folders.
 
 The statusLine command is a small bash client, not a renderer, wherever a suitable bash exists. The client (`src/gamebar-client.sh`) uses bash builtins only and starts no process. It hands the session JSON to the **render daemon** and prints the frame the daemon prepared. There is one daemon per installation (`src/daemon.js`), running at below-normal priority. The hooks start it and restart it when it dies or is outdated, and it exits on its own after `GAMEBAR_DAEMON_IDLE_MS` (default 10 minutes) with no active session. Upgrading the package in place updates the client without touching `settings.json`.
 
@@ -227,11 +270,13 @@ The statusLine command is a small bash client, not a renderer, wherever a suitab
 
 The main files:
 
-- **`src/statusline.js`** is the one-shot statusLine command. Claude Code pipes session JSON on stdin, and it prints the bar `renderSession` builds from it. It spawns nothing: git moved into the hook to keep the render path free of child processes.
-- **`src/render.js`** holds `renderSession`, which the one-shot command and the daemon both call. It loads the preset, maps the session JSON (plus the hook's git snapshot, system metrics from Node built-ins, and the hook state file) to metric values (`src/metrics/`), builds the session's game-neutral reaction, and draws the bar with the layout the game registry names for the preset.
+- **`src/statusline.js`** is the one-shot statusLine command. Claude Code pipes session JSON on stdin, and it prints the bar the shared render builds from it, without skin scripts. It spawns nothing: git moved into the hook to keep the render path free of child processes.
+- **`src/render-core.js`** holds the render the one-shot command and the daemon share; **`src/render.js`** adds the skin scripts to it as `renderSession`, which the daemon calls. It picks the session's skin (`src/skin-select.js`), maps the session JSON (plus the hook's git snapshot, system metrics from Node built-ins, and the hook state file) to metric values (`src/metrics/`), builds the session's game-neutral reaction, and then loads, fits and draws the skin (`src/kit/skin/`), with the warning line under it when something needs your attention.
 - **`src/hook.js`** is an event bus. Lifecycle hooks write a small state file (the reaction with its decay, tool-run intervals for the geiger, the running-subagent squad). The status line reads it on each refresh, and the two never block each other. Those files live in the bar's runtime directory (see above), keyed by session id, or next to `GAMEBAR_STATE` when that is set. `SessionEnd` deletes a session's files when it ends, keeping only its savings total for a later resume. `SessionStart` sweeps what is left by sessions that ended without it: a session that never showed a bar (a headless `claude -p` run) after `GAMEBAR_UNRENDERED_TTL` (default 1 hour), any other after `GAMEBAR_JOURNAL_TTL` (default 7 days, `off` to disable). Shared state and a live session's files are never touched.
-- **`src/games/doom/`** turns the reaction into the mugshot sprite (`portrait.js`) and draws it from pre-baked transparent sprites (`face.js`). The sprites are converted to glyphs by **`src/kit/raster/glyph-render.js`**, with the step **`src/kit/raster/glyph-level.js`** picks for the terminal. **`src/games/minecraft/`** draws the hotbar and the chat.
-- **`bin/cli.js`** is the command line: install, uninstall, theme and test card.
+- **`src/kit/elements/`** holds the elements skins are built from, each described with its parameters. An `animation` draws image assets, such as the mugshot's transparent sprites, converted to glyphs by **`src/kit/raster/glyph-render.js`** (cached by **`src/kit/raster/asset-raster.js`**, on disk too for the one-shot status line), with the step **`src/kit/raster/glyph-level.js`** picks for the terminal.
+- **`src/platform/scripts/`** runs the skins' scripts for the render daemon in one worker thread, each call under a time budget, so a slow or broken script never takes the bar down. The one-shot status line runs no scripts.
+- **`src/platform/assets.js`** finds a game's assets, installs a missing asset package in the background and removes unused ones.
+- **`bin/cli.js`** is the command line: install, uninstall, skin and test card.
 
 See [`docs/ideation/`](docs/ideation/) for the design write-ups.
 
@@ -271,7 +316,7 @@ npm i -g claude-game-bar && claude-game-bar install
 `install` takes over the old installation in the settings file it writes:
 
 - the `statusLine` and the hooks point at the new package, with exactly one set of hooks;
-- the `DOOMBAR_*` settings in the `env` block are renamed to `GAMEBAR_*`, and a preset path into the old package becomes the same preset in the new one, so your `--preset` choice stays;
+- the `DOOMBAR_*` settings in the `env` block are renamed to `GAMEBAR_*`, and the preset setting the old installer wrote gives way to the skin of the same size, so your `--preset` choice stays;
 - your saved theme is kept: `~/.claude/doombar-theme.json` becomes `~/.claude/gamebar-theme.json` (for an install into `~/.claude/settings.json`; elsewhere the old file is still read);
 - the global `claude-doom-statusbar` package is removed. `install` stops its render daemon first, then runs `npm uninstall -g claude-doom-statusbar`. If npm cannot remove it, for example because the global prefix needs `sudo`, the install still succeeds and prints the command to run yourself;
 - once the old package is removed, so is what it left behind: its learned state (the shared rate limits, the rate-health estimate and the savings totals) moves to the new file names, its other files in the temp or runtime directory are deleted, along with the old runtime directory when that leaves it empty, and `~/.claude/doombar-theme.json` goes. A settings backup from before the takeover stays in `settings.json.bak-claude-doom-statusbar`.
@@ -282,11 +327,11 @@ The old package is removed only by an install into `~/.claude/settings.json`, th
 
 To keep the old package installed, run `claude-game-bar install --keep-old`. The output then prints the command that removes it later. With `--keep-old` the old theme file stays where it is, and the bar still reads it.
 
-The old names keep working for a few 1.x releases, so a setup you have not moved yet keeps its bar:
+The old names keep working for a few more releases, so a setup you have not moved yet keeps its bar:
 
 - `DOOMBAR_*` environment variables, and `MUGSHOT_STATE`, are read when the `GAMEBAR_*` name is not set;
-- `~/.claude/doombar-theme.json` is read while `~/.claude/gamebar-theme.json` is missing;
-- a missing preset path in this checkout's or package's own old top-level `presets/` folder finds the bundled preset of the same name;
+- `~/.claude/doombar-theme.json` is read while `~/.claude/gamebar-theme.json` is missing, and the saved theme picks the game when no skin is saved;
+- a preset path the old installer wrote picks the skin of the same size by its file name, wherever it points;
 - `src/doombar-client.sh` still runs the client, so a `statusLine` that names it, such as one a repository checkout wrote before the move, keeps working;
 - the stale-file sweep and `uninstall` clean up files with the old names, including the old runtime directory `doombar`.
 
@@ -301,7 +346,7 @@ claude-game-bar uninstall            # add --project or --local for those settin
 npm uninstall -g claude-game-bar
 ```
 
-`uninstall` removes the `statusLine`, the hooks, and the `GAMEBAR_PRESET` and `FORCE_HYPERLINK` entries the installer added, and keeps everything else in the settings file. For `~/.claude/settings.json` it also forgets the saved theme. It stops this installation's render daemon and removes its files. It stops a pid only after the process list confirms it is node running this package's `src/daemon.js`, started when the heartbeat says (on Linux: the start time in `/proc` matches exactly). A heartbeat that names any other process is reported and left alone. On Linux and macOS it looks in every runtime directory of yours, because the shell you run it from may see another `XDG_RUNTIME_DIR` than Claude Code did, and removes the directory once it is empty. It cleans up files left under the old names too. A session still running keeps writing its payload until Claude Code restarts, so the hooks may start the daemon again until then.
+`uninstall` removes the `statusLine`, the hooks, and the `GAMEBAR_SKIN`, `GAMEBAR_PRESET` and `FORCE_HYPERLINK` entries, and keeps everything else in the settings file. For `~/.claude/settings.json` it also forgets the saved skin and theme. Your own skins and the installed game assets stay in `~/.claude/claude-game-bar/`; delete that folder yourself if you want them gone. It stops this installation's render daemon and removes its files. It stops a pid only after the process list confirms it is node running this package's `src/daemon.js`, started when the heartbeat says (on Linux: the start time in `/proc` matches exactly). A heartbeat that names any other process is reported and left alone. On Linux and macOS it looks in every runtime directory of yours, because the shell you run it from may see another `XDG_RUNTIME_DIR` than Claude Code did, and removes the directory once it is empty. It cleans up files left under the old names too. A session still running keeps writing its payload until Claude Code restarts, so the hooks may start the daemon again until then.
 
 The emoji font stays installed (see [Emoji font on Linux](#emoji-font-on-linux)).
 

@@ -1,0 +1,108 @@
+# mixed: a user's own skin made of two games' parts, the DOOM mugshot beside the Minecraft hotbar.
+# Both scripts are the games' own: DOOM's picks the face for the session's reaction, Minecraft's
+# picks the highlighted slot (it knows the errors, lines-added and tasks slots by these ids).
+version = 1
+name = "mixed"
+games = ["doom", "minecraft"]
+root = "bar"
+
+[element.bar]
+kind = "row"
+separator = " "
+children = ["mugshot", "hotbar"]
+
+[element.mugshot]
+kind = "animation"
+frames = "doom:images/mugshot"
+script = "doom:scripts/mugshot.js"
+default_frame = "doom:images/mugshot/STFST01.png"
+width = 14
+rows = 4
+glyphs = "octant"
+background = "#000000"
+
+[element.hotbar]
+kind = "row"
+frame = { kind = "grid" }
+script = "minecraft:scripts/hotbar-highlight.js"
+children = ["slot-added", "slot-tasks", "slot-errors", "slot-clock"]
+
+[element.slot-added]
+kind = "column"
+align = "center"
+children = ["added-item", "added"]
+
+[element.added-item]
+kind = "text"
+icon = " 🧱"
+width = 3
+min_width = 1
+
+[element.added]
+kind = "text"
+metric = "loc.added"
+color = "#ffffff"
+align = "center"
+overflow = "clip"
+width = 7
+min_width = 5
+
+[element.slot-tasks]
+kind = "column"
+align = "center"
+children = ["tasks-item", "tasks"]
+
+[element.tasks-item]
+kind = "text"
+icon = " 🏆"
+width = 3
+min_width = 1
+
+[element.tasks]
+kind = "text"
+metric = "act.tasks"
+color = "#ffffff"
+align = "center"
+overflow = "clip"
+width = 7
+min_width = 5
+
+[element.slot-errors]
+kind = "column"
+align = "center"
+children = ["errors-item", "errors"]
+
+[element.errors-item]
+kind = "text"
+icon = " 💥"
+width = 3
+min_width = 1
+
+[element.errors]
+kind = "text"
+metric = "act.errors"
+color = "#ffffff"
+align = "center"
+overflow = "clip"
+width = 7
+min_width = 5
+
+[element.slot-clock]
+kind = "column"
+align = "center"
+children = ["clock-item", "clock"]
+
+[element.clock-item]
+kind = "text"
+icon = " 🕓"
+width = 3
+min_width = 1
+
+[element.clock]
+kind = "text"
+metric = "sys.clock"
+color = "#ffffff"
+align = "center"
+overflow = "clip"
+width = 7
+min_width = 5

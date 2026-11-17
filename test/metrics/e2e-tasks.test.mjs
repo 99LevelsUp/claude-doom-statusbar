@@ -46,7 +46,7 @@ try {
       ...process.env,
       GAMEBAR_STATE: stateFile,
       GAMEBAR_PRESET: path.join(ROOT, "src", "games", "doom", "presets", "full.toml"),
-      COLUMNS: "140",
+      COLUMNS: "200", // wide enough for every box at its natural width, so no title scrolls
       ...sandboxEnv(tmp), // shared state files stay in tmp, not the real runtime dir
       GAMEBAR_MSYS_REAP: "0",            // no detached shell reaper racing the cleanup below
     },

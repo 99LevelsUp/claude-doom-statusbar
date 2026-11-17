@@ -21,6 +21,9 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { renderSession } from "./render.js";
+import { createScriptPass, CALL_BUDGET_MS, PASS_BUDGET_MS } from "./kit/skin/scripts.js";
+import { createScriptHost } from "./platform/scripts/host.js";
+import { isPlainObject } from "./kit/is.js";
 import { writeFrame } from "./platform/frame.js";
 import { PACKAGE_ROOT, SRC_DIR } from "./package-root.js";
 import {
@@ -44,8 +47,8 @@ const SRC_CHECK_MS = 2000;
 // that sets only the old name is never overruled by a new name the daemon inherited. The savings
 // files (EVENTS, LLMLINGUA, SAVINGS_STATE) are per session too.
 export const FORWARDED_ENV = [
-  "COLUMNS", ...["PRESET", "THEME", "TEXT_OVERFLOW", "INDENT", "FRAME_WINDOW", "STATE",
-    "EVENTS", "LLMLINGUA", "SAVINGS_STATE"].flatMap(bothNames),
+  "COLUMNS", "LINES", ...["PRESET", "THEME", "SKIN", "TEXT_OVERFLOW", "INDENT", "FRAME_WINDOW", "STATE",
+    "EVENTS", "LLMLINGUA", "SAVINGS_STATE", "MAX_ROWS"].flatMap(bothNames),
   "CLAUDE_CODE_TASK_LIST_ID", "CLAUDE_CONFIG_DIR",
   "WT_SESSION", "TERM_PROGRAM", "TMUX", ...bothNames("GLYPHS"), "TERM", "VTE_VERSION",
 ];
@@ -66,7 +69,7 @@ export function parsePayload(text) {
   if (tag !== "gamebar-env") return null;
   let data;
   try { data = JSON.parse(text.slice(lf + 1)); } catch { return null; }
-  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  if (!isPlainObject(data)) return null;
   const env = {};
   for (const item of items) {
     const eq = item.indexOf("=");
@@ -77,9 +80,15 @@ export function parsePayload(text) {
 
 // The daemon's in-memory state. Nothing in it is needed across restarts: payloads are re-read
 // and session state comes from each session's checkpoint and journal.
+// `scripts` holds the one script host every session's skin scripts run in, the time scripts get
+// in one pass (shared by all sessions) and each script's own budget; `passes` counts the passes,
+// which turns the order sessions get their scripts run in. Making the host starts no worker: the
+// first script does.
 export function createState({ version, now = Date.now(), idleMs = DEFAULT_IDLE_MS, pid = process.pid,
-  start = Math.round(performance.timeOrigin), startTicks = process.platform === "linux" ? procStartTicks() : null } = {}) {
-  return { version: String(version), idleMs, pid, start, startTicks, since: now, sessions: new Map(), renameFailures: 0 };
+  start = Math.round(performance.timeOrigin), startTicks = process.platform === "linux" ? procStartTicks() : null,
+  callBudgetMs = CALL_BUDGET_MS, scriptPassMs = PASS_BUDGET_MS, scriptHost = createScriptHost({ callBudgetMs }) } = {}) {
+  return { version: String(version), idleMs, pid, start, startTicks, since: now, sessions: new Map(), renameFailures: 0,
+    scripts: { host: scriptHost, passMs: scriptPassMs, callBudgetMs }, passes: 0 };
 }
 
 // Hung Git Bash statusLine wrappers must be reaped even while no hook events arrive: at most one
@@ -142,6 +151,7 @@ export function runPass(state, { dir = runtimeDir(), hash = rootHash(), now = Da
     state.sessions.set(key, {
       data: parsed.data, env, window: windowOf(env), stamp, seenAt: Math.min(now, st.mtimeMs),
       frame: s ? s.frame : path.join(dir, `${framePrefix(hash)}${key}.json`),
+      scriptState: s ? s.scriptState : new Map(),
     });
   }
   for (const key of [...state.sessions.keys()]) if (!present.has(key)) state.sessions.delete(key);
@@ -149,13 +159,20 @@ export function runPass(state, { dir = runtimeDir(), hash = rootHash(), now = Da
   const nowUs = Math.round(now * 1000);
   let window = 0;
   let rendered = 0;
-  for (const s of state.sessions.values()) {
+  // Scripts share one budget for the pass. The session that starts the pass moves on by one each
+  // pass, so a session whose scripts the pass ran out of time for goes earlier next time.
+  const { host, passMs, callBudgetMs } = state.scripts;
+  const pass = createScriptPass({ budgetMs: passMs, callBudgetMs });
+  const order = [...state.sessions.values()];
+  const first = order.length ? state.passes % order.length : 0;
+  state.passes += 1;
+  for (const s of [...order.slice(first), ...order.slice(0, first)]) {
     if (now - s.seenAt >= state.idleMs) continue;
     state.since = Math.max(state.since, s.seenAt);
     window = Math.max(window, s.window);
     let lines;
     try {
-      lines = renderSession({ data: s.data, env: s.env, now: now / 1000 });
+      lines = renderSession({ data: s.data, env: s.env, now: now / 1000, scripts: { host, pass, state: s.scriptState } });
     } catch {
       continue; // this session's frame stays as it was and greys on its own deadline
     }
@@ -272,6 +289,9 @@ export async function startDaemon({ root = PACKAGE_ROOT, env = process.env } = {
     if (stopping) return;
     stopping = true;
     clearTimeout(timer);
+    // `state` is set in the same synchronous run that installs this handler, before any signal
+    // can be delivered.
+    state.scripts.host.close();
     dropHeartbeat();
     setTimeout(() => process.exit(0), 2000).unref();
     if (!(await ownsSocket())) process.exit(0);

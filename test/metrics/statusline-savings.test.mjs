@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 import "../_temp-sandbox.mjs"; // before the modules that name temp paths
 import { statsValues } from "../../src/metrics/savings.js";
-import { SAMPLE } from "../../src/kit/values.js";
-import { renderContext } from "../../src/kit/context.js";
-import { buildBar } from "../../src/games/doom/layout.js";
+import { RAW_SAMPLE } from "../_raw-sample.mjs";
+import { findSkin } from "../../src/skin-select.js";
+import { loadSkin } from "../../src/kit/skin/load.js";
+import { fitSkin } from "../../src/kit/skin/fit.js";
+import { drawFit } from "../../src/kit/skin/draw.js";
 import { vlen } from "../../src/kit/text.js";
-import { parse as parseToml } from "smol-toml";
 import { mkdtempSync, mkdirSync, writeFileSync, appendFileSync, rmSync, readFileSync, existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 // Pin the DOOM theme so a theme saved on this machine (`theme minecraft`) can't change
 // what the statusline renders under test. Child processes inherit it via process.env.
@@ -20,7 +20,6 @@ process.env.GAMEBAR_RATELIMITS_SHARE = "0";
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 
-const HERE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const tmp = mkdtempSync(path.join(os.tmpdir(), "gamebar-savings-"));
 const MISSING = path.join(tmp, "does-not-exist");
 
@@ -145,20 +144,21 @@ try {
   process.env.GAMEBAR_LLMLINGUA = writeJson("ling-raw.json", { sessions: { "abc.def:99": { tokens_saved: 1500, last_ratio: 2.0 } } });
   ok(statsValues(dotted, CWD)["save.lingua"] === "1.5k 2.0x", `raw session id used for lingua key (got ${JSON.stringify(statsValues(dotted, CWD)["save.lingua"])})`);
 
-  // === presentation (src/kit/meters.js) ===
+  // === presentation (the DOOM skins) ===
   ok(vlen("🪶") === 2, "lean icon 🪶 vlen 2");
   ok(vlen("📜") === 2, "lingua icon 📜 vlen 2");
 
-  // full is the preset that carries the SAVE box (standard/minimal drop it).
-  const cfg = parseToml(readFileSync(path.join(HERE, "..", "src", "games", "doom", "presets", "full.toml"), "utf8"));
-  const noSave = { ...SAMPLE };
+  // doom-full is the skin that carries the SAVE box (standard and minimal leave it out).
+  const full = loadSkin(findSkin("doom-full").file).skin;
+  const draw = (values) => drawFit(fitSkin(full, { values, width: 200 }), { values, width: 200 }).join("\n");
+  const noSave = { ...RAW_SAMPLE };
   delete noSave["save.leanctx"];
   delete noSave["save.lingua"];
-  let out = buildBar(cfg, 200, renderContext({ values: noSave })).lines.join("\n");
+  let out = draw(noSave);
   ok(!out.includes("SAVE"), "savings absent -> SAVE box collapses");
   ok(out.includes("USAGE") && out.includes("PROJECT"), "other boxes still render (collapse is targeted, not total)");
 
-  out = buildBar(cfg, 200, renderContext({ values: { ...SAMPLE } })).lines.join("\n");
+  out = draw({ ...RAW_SAMPLE });
   ok(out.includes("SAVE"), "savings present -> SAVE box renders");
 
   // A session's totals from a release before 1.0.0 carry over. The file keeps its name, savings_<key>.json;

@@ -68,14 +68,14 @@ try {
   const st = loadState({ session_id: sid });
   ok(st.git?.cwd === repo, "loadState folded git snapshot into state.git");
   const v = buildValues({ cwd: repo }, st.git);
-  ok(typeof v["git.branch"] === "string" && v["git.branch"].includes("doomtest"),
-    `git.branch rendered from snapshot (got ${JSON.stringify(v["git.branch"])})`);
-  ok(v["git.status"] === "1", `git.status counts the one dirty file (got ${JSON.stringify(v["git.status"])})`);
+  ok(v["git.branch"]?.text === "doomtest" && v["git.branch"].url === null,
+    `git.branch rendered from snapshot, unlinked without a known repository (got ${JSON.stringify(v["git.branch"])})`);
+  ok(v["git.status"] === 1, `git.status counts the one dirty file (got ${JSON.stringify(v["git.status"])})`);
   ok(v["git.work"] !== undefined, "git.work rendered from snapshot");
 
   // With the repository Claude Code reports, the branch links to it on the forge.
   const linked = buildValues({ cwd: repo, workspace: { repo: { host: "github.com", owner: "acme", name: "bar" } } }, st.git);
-  ok(String(linked["git.branch"]).includes("https://github.com/acme/bar/tree/doomtest"),
+  ok(linked["git.branch"]?.url === "https://github.com/acme/bar/tree/doomtest",
     `git.branch links to the repository's branch page (got ${JSON.stringify(linked["git.branch"])})`);
 } finally {
   rmSync(tmp, { recursive: true, force: true });

@@ -210,7 +210,7 @@ const SOCKET = daemonSocket(HASH, { GAMEBAR_RUNTIME_DIR: TMP });
 // payload line (client) or the inherited environment (hook), and change every timing below.
 const scrubbed = { ...process.env };
 for (const k of Object.keys(scrubbed)) {
-  if (/^(GAMEBAR_|DOOMBAR_|MUGSHOT_)/i.test(k) || /^(CLAUDE_CONFIG_DIR|CLAUDE_CODE_TASK_LIST_ID|COLUMNS)$/i.test(k)) delete scrubbed[k];
+  if (/^(GAMEBAR_|DOOMBAR_|MUGSHOT_)/i.test(k) || /^(CLAUDE_CONFIG_DIR|CLAUDE_CODE_TASK_LIST_ID|COLUMNS|LINES)$/i.test(k)) delete scrubbed[k];
 }
 const baseEnv = { ...scrubbed, ...sandboxEnv(TMP), GAMEBAR_MSYS_REAP: "0", GAMEBAR_JOURNAL_TTL: "off" };
 const hookEnv = { ...baseEnv, GAMEBAR_DAEMON_THROTTLE_MS: String(THROTTLE), GAMEBAR_DAEMON_GRACE_MS: String(GRACE),

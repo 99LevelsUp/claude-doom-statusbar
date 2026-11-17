@@ -13,7 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { rootHash, procStartTicks } from "../../src/platform/runtime.js";
-import { install, uninstall, migratedPreset, renameOldEnv } from "../../src/install/settings.js";
+import { install, uninstall, renameOldEnv } from "../../src/install/settings.js";
 import { privateCandidates, stopDaemon, removeOldPackageFiles } from "../../src/install/daemons.js";
 import { npmCommand } from "../../src/install/old-package.js";
 import { sandboxEnv } from "../_sandbox-env.mjs";
@@ -24,7 +24,6 @@ const HASH = rootHash(ROOT);
 const WIN = process.platform === "win32";
 const fwd = (p) => p.replace(/\\/g, "/");
 const HOOK = fwd(path.join(ROOT, "src", "hook.js"));
-const FULL = fwd(path.join(ROOT, "src", "games", "doom", "presets", "full.toml"));
 const STANDARD = fwd(path.join(ROOT, "src", "games", "doom", "presets", "standard.toml"));
 const EVENTS = ["SessionStart", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied",
   "Stop", "SubagentStart", "SubagentStop", "TaskCreated", "TaskCompleted", "SessionEnd"];
@@ -59,7 +58,9 @@ function world() {
   }
   const log = path.join(tmp, "npm-calls.jsonl");
   const settings = path.join(home, ".claude", "settings.json");
-  const env = { ...sandboxEnv(tmp), HOME: home, USERPROFILE: home, GAMEBAR_NO_FONTS: "1",
+  // The user directory is left at its default place, ~/.claude/claude-game-bar, in the sandbox home.
+  const env = { ...sandboxEnv(tmp), GAMEBAR_USER_DIR: undefined, DOOMBAR_USER_DIR: undefined,
+    HOME: home, USERPROFILE: home, GAMEBAR_NO_FONTS: "1",
     NPM_STUB_ROOT: npmRoot, NPM_STUB_LOG: log, NPM_STUB_WATCH: settings };
   return { tmp, home, npmRoot, oldRoot, log, settings, env };
 }
@@ -147,16 +148,19 @@ const REINSTALL = /a repository wired with `claude-doom-statusbar install --proj
     ok(!JSON.stringify(cfg).includes(fwd(w.oldRoot)), "nothing in the settings names the old package's folder");
     ok(/src\/(gamebar-client\.sh|statusline\.js)/.test(cfg.statusLine.command) && cfg.statusLine.command.includes(fwd(ROOT)),
       "the statusLine runs this package");
-    ok(cfg.env.GAMEBAR_PRESET === FULL, `GAMEBAR_PRESET is this package's full preset (${cfg.env.GAMEBAR_PRESET})`);
+    ok(!("GAMEBAR_PRESET" in cfg.env) && !("GAMEBAR_SKIN" in cfg.env), `the old package's preset is gone and no skin is written (${JSON.stringify(cfg.env)})`);
     ok(!("DOOMBAR_PRESET" in cfg.env) && !("DOOMBAR_GLYPHS" in cfg.env), "no DOOMBAR_ names are left in env");
     ok(cfg.env.GAMEBAR_GLYPHS === "quadrant" && cfg.env.MY_VAR === "keep", "other settings are renamed or kept");
     const theme = path.join(w.home, ".claude", "gamebar-theme.json");
     ok(existsSync(theme) && JSON.parse(readFileSync(theme, "utf8")).theme === "minecraft", "Minecraft is still the saved theme");
+    const skin = path.join(w.home, ".claude", "claude-game-bar", "skin.json");
+    ok(existsSync(skin) && JSON.parse(readFileSync(skin, "utf8")).skin === "minecraft",
+      "and the saved skin, in ~/.claude/claude-game-bar/skin.json, is Minecraft's");
     ok(!existsSync(path.join(w.home, ".claude", "doombar-theme.json")), "the old theme file is gone");
 
     const un = uninstallCalls(w);
     ok(un.length === 1 && un[0].args.join(" ") === "uninstall -g claude-doom-statusbar", "npm was asked to remove the old package");
-    ok(un[0] && un[0].watched && !un[0].watched.includes(fwd(w.oldRoot)) && un[0].watched.includes("GAMEBAR_PRESET"),
+    ok(un[0] && un[0].watched && !un[0].watched.includes(fwd(w.oldRoot)) && un[0].watched.includes(HOOK),
       "the removal ran after the new settings were written");
     ok(!existsSync(w.oldRoot), "the old package's folder is gone");
     ok(/old package: removed the global claude-doom-statusbar/.test(out), "the output says the old package was removed");
@@ -345,21 +349,27 @@ if (WIN || process.platform === "linux") {
   writeFileSync(path.join(copy, "package.json"), JSON.stringify({ name: "claude-game-bar" }));
   const copyPreset = path.join(copy, "src", "games", "doom", "presets", "standard.toml");
   writeFileSync(copyPreset, "");
-  ok(migratedPreset(fwd(own)) === fwd(own), "a user's own existing preset file is kept, even when named full.toml");
-  ok(migratedPreset(fwd(path.join(tmp, "gone", "full.toml"))) === FULL, "a missing file named after a registered preset is moved here");
-  ok(migratedPreset(fwd(copyPreset)) === STANDARD, "a preset in another copy of this package is moved here");
-  ok(migratedPreset(fwd(path.join(tmp, "gone", "custom.toml"))) === fwd(path.join(tmp, "gone", "custom.toml")),
-    "a missing file of the user's own name is left as it is");
-  ok(migratedPreset(STANDARD) === STANDARD, "this package's own preset is kept");
-
+  // The skin replaces a preset setting an installer wrote; a preset of the user's own stays.
+  for (const [what, value] of [["this package's", STANDARD], ["another copy's", fwd(copyPreset)],
+    ["a missing registered", fwd(path.join(tmp, "gone", "full.toml"))]]) {
+    const cfg = { env: { GAMEBAR_PRESET: value } };
+    const notes = install(cfg, null, 1, "x");
+    ok(!("GAMEBAR_PRESET" in cfg.env) && notes.some((n) => /removed GAMEBAR_PRESET/.test(n)), `install removes ${what} preset`);
+  }
+  for (const [what, value] of [["an existing preset file of the user's own, even when named full.toml", fwd(own)],
+    ["a missing file of the user's own name", fwd(path.join(tmp, "gone", "custom.toml"))]]) {
+    const mine = { env: { GAMEBAR_PRESET: value } };
+    install(mine, null, 1, "x");
+    ok(mine.env.GAMEBAR_PRESET === value, `install keeps ${what}`);
+  }
   const cfg = { env: { GAMEBAR_PRESET: STANDARD } };
-  install(cfg, null, 1, "x");
-  ok(cfg.env.GAMEBAR_PRESET === STANDARD, "install without --preset keeps the preset already chosen");
-  install(cfg, "minimal", 1, "x");
-  ok(cfg.env.GAMEBAR_PRESET.endsWith("/presets/minimal.toml"), "an explicit --preset replaces it");
+  install(cfg, "doom-minimal", 1, "x");
+  ok(cfg.env.GAMEBAR_SKIN === "doom-minimal" && !("GAMEBAR_PRESET" in cfg.env), "a skin to write becomes GAMEBAR_SKIN");
   const fresh = {};
   install(fresh, null, 1, "x");
-  ok(fresh.env.GAMEBAR_PRESET === FULL, "a fresh install gets the full preset");
+  ok(!("GAMEBAR_PRESET" in fresh.env) && !("GAMEBAR_SKIN" in fresh.env), "a fresh install without a skin writes neither");
+  uninstall(cfg);
+  ok(!cfg.env, "uninstall removes GAMEBAR_SKIN");
   rmSync(tmp, { recursive: true, force: true });
 }
 

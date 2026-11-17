@@ -4,7 +4,7 @@
 import { readFileSync, writeFileSync, openSync, fstatSync, readSync, closeSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { pyround, sgrFg, OK, TEXT, CRIT } from "../kit/ansi.js";
+import { pyround } from "../kit/ansi.js";
 import { sessionPaths } from "../platform/runtime.js";
 
 const GOD_FLASH = 3.0; // seconds the mugshot stays god after an advisor consult lands
@@ -35,9 +35,8 @@ export function _dur(secsF) {
   return `${s}s`;
 }
 
-function _link(text, url) {
-  return url ? `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\` : text;
-}
+// Text that links somewhere travels as { text, url }; whatever draws it makes the link.
+const linked = (text, url) => ({ text, url: url || null });
 
 function _prettyModel(mid) {
   mid = mid.replace(/\[.*?\]$/, "").replace("claude-", "");
@@ -91,8 +90,8 @@ export function godFlash(data, advTs, now, env) {
   return c.god_until || 0;
 }
 
-const f = sgrFg;
-
+// The session's values, raw: numbers, plain text, { text, url } for links, lists without icons
+// (see the catalogue, src/metrics/catalogue.js).
 export function buildValues(data, git, now = Date.now() / 1000) {
   const v = {};
   const cw = data.context_window || {};
@@ -107,25 +106,21 @@ export function buildValues(data, git, now = Date.now() / 1000) {
   if ("total_duration_ms" in cost) v["sys.session"] = _dur(cost.total_duration_ms / 1000);
   if ("total_lines_added" in cost || "total_lines_removed" in cost) {
     const a = cost.total_lines_added || 0, r = cost.total_lines_removed || 0;
-    v["loc.churn"] = `${f(OK)}+${a}${f(TEXT)} / ${f(CRIT)}-${r}`;
-    v["loc.added"] = String(a); // plain number: fits (and centres in) a hotbar slot
+    v["loc.churn"] = `+${a} / -${r}`;
+    v["loc.added"] = a;
   }
 
   const m = data.model || {};
   if (m.display_name) v["model.name"] = m.display_name.split(" (")[0];
   const eff = (data.effort || {}).level;
-  if (eff) {
-    const icon = { low: "🌒", medium: "🌓", high: "🌔", xhigh: "🌕", max: "🌞" };
-    v["model.effort"] = icon[eff] || "🌓";
-    v["model.effort_level"] = eff; // raw level: the hotbar chat colours the model name by it
-  }
+  if (eff) v["model.effort"] = eff;
   const cwm = (data.context_window || {}).context_window_size;
   if (cwm) v["model.window"] = cwm >= 1000000 ? `${Math.floor(cwm / 1000000)}M` : `${Math.floor(cwm / 1000)}K`;
   const th = data.thinking || {};
   const mode = [];
-  if ("enabled" in th) mode.push(`💭 ${th.enabled ? "on" : "off"}`);
-  if ("fast_mode" in data) mode.push(`🚀 ${data.fast_mode ? "on" : "off"}`);
-  if (mode.length) v["model.mode"] = mode.join("  ");
+  if ("enabled" in th) mode.push(["thinking", th.enabled ? "on" : "off"]);
+  if ("fast_mode" in data) mode.push(["fast", data.fast_mode ? "on" : "off"]);
+  if (mode.length) v["model.mode"] = mode;
   const style = (data.output_style || {}).name;
   if (style) v["model.style"] = style;
 
@@ -142,27 +137,28 @@ export function buildValues(data, git, now = Date.now() / 1000) {
   const cwd = data.cwd || (data.workspace || {}).current_dir;
   if (cwd) {
     const name = clip(path.basename(cwd.replace(/[/\\]+$/, "")) || cwd, 60);
-    try { v["loc.cwd"] = _link(name, pathToFileURL(cwd).href); } catch { v["loc.cwd"] = name; }
+    let url = null;
+    try { url = pathToFileURL(cwd).href; } catch { /* no link */ }
+    v["loc.cwd"] = linked(name, url);
     // git fields come from the folded snapshot the async hook wrote, not a live spawn.
     const { br = null, lr = null, st = null } = git || {};
-    if (br) { const brLbl = clip(br, 60); v["git.branch"] = repoUrl ? _link(brLbl, `${repoUrl}/tree/${br}`) : brLbl; }
+    if (br) v["git.branch"] = linked(clip(br, 60), repoUrl && `${repoUrl}/tree/${br}`);
     if (lr && lr.includes("\t")) {
       const [behind, ahead] = lr.split("\t");
-      v["git.behind"] = `↓${behind}`; v["git.ahead"] = `↑${ahead}`;
+      v["git.behind"] = Number(behind); v["git.ahead"] = Number(ahead);
     }
-    if (st !== null) v["git.status"] = String(st.split("\n").filter((l) => l.trim()).length);
-    // Merge changed-file count + pull/push onto one line (icons baked in, like model.mode):
-    // "✎ <files>  ⇅ ↓<behind> ↑<ahead>" — files first, then pull/push.
+    if (st !== null) v["git.status"] = st.split("\n").filter((l) => l.trim()).length;
+    // The changed-file count and pull/push on one line: files first, then pull/push.
     const work = [];
-    if (v["git.status"] !== undefined) work.push(`✎ ${v["git.status"]}`);
-    if (v["git.behind"] !== undefined) work.push(`⇅ ${v["git.behind"]} ${v["git.ahead"]}`);
-    if (work.length) v["git.work"] = work.join("  ");
+    if (v["git.status"] !== undefined) work.push(["changed", v["git.status"]]);
+    if (v["git.behind"] !== undefined) work.push(["behind", v["git.behind"]], ["ahead", v["git.ahead"]]);
+    if (work.length) v["git.work"] = work;
   }
 
   const pr = data.pr || {};
   if (pr.number || pr.url) {
     const label = pr.number ? `#${pr.number}` : pr.review_state || "PR";
-    v["pr.state"] = _link(label, pr.url);
+    v["pr.state"] = linked(label, pr.url);
   }
   return v;
 }

@@ -1,24 +1,19 @@
 #!/usr/bin/env node
+// Scrolling lists and text that scrolls back and forth, in the DOOM bar: the window a long list
+// shows, every row of the bar as wide as the others whatever scrolls, and a linked value that
+// scrolls without breaking its hyperlink.
 import "../_temp-sandbox.mjs"; // before the modules that name temp paths
-import { SAMPLE } from "../../src/kit/values.js";
-import { renderContext } from "../../src/kit/context.js";
-import { metricFixedWidth } from "../../src/kit/planner.js";
+import { RAW_SAMPLE } from "../_raw-sample.mjs";
 import { scrollWindow, vlen } from "../../src/kit/text.js";
-import { buildBar } from "../../src/games/doom/layout.js";
-import { parse as parseToml } from "smol-toml";
-import { readFileSync } from "node:fs";
-import path2 from "node:path";
-import { fileURLToPath as f2u } from "node:url";
+import { findGame } from "../../src/games/index.js";
+import { findSkin } from "../../src/skin-select.js";
+import { loadSkin } from "../../src/kit/skin/load.js";
+import { fitSkin } from "../../src/kit/skin/fit.js";
+import { drawFit } from "../../src/kit/skin/draw.js";
+import { createAssetResolver } from "../../src/platform/assets.js";
+
 let fails = 0;
 const ok = (c, m) => { console.log((c?"  ok   ":"  FAIL ")+m); if(!c) fails++; };
-
-// metricFixedWidth handles the object item shape (mark + text), truncated by box later.
-const one = renderContext({ values: { "act.tasklist": [{ mark:"✅", markRgb:null, text:"render engine" }] } });
-const w = metricFixedWidth(one, { id:"act.tasklist", render:"scroll" });
-ok(typeof w === "number" && w >= "render engine".length, `scroll width measures mark+text (got ${w})`);
-
-// Empty scroll value -> width is just the (absent) label, and box should be hidden via available.
-ok(metricFixedWidth(renderContext({ values: {} }), { id:"act.tasklist", render:"scroll" }) === 0, "empty scroll -> zero width");
 
 // scrollWindow(n, H, anchor, boundary) -> { start, up, down }
 let r = scrollWindow(10, 4, "top", 0);
@@ -34,76 +29,70 @@ ok(r.start === 4 && r.down === 0, "few open -> bottom clamp");
 r = scrollWindow(4, 5, "boundary", 2);     // all fit
 ok(r.start === 0 && r.up === 0 && r.down === 0, "boundary all-fit -> top aligned");
 
-// Row-width uniformity: all HUD lines must have equal display width even when
-// an overflow marker (↑k / ↓k) is present on the first/last visible agent row.
+// The DOOM full skin drawn with `values` at `width` columns and render tick `tick`.
+const doom = findGame("doom");
+const resolveAsset = createAssetResolver({ folder: doom.dir }).resolve;
+const full = loadSkin(findSkin("doom-full").file).skin;
+const smaller = (name) => loadSkin(findSkin(name).file).skin;
+function bar(values, width, tick = 0) {
+  const fit = fitSkin(full, { values, width, loadSmaller: smaller });
+  return drawFit(fit, { values, width, ctx: { tick, step: "octant", resolveAsset } });
+}
+
+// Every row of the bar has the same display width, even with an overflow marker (↑k / ↓k) on the
+// first or last visible agent row.
 {
   const longAgents = [];
   for (let i = 0; i < 12; i++) longAgents.push([`a-really-long-agent-label-${i}`, "1m2s"]);
-  const ctx = renderContext({ values: {
-    ...SAMPLE,
-    "act.subagents": longAgents,
-    "act.tasklist": [
-      { mark: "✅", markRgb: null, text: "x" },
-      { mark: "🎯", markRgb: null, text: "y" },
-    ],
-  } });
-  const cfgRoot = path2.dirname(path2.dirname(f2u(import.meta.url)));
-  const cfg = parseToml(readFileSync(path2.join(cfgRoot, "..", "src", "games", "doom", "presets", "full.toml"), "utf8"));
-  const res = buildBar(cfg, 160, ctx);
-  const widths = res.lines.map((l) => vlen(l));
-  ok(new Set(widths).size === 1, `all HUD rows equal width with overflow marker (widths: ${[...new Set(widths)].join(",")})`);
+  const lines = bar({ ...RAW_SAMPLE, "act.subagents": longAgents, "act.tasklist": [{ status: "completed", text: "x" }, { status: "pending", text: "y" }] }, 160);
+  const widths = lines.map((l) => vlen(l));
+  ok(new Set(widths).size === 1, `all rows equal width with an overflow marker (widths: ${[...new Set(widths)].join(",")})`);
+  ok(lines.some((l) => l.includes("↓")), "a list longer than its rows shows how many items are below");
 }
 
-// Marquee integration: a long scrolled label keeps every HUD row equal width at
-// every tick, and the visible window actually moves as the tick advances.
+// A long scrolled label keeps every row equal width at every tick, and the visible window moves as
+// the tick advances.
 {
   const values = {
-    ...SAMPLE,
+    ...RAW_SAMPLE,
     "act.subagents": [["a-really-long-agent-label-that-overflows-its-box", "1m2s"]],
-    "act.tasklist": [{ mark: "⏩", markRgb: null, text: "port-PIL-alpha-compositing-into-JS-render" }],
+    "act.tasklist": [{ status: "in_progress", text: "port-PIL-alpha-compositing-into-JS-render" }],
   };
-  const cfgRoot = path2.dirname(path2.dirname(f2u(import.meta.url)));
-  const cfg = parseToml(readFileSync(path2.join(cfgRoot, "..", "src", "games", "doom", "presets", "full.toml"), "utf8"));
   let uniform = true;
   const frames = new Set();
   for (let t = 0; t < 24; t++) {
-    const res = buildBar(cfg, 160, renderContext({ values, tick: t }));
-    if (new Set(res.lines.map((l) => vlen(l))).size !== 1) uniform = false;
-    frames.add(res.lines.join("\n"));
+    const lines = bar(values, 160, t);
+    if (new Set(lines.map((l) => vlen(l))).size !== 1) uniform = false;
+    frames.add(lines.join("\n"));
   }
-  ok(uniform, "marquee: all HUD rows stay equal width at every tick");
-  ok(frames.size > 1, "marquee: the rendered HUD changes as the tick advances");
+  ok(uniform, "marquee: all rows stay equal width at every tick");
+  ok(frames.size > 1, "marquee: the bar changes as the tick advances");
 }
 
-// Responsive scale: at a narrow target the layout shrinks (small textCap) yet every HUD row
-// stays equal width across ticks, plain text marquees, and a hyperlink value (OSC8) now
-// marquees too — its visible text is windowed but the OSC8 structure + URL stay intact.
+// Narrow: the boxes shrink, every row stays equal width across ticks, plain text scrolls, and a
+// linked value scrolls too: its visible text is windowed but the hyperlink and its address stay
+// whole.
 {
-  const cfgRoot2 = path2.dirname(path2.dirname(f2u(import.meta.url)));
-  const full2 = parseToml(readFileSync(path2.join(cfgRoot2, "..", "src", "games", "doom", "presets", "full.toml"), "utf8"));
   const url = "https://example.com/a/very/long/path";
   const inner = "a-very-long-linked-cwd-name";
-  const link = `\x1b]8;;${url}\x1b\\${inner}\x1b]8;;\x1b\\`;
   const values = {
-    ...SAMPLE,
-    "loc.cwd": link, // OSC8 hyperlink -> hyperlink-aware marquee (inner sliced, URL re-wrapped)
-    "act.tasklist": [{ mark: "⏩", markRgb: null, text: "port-PIL-alpha-compositing-into-JS-render" }],
+    ...RAW_SAMPLE,
+    "loc.cwd": { text: inner, url },
+    "act.tasklist": [{ status: "in_progress", text: "port-PIL-alpha-compositing-into-JS-render" }],
   };
   let uniform = true;
   const frames = new Set();
   for (let t = 0; t < 18; t++) {
-    const res = buildBar(full2, 120, renderContext({ values, tick: t })); // 120 < full's ~143 floor -> narrow scale
-    if (new Set(res.lines.map((l) => vlen(l))).size !== 1) uniform = false;
-    frames.add(res.lines.join("\n"));
+    const lines = bar(values, 120, t);
+    if (new Set(lines.map((l) => vlen(l))).size !== 1) uniform = false;
+    frames.add(lines.join("\n"));
   }
-  ok(uniform, "narrow scale: all HUD rows equal width across ticks");
-  ok(frames.size > 1, "narrow scale: plain text still marquees (frames change)");
-  const out0 = buildBar(full2, 120, renderContext({ values, tick: 0 })).lines.join("\n");
-  // The link is now column-sliced (windowed), so the full original is NOT present verbatim,
-  // but the OSC8 wrapper + URL survive intact (the escape is never corrupted).
-  ok(!out0.includes(link), "narrow scale: hyperlink inner text is windowed (now marquees)");
+  ok(uniform, "narrow: all rows equal width across ticks");
+  ok(frames.size > 1, "narrow: plain text still scrolls (frames change)");
+  const out0 = bar(values, 120, 0).join("\n");
+  ok(!out0.includes(`\x1b\\${inner}\x1b]8;;`), "narrow: the linked text is windowed (it scrolls)");
   ok(out0.includes(`\x1b]8;;${url}\x1b\\`) && out0.includes("\x1b]8;;\x1b\\"),
-    "narrow scale: OSC8 structure + URL preserved after slicing");
+    "narrow: the hyperlink and its address survive the windowing");
 }
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILED`);

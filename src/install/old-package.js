@@ -35,14 +35,19 @@ export function npmCommand(platform = process.platform, execPath = process.execP
 
 // Runs npm with `args`. GAMEBAR_NPM, when set, names a node script that stands in for npm (tests),
 // run with this node. Otherwise npm runs as npmCommand says; through the shell it is one fixed
-// command line: the arguments are constants here, and an argument list together with `shell` is
-// deprecated.
-export function runNpm(args, { env = process.env, timeout = 120000 } = {}) {
-  const opts = { encoding: "utf8", env, timeout, windowsHide: true };
+// command line: the arguments are constants at every caller, and an argument list together with
+// `shell` is deprecated.
+//
+// `cwd` is the folder npm works in (an install of game assets: a folder the asset store has just
+// made, holding only the package.json it wrote). Through the shell it is also where cmd.exe looks
+// for npm before PATH, which is safe only because that folder holds nothing else; without `cwd`
+// the shell starts in node.exe's folder.
+export function runNpm(args, { env = process.env, timeout = 120000, cwd } = {}) {
+  const opts = { encoding: "utf8", env, timeout, windowsHide: true, ...(cwd ? { cwd } : {}) };
   const stand = envGet("NPM", env);
   if (stand) return spawnSync(process.execPath, [stand, ...args], opts);
   const npm = npmCommand();
-  if (npm.shell) return spawnSync([npm.file, ...args].join(" "), { ...opts, shell: true, cwd: npm.cwd });
+  if (npm.shell) return spawnSync([npm.file, ...args].join(" "), { ...opts, shell: true, cwd: cwd || npm.cwd });
   return spawnSync(npm.file, [...npm.pre, ...args], opts);
 }
 

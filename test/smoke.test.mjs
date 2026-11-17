@@ -2,7 +2,7 @@
 // End-to-end smoke test: module byte-parity proves each piece in isolation, but only the
 // installer makes the HUD run live. This installs into a temp project, then runs the EXACT
 // statusLine command the installer wrote into settings.json — through a shell, with the
-// GAMEBAR_PRESET it set — and asserts a non-empty HUD comes out. This is the check that
+// GAMEBAR_SKIN it set — and asserts a non-empty HUD comes out. This is the check that
 // catches "`node` not on PATH" and any wiring drift the structural test can't see.
 
 import { execFileSync, execSync } from "node:child_process";
@@ -47,9 +47,12 @@ try {
     { cwd: tmp, env: { ...process.env, ...tmpEnv } });
   const cfg = JSON.parse(readFileSync(path.join(tmp, ".claude", "settings.json"), "utf-8"));
   const cmd = cfg.statusLine.command;
-  const preset = cfg.env.GAMEBAR_PRESET;
-  const env = { ...process.env, GAMEBAR_PRESET: preset, COLUMNS: "100", FORCE_HYPERLINK: "1",
+  const skin = cfg.env.GAMEBAR_SKIN;
+  ok(typeof skin === "string" && skin.length > 0 && !("GAMEBAR_PRESET" in cfg.env),
+    `the project install wrote GAMEBAR_SKIN (${skin}) and no GAMEBAR_PRESET`);
+  const env = { ...process.env, GAMEBAR_SKIN: skin, COLUMNS: "100", FORCE_HYPERLINK: "1",
     ...tmpEnv, GAMEBAR_MSYS_REAP: "0" };
+  for (const k of ["GAMEBAR_PRESET", "DOOMBAR_PRESET", "DOOMBAR_SKIN"]) delete env[k];
 
   const sample = JSON.stringify({
     session_id: "smoke-1",

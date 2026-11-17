@@ -1,60 +1,124 @@
-// The game registry: every game the bar can dress up as, in one list. A game is its folder under
-// src/games/ (its layout, presets and assets) plus one entry here. The rest of the code reaches a
-// game's code and files only through this list, so adding a game changes nothing outside those two
-// places. The order is the order `theme next` cycles through.
+// The game registry: every game the bar can dress up as, in one list. A game is a folder under
+// src/games/ with a manifest, game.toml, and its bundled skins in skins/*.toml. The registry finds
+// the folders itself, so adding a game changes nothing outside its folder. The rest of the code
+// reaches a game only through this list. Its order (the folders' names, sorted) is the order
+// `theme next` and `skin next` cycle through.
 //
-// An entry:
-//   name               the theme name (`claude-game-bar theme <name>`)
-//   about              a one-line blurb for the theme list
-//   aliases            older names that still choose this game
-//   default            the game used when no theme is chosen, or the chosen one is unknown; it also
-//                      draws every preset whose [bar] layout no game claims
-//   layoutKey          the preset [bar] layout value that selects this game's layout
-//   layout             (cfg, target, ctx) -> lines: draws the bar from a parsed preset, the target
-//                      width and the render context (src/kit/context.js)
-//   presets            preset name -> absolute path of its .toml file
-//   defaultPreset      the preset the theme renders
-//   usesPresetSetting  the theme renders the user's preset setting (GAMEBAR_PRESET, written by
-//                      `install --preset`) and its default preset only when that is unset
-//   sample             optional image the glyph test card draws at every glyph step
+// A manifest (game.toml):
+//   name          the game's name, also its theme name (`claude-game-bar theme <name>`)
+//   description   a one-line blurb for the theme and skin lists
+//   default       true for the game drawn when nothing is chosen (one game)
+//   default_skin  the skin drawn when the game is chosen without a skin
+//   [legacy]
+//     aliases        older theme names that still choose this game
+//     reads_presets  the file name of the preset setting (GAMEBAR_PRESET) picks the size; a game
+//                    that does not read presets draws its default skin whatever the preset is
+//     presets        preset file name (without .toml) -> the skin of that size
+//   [assets]      the npm package of the game's assets: package, version (pinned), integrity
 //
-// The list is plain data. A test may add an entry and take it out again; the lookups below read the
-// list each time they are called.
+// A bundled skin's name is the `name` its file gives, else the file name without .toml. A skin the
+// manifest names (its default skin and the skins of its presets) is a skin of the game even while
+// its file is missing; the bar then draws the default skin with a warning.
+//
+// An entry of the list:
+//   name, description, aliases, default, dir, defaultSkin, readsPresets, presetSkins (preset
+//   name -> skin name), assets, skins ([{ name, file | null }], in the order the manifest names
+//   them, then the other skin files)
+//   presets            preset name -> absolute path of its .toml file in the game's presets/, where
+//                      an installer before skins pointed the preset setting; no game ships these
+//                      files any more, the paths only recognise the old settings
+//   defaultPreset      the first preset the manifest names
+//
+// The list is plain data. A test may add an entry (readGame of a folder of its own) and take it out
+// again; the lookups below read the list each time they are called.
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { PACKAGE_ROOT, SRC_DIR } from "../package-root.js";
-import { doomLayout } from "./doom/layout.js";
-import { IDLE_FACE } from "./doom/face.js";
-import { minecraftLayout } from "./minecraft/layout.js";
+import { parse as parseToml } from "smol-toml";
+import { SRC_DIR } from "../package-root.js";
 
-const gameDir = (name) => path.join(SRC_DIR, "games", name);
-const presetsOf = (game, names) =>
-  Object.fromEntries(names.map((n) => [n, path.join(gameDir(game), "presets", `${n}.toml`)]));
+// A table header line ([a.b], [[a]], keys bare or quoted), which ends the top-level keys.
+const TABLE_HEADER = /^\[\[?\s*(?:[A-Za-z0-9_-]+|"[^"]*"|'[^']*')(?:\s*\.\s*(?:[A-Za-z0-9_-]+|"[^"]*"|'[^']*'))*\s*\]\]?\s*(?:#.*)?$/;
+const NAME_LINE = /^(?:name|"name"|'name')\s*=\s*(.*)$/;
+// A string without escapes, then at most a comment.
+const PLAIN_STRING = /^(?:"([^"\\]*)"|'([^']*)')\s*(?:#.*)?$/;
 
-export const GAMES = [
-  {
-    name: "doom",
-    about: "DOOM (1993) HUD with the Doomguy mugshot",
-    aliases: [],
-    default: true,
-    layoutKey: "boxes",
-    layout: doomLayout,
-    presets: presetsOf("doom", ["full", "standard", "minimal"]),
-    defaultPreset: "standard",
-    usesPresetSetting: true,
-    sample: IDLE_FACE,
-  },
-  {
-    name: "minecraft",
-    about: "the in-game look: chat, hearts, hunger, XP bar and a 9-slot hotbar",
-    aliases: ["minecraft-hud"], // 0.12.x called this theme "minecraft-hud"
-    layoutKey: "hotbar",
-    layout: minecraftLayout,
-    presets: presetsOf("minecraft", ["minecraft"]),
-    defaultPreset: "minecraft",
-  },
-];
+// The name of the skin in `file`: its top-level `name` when that is a non-empty string, else the
+// file name without .toml. The status line names the skins on every run, so the name is read from
+// the lines before the first table; only a file whose head this cannot read for certain (an escape
+// in the name, a multi-line string, a line starting with "[" that is no table header) is parsed in
+// full. A file that does not parse is named by its file name, unless its name line comes first;
+// the loader reports it when it is drawn.
+export function skinName(file) {
+  const byFile = path.basename(file, ".toml");
+  let text;
+  try { text = readFileSync(file, "utf8"); } catch { return byFile; }
+  const parsed = () => {
+    let name = null;
+    try { name = parseToml(text).name; } catch { /* named by its file */ }
+    return typeof name === "string" && name ? name : byFile;
+  };
+  for (const raw of text.replace(/^\uFEFF/, "").split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.startsWith("[")) return TABLE_HEADER.test(line) ? byFile : parsed();
+    if (line.includes('"""') || line.includes("'''")) return parsed();
+    const m = NAME_LINE.exec(line);
+    if (!m) continue;
+    const v = PLAIN_STRING.exec(m[1]);
+    if (!v) return parsed();
+    return (v[1] ?? v[2]) || byFile;
+  }
+  return byFile;
+}
+
+// The bundled skin files of a game folder, sorted by file name: [{ name, file }].
+function skinFiles(dir) {
+  const skinsDir = path.join(dir, "skins");
+  let names;
+  try { names = readdirSync(skinsDir).filter((n) => n.endsWith(".toml")).sort(); } catch { return []; }
+  return names.map((n) => {
+    const file = path.join(skinsDir, n);
+    return { name: skinName(file), file };
+  });
+}
+
+export function readGame(dir) {
+  const m = parseToml(readFileSync(path.join(dir, "game.toml"), "utf8"));
+  const legacy = m.legacy || {};
+  const presetSkins = { ...(legacy.presets || {}) };
+  const presets = Object.fromEntries(Object.keys(presetSkins).map((n) => [n, path.join(dir, "presets", `${n}.toml`)]));
+  const readsPresets = legacy.reads_presets === true;
+  // The skins are read on first use: naming them reads every skin file, and a lookup that finds its
+  // skin in an earlier game never needs a later game's.
+  let skins = null;
+  const listSkins = () => {
+    const files = skinFiles(dir);
+    const names = [...new Set([...Object.values(presetSkins), m.default_skin, ...files.map((f) => f.name)])]
+      .filter((n) => typeof n === "string" && n);
+    return names.map((name) => ({ name, file: (files.find((f) => f.name === name) || {}).file || null }));
+  };
+  return {
+    name: m.name,
+    description: m.description || "",
+    aliases: [...(legacy.aliases || [])],
+    default: m.default === true,
+    dir,
+    defaultSkin: m.default_skin,
+    readsPresets,
+    presetSkins,
+    assets: m.assets ? { package: m.assets.package, version: m.assets.version, integrity: m.assets.integrity } : null,
+    get skins() { return (skins ??= listSkins()); },
+    presets,
+    defaultPreset: Object.keys(presets)[0] ?? null,
+  };
+}
+
+const GAMES_DIR = path.join(SRC_DIR, "games");
+export const GAMES = readdirSync(GAMES_DIR, { withFileTypes: true })
+  .filter((e) => e.isDirectory() && existsSync(path.join(GAMES_DIR, e.name, "game.toml")))
+  .map((e) => e.name)
+  .sort()
+  .map((n) => readGame(path.join(GAMES_DIR, n)));
 
 // The game called `name` or one of its aliases, or null.
 export const findGame = (name) =>
@@ -62,37 +126,33 @@ export const findGame = (name) =>
 
 export const defaultGame = () => GAMES.find((g) => g.default) || GAMES[0];
 
-// The drawing function for a parsed preset: the game whose layoutKey its [bar] layout names, else
-// the default game's.
-export function layoutFor(cfg) {
-  const key = (cfg.bar || {}).layout;
-  return (GAMES.find((g) => g.layoutKey && g.layoutKey === key) || defaultGame()).layout;
+// Every game name and older theme name the registry knows.
+export const gameNames = () => GAMES.flatMap((g) => [g.name, ...(g.aliases || [])]);
+
+// Every bundled skin, game by game in registry order: [{ name, file | null, game }]. A name two
+// games give is the first game's.
+export function bundledSkins() {
+  const seen = new Set();
+  return GAMES.flatMap((game) => game.skins
+    .filter((s) => !seen.has(s.name) && seen.add(s.name))
+    .map((s) => ({ ...s, game })));
 }
 
-// The registered preset with this file name ("full.toml"), from any game, or null.
+// The bundled skin called `name`, as bundledSkins() gives it, or null. Stops at the first game that
+// has it.
+export function bundledSkin(name) {
+  for (const game of GAMES) {
+    const s = game.skins.find((x) => x.name === name);
+    if (s) return { ...s, game };
+  }
+  return null;
+}
+
+// The registered preset with this file name ("full.toml"), from any game, or null: where the
+// installer of a release before skins pointed the preset setting.
 export function registeredPreset(fileName) {
   const m = /^(.+)\.toml$/.exec(fileName);
   if (!m) return null;
   const g = GAMES.find((game) => Object.hasOwn(game.presets, m[1]));
   return g ? g.presets[m[1]] : null;
 }
-
-// Where the presets lived before they moved into their games. Installations made before the move
-// still point there, at <root>/presets/<name>.toml.
-const LEGACY_PRESETS = path.join(PACKAGE_ROOT, "presets");
-const sameDir = (a, b) => process.platform === "win32"
-  ? path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase()
-  : path.resolve(a) === path.resolve(b);
-
-// The file to load for a preset path. A path that exists is used as is. A missing one in the old
-// presets folder whose file name is a registered preset loads the registered file. Anything else
-// stays as it is, so a moved or deleted preset of the user's own fails to load as it always did
-// instead of quietly drawing a bundled one.
-export function presetFile(file) {
-  if (existsSync(file)) return file;
-  if (!sameDir(path.dirname(file), LEGACY_PRESETS)) return file;
-  return registeredPreset(path.basename(file)) || file;
-}
-
-// The image the glyph test card draws: the first registered game's that has one, or null.
-export const sampleImage = () => (GAMES.find((g) => g.sample) || {}).sample || null;

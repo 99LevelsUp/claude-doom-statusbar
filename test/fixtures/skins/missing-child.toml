@@ -1,0 +1,11 @@
+# A container that lists a child id no element has.
+version = 1
+root = "bar"
+
+[element.bar]
+kind = "row"
+children = ["name", "nowhere"]
+
+[element.name]
+kind = "text"
+metric = "model.name"

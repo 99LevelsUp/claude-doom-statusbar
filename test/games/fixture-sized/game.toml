@@ -1,0 +1,15 @@
+# A test-only game that reads presets (test only, never shipped): the file name of an old preset
+# setting picks one of its two sizes.
+name = "sized"
+description = "a test-only game with two sizes"
+default_skin = "sized-full"
+
+[legacy]
+aliases = []
+reads_presets = true
+presets = { full = "sized-full", minimal = "sized-minimal" }
+
+[assets]
+package = "@claude-game-bar/sized"
+version = "0.0.0"
+integrity = ""

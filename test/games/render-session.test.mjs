@@ -38,11 +38,15 @@ const SB = mkdtempSync(path.join(os.tmpdir(), "gamebar-session-"));
 const TMPDIR = path.join(SB, "tmp");
 mkdirSync(TMPDIR, { recursive: true });
 // Before the import: the sandbox is the runtime directory for the renders. The terminal that runs the
-// tests must not pick the mugshot's glyphs, so its identifying variables go.
+// tests must not pick the mugshot's glyphs, so its identifying variables go, and neither its height
+// nor a row limit may pick the skin.
 Object.assign(process.env, { ...sandboxEnv(TMPDIR), PATH: "", GAMEBAR_MSYS_REAP: "0",
   GAMEBAR_THEME: "doom", GAMEBAR_RATELIMITS_SHARE: "0", GAMEBAR_PRESET: path.join(PRESETS, "minimal.toml") });
-for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "GAMEBAR_GLYPHS"]) delete process.env[k];
+for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "GAMEBAR_GLYPHS",
+  "LINES", "GAMEBAR_MAX_ROWS", "DOOMBAR_MAX_ROWS"]) delete process.env[k];
 const { renderSession } = await import("../../src/render.js");
+const { rowsOf } = await import("../../src/render-core.js");
+const { findSkin } = await import("../../src/skin-select.js");
 
 const NOW_MS = 1793500000123;
 const NOW = NOW_MS / 1000;
@@ -73,7 +77,7 @@ function session(name, label, usd = 1) {
     GAMEBAR_PRESET: path.join(PRESETS, "standard.toml"), GAMEBAR_RATELIMITS_SHARE: "0",
     GAMEBAR_STATE: path.join(dir, "state", "checkpoint.json"), GAMEBAR_TASKS_DIR: path.join(dir, "tasks"),
     GAMEBAR_EVENTS: path.join(dir, "events.jsonl"), GAMEBAR_LLMLINGUA: path.join(dir, "ling.json"),
-    GAMEBAR_RATELIMITS: path.join(dir, "rl.json"),
+    GAMEBAR_RATELIMITS: path.join(dir, "rl.json"), GAMEBAR_USER_DIR: path.join(SB, "user"),
   };
   const data = {
     session_id: `sid-${name}`, session_name: `${label}-run`, cwd: path.join(dir, "proj"),
@@ -100,24 +104,50 @@ try {
       { input: JSON.stringify(s.data), env: childEnv }).toString("utf8"));
     s = session(`same-${name}`, "same");
     rmSync(path.join(TMPDIR, "gamebar_cpu.json"), { force: true });
-    const viaRender = [1, 2].map(() => render(s, over));
+    // The one-shot status line runs no skin scripts.
+    const viaRender = [1, 2].map(() => renderSession({ data: s.data, env: { ...s.env, ...over }, now: NOW, scripts: false }).join("\n") + "\n");
     ok(viaMain[0] === viaRender[0] && viaMain[1] === viaRender[1],
-      `${name}: main() prints exactly what renderSession returns (two renders in a row)`);
+      `${name}: main() prints exactly what renderSession returns without scripts (two renders in a row)`);
   }
   render(session("warmup", "warmup")); // the comparison above reset the CPU sample
 
-  // A preset that does not exist draws one line naming it, from renderSession and from main(),
-  // with nothing on stderr (S-6).
+  // A preset that does not exist (or one the user wrote) no longer draws: the bar draws the game's
+  // default skin with one line under it naming the preset, from renderSession and from main(), with
+  // nothing on stderr.
   {
     const s = session("nopreset", "nopreset");
     const missing = path.join(SB, "nope.toml");
-    const want = `gamebar: preset not found: ${missing}\n`;
-    ok(render(s, { GAMEBAR_PRESET: missing }) === want, `renderSession names the missing preset (got ${JSON.stringify(render(s, { GAMEBAR_PRESET: missing }))})`);
+    const out = renderSession({ data: s.data, env: { ...s.env, GAMEBAR_PRESET: missing }, now: NOW, scripts: false }).join("\n") + "\n";
+    const lines = out.trimEnd().split("\n");
+    ok(lines.length > 1 && strip(lines[0]).includes("MODEL") && strip(lines.at(-1)).includes(missing),
+      `renderSession draws the default skin and names the preset under it (got ${JSON.stringify(strip(lines.at(-1)))})`);
     const childEnv = { ...s.env, GAMEBAR_PRESET: missing, SystemRoot: process.env.SystemRoot, PATH: "",
       ...sandboxEnv(TMPDIR), GAMEBAR_MSYS_REAP: "0" };
-    const r = spawnSync(process.execPath, [STATUSLINE], { input: JSON.stringify(s.data), env: childEnv, encoding: "utf8" });
-    ok(r.status === 0 && r.stdout === want, `main() prints that line and exits 0 (status ${r.status}, got ${JSON.stringify(r.stdout)})`);
+    const r = spawnSync(process.execPath, ["--import", pathToFileURL(PIN).href, STATUSLINE], { input: JSON.stringify(s.data), env: childEnv, encoding: "utf8" });
+    ok(r.status === 0 && strip(r.stdout).trimEnd().split("\n").at(-1) === strip(lines.at(-1)),
+      `main() prints the same warning line and exits 0 (status ${r.status})`);
     ok(r.stderr === "", `main() writes nothing to stderr (got ${JSON.stringify(r.stderr.slice(0, 120))})`);
+  }
+
+  // The terminal's height: the bar takes at most a third of LINES, or GAMEBAR_MAX_ROWS (its old name
+  // too); without either it takes what it needs. A skin too tall goes down its chain.
+  {
+    ok(rowsOf({}) === Infinity && rowsOf({ LINES: "" }) === Infinity && rowsOf({ LINES: "x" }) === Infinity,
+      "no height, or one that is not a number: no row limit");
+    ok(rowsOf({ LINES: "15" }) === 5 && rowsOf({ LINES: "16" }) === 5 && rowsOf({ LINES: "96" }) === 32 && rowsOf({ LINES: "2" }) === 1,
+      "a third of the terminal's rows, rounded down, never under one");
+    ok(rowsOf({ LINES: "15", GAMEBAR_MAX_ROWS: "7" }) === 7 && rowsOf({ DOOMBAR_MAX_ROWS: "4" }) === 4,
+      "GAMEBAR_MAX_ROWS (or DOOMBAR_MAX_ROWS) sets the limit itself");
+    ok(rowsOf({ LINES: "15", GAMEBAR_MAX_ROWS: "0" }) === 5, "a limit of zero or less is no setting: the third of LINES counts");
+    const s = session("height", "height");
+    const rows = (over) => renderSession({ data: s.data, env: { ...s.env, GAMEBAR_PRESET: path.join(PRESETS, "full.toml"), ...over }, now: NOW, scripts: false }).length;
+    // This session reports few metrics, so its full bar is lower than the sample's 7 rows.
+    const full = rows({});
+    ok(full > 3, `a terminal that gives no height draws the full bar (${full} rows)`);
+    ok(rows({ LINES: "60" }) === full, "a tall terminal draws it too");
+    ok(rows({ COLUMNS: "58", LINES: "16" }) === 3, `the Raspberry Pi's 58x16 panel draws the 3-row doom-compact (${rows({ COLUMNS: "58", LINES: "16" })} rows)`);
+    ok(rows({ LINES: "9" }) === 3 && rows({ LINES: "9", GAMEBAR_MAX_ROWS: String(full) }) === full, "GAMEBAR_MAX_ROWS lets the full bar back in");
+    ok(rows({ LINES: "5" }) === 1, "a terminal of 5 rows draws the one-row doom-line");
   }
 
   // The passed environment's preset wins over process.env's (minimal here).
@@ -148,20 +178,23 @@ try {
     ok(a1 === a2, "rendering another session in between changes nothing in the first one");
   }
 
-  // The mugshot's glyph step comes from the session's own environment, capped by the preset's
-  // [mugshot] glyphs key: one daemon draws each session with the glyphs its terminal can show.
+  // The mugshot's glyph step comes from the session's own environment, capped by the skin's
+  // `glyphs` parameter of the mugshot: one daemon draws each session with the glyphs its terminal
+  // can show.
   {
     const s = session("glyphs", "glyphs");
     const half = render(s, { GAMEBAR_GLYPHS: "half" });
     const octant = render(s, { GAMEBAR_GLYPHS: "octant" });
     ok(half !== octant, "a session asking for half blocks draws a different face than one asking for octants");
     ok(render(s, { GAMEBAR_GLYPHS: "half" }) === half, "the same session settings draw the same face again");
-    const capped = path.join(s.dir, "capped.toml");
-    const preset = readFileSync(path.join(PRESETS, "standard.toml"), "utf8");
-    ok(/^glyphs = "octant"$/m.test(preset), "the standard preset names its mugshot glyph step (the check below can fail)");
-    writeFileSync(capped, preset.replace(/^glyphs = "octant"$/m, 'glyphs = "half"'));
-    ok(render(s, { GAMEBAR_PRESET: capped, GAMEBAR_GLYPHS: "octant" }) === half,
-      "a preset that caps the mugshot at half blocks wins over a terminal that draws octants");
+    // A user's copy of the standard skin with the mugshot capped at half blocks.
+    const standard = readFileSync(findSkin("doom-standard").file, "utf8");
+    ok(/^glyphs = "octant"$/m.test(standard), "the standard skin names its mugshot glyph step (the check below can fail)");
+    const capped = path.join(s.env.GAMEBAR_USER_DIR, "skins", "capped", "capped.toml");
+    mkdirSync(path.dirname(capped), { recursive: true });
+    writeFileSync(capped, standard.replace(/^glyphs = "octant"$/m, 'glyphs = "half"').replace(/^name = "doom-standard"$/m, 'name = "capped"'));
+    ok(render(s, { GAMEBAR_SKIN: "capped", GAMEBAR_GLYPHS: "octant" }) === half,
+      "a skin that caps the mugshot at half blocks wins over a terminal that draws octants");
     ok(render(s, { WT_SESSION: "x" }) === octant, "a Windows Terminal session gets octants without any setting");
   }
 

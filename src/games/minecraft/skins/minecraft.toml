@@ -1,0 +1,290 @@
+# minecraft: the in-game survival screen instead of boxes. A chat on the left plays conversations
+# about the session (no tokens); beside it ♥ hearts (what is left of the 5h limit) and 🍖 hunger
+# (what is left of the context), the XP bar (the 7-day limit, its level the percentage) and a 9-slot
+# hotbar of session stats. The highlighted slot jumps to what just happened, then wanders.
+#
+# When the terminal is narrow the chat drops first, then the hotbar's slots from the right; the
+# hearts, hunger and the XP bar stay. When the terminal is too short for six rows (or too narrow
+# even so), the bar switches to minecraft-compact.
+version = 1
+name = "minecraft"
+games = ["minecraft"]
+root = "bar"
+smaller = "minecraft-compact"
+
+# The chat at the terminal's left edge, the HUD in the middle of the terminal.
+[element.bar]
+kind = "row"
+separator = "  "
+shrink = "start"
+center = "hud"
+children = ["chat", "hud"]
+
+# --- the chat -----------------------------------------------------------------------------------
+# The platform's questions and answers about the metrics, in Minecraft's words where its library
+# has them (the library runs in the render daemon; the one-shot status line plays the platform's).
+[element.chat]
+kind = "chat"
+libraries = ["minecraft:conversations/minecraft.js"]
+width = 40
+min_width = 18
+rows = 6
+priority = 1
+
+# --- the HUD ------------------------------------------------------------------------------------
+# Aligned to the end, so the hunger row stays at the hotbar's right edge if a row above it narrows.
+[element.hud]
+kind = "column"
+align = "end"
+children = ["status", "xp", "hotbar"]
+
+# Hearts on the left, hunger on the right, a blank between them that takes what is left.
+[element.status]
+kind = "row"
+children = ["hearts", "between", "hunger"]
+
+[element.hearts]
+kind = "icon-row"
+metric = "ratelimit.5h"
+count = 10
+glyph = "♥"
+empty_glyph = "♡"
+color = "#ff3b3b"
+empty_color = "#c07070"
+# A heart is one column, a shank of hunger two: a space between the hearts gives both rows of ten
+# about the same length.
+gap = 1
+invert = true
+# A session without a 5h limit (an API key, or before the first answer) has every heart.
+when_absent = "full"
+priority = 3
+
+[element.between]
+kind = "text"
+width = 34
+min_width = 1
+
+[element.hunger]
+kind = "icon-row"
+metric = "context.hp"
+count = 10
+glyph = "🍖"
+empty_glyph = "🦴"
+invert = true
+from_right = true
+priority = 3
+
+[element.xp]
+kind = "progress"
+metric = "ratelimit.7d"
+cells = 73
+min_cells = 20
+fill = "━"
+partials = ""
+empty = "━"
+color = "#80ff20"
+empty_color = "#1f3a12"
+percent = "middle"
+track = "none"
+# A session without a 7-day limit has an empty XP bar at level 0.
+when_absent = "empty"
+priority = 3
+
+# --- the hotbar ---------------------------------------------------------------------------------
+# Nine slots, each an item over its "stack count". The highlight script knows the slots of the
+# errors, the lines added and the tasks by these ids. Every slot has the same priority, so at a
+# narrow width the rightmost drop first.
+[element.hotbar]
+kind = "row"
+frame = { kind = "grid" }
+script = "minecraft:scripts/hotbar-highlight.js"
+children = ["slot-window", "slot-cost", "slot-changes", "slot-added", "slot-agents", "slot-tasks", "slot-errors", "slot-cpu", "slot-clock"]
+
+# A slot's item: a leading space centres it in a cell of seven columns.
+[element.slot-window]
+kind = "column"
+align = "center"
+children = ["window-item", "window"]
+priority = 2
+
+[element.window-item]
+kind = "text"
+icon = " 🪓"
+width = 3
+min_width = 1
+
+[element.window]
+kind = "text"
+metric = "model.window"
+color = "#ffffff"
+align = "center"
+overflow = "clip"
+width = 7
+min_width = 5
+
+[element.slot-cost]
+kind = "column"
+align = "center"
+children = ["cost-item", "cost"]
+priority = 2
+
+[element.cost-item]
+kind = "text"
+icon = " 💎"
+width = 3
+min_width = 1
+
+[element.cost]
+kind = "text"
+metric = "cost.total"
+color = "#ffffff"
+align = "center"
+overflow = "clip"
+width = 7
+min_width = 5
+
+[element.slot-changes]
+kind = "column"
+align = "center"
+children = ["changes-item", "changes"]
+priority = 2
+
+[element.changes-item]
+kind = "text"
+icon = " 🌿"
+width = 3
+min_width = 1
+
+[element.changes]
+kind = "text"
+metric = "git.status"
+color = "#ffffff"
+align = "center"
+overflow = "clip"
+width = 7
+min_width = 5
+
+[element.slot-added]
+kind = "column"
+align = "center"
+children = ["added-item", "added"]
+priority = 2
+
+[element.added-item]
+kind = "text"
+icon = " 🧱"
+width = 3
+min_width = 1
+
+[element.added]
+kind = "text"
+metric = "loc.added"
+color = "#ffffff"
+align = "center"
+overflow = "clip"
+width = 7
+min_width = 5
+
+[element.slot-agents]
+kind = "column"
+align = "center"
+children = ["agents-item", "agents"]
+priority = 2
+
+[element.agents-item]
+kind = "text"
+icon = " 🐺"
+width = 3
+min_width = 1
+
+[element.agents]
+kind = "text"
+metric = "act.agents"
+color = "#ffffff"
+align = "center"
+overflow = "clip"
+width = 7
+min_width = 5
+
+[element.slot-tasks]
+kind = "column"
+align = "center"
+children = ["tasks-item", "tasks"]
+priority = 2
+
+[element.tasks-item]
+kind = "text"
+icon = " 🏆"
+width = 3
+min_width = 1
+
+[element.tasks]
+kind = "text"
+metric = "act.tasks"
+color = "#ffffff"
+align = "center"
+overflow = "clip"
+width = 7
+min_width = 5
+
+[element.slot-errors]
+kind = "column"
+align = "center"
+children = ["errors-item", "errors"]
+priority = 2
+
+[element.errors-item]
+kind = "text"
+icon = " 💥"
+width = 3
+min_width = 1
+
+[element.errors]
+kind = "text"
+metric = "act.errors"
+color = "#ffffff"
+align = "center"
+overflow = "clip"
+width = 7
+min_width = 5
+
+[element.slot-cpu]
+kind = "column"
+align = "center"
+children = ["cpu-item", "cpu"]
+priority = 2
+
+[element.cpu-item]
+kind = "text"
+icon = " 🔥"
+width = 3
+min_width = 1
+
+[element.cpu]
+kind = "number"
+metric = "sys.cpu"
+suffix = "%"
+color = "#ffffff"
+align = "center"
+width = 5
+
+[element.slot-clock]
+kind = "column"
+align = "center"
+children = ["clock-item", "clock"]
+priority = 2
+
+[element.clock-item]
+kind = "text"
+icon = " 🕓"
+width = 3
+min_width = 1
+
+[element.clock]
+kind = "text"
+metric = "sys.clock"
+color = "#ffffff"
+align = "center"
+overflow = "clip"
+width = 7
+min_width = 5

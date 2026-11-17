@@ -78,7 +78,7 @@ export function sysValues(cwd, now, env) {
   const ram = ramPercent();
   if (ram !== null) v["sys.ram"] = ram;
   const { cpu, cores } = cpuMetrics(env);
-  if (cpu !== null) v["sys.cpu"] = `${cpu}%`;
+  if (cpu !== null) v["sys.cpu"] = cpu;
   if (cores) v["sys.cores"] = cores;
   try {
     const stat = statfsSync(cwd || process.cwd());

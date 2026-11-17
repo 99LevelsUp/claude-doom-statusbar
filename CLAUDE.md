@@ -10,19 +10,21 @@ Spoken communication with the user is in Czech.
 
 ## Project Overview
 
-A platform plus game parts. The platform reads the Claude Code session (usage, rate limits, model, project, agents, tasks, system), turns it into metric values and a game-neutral reaction, and renders the bar through a render daemon and a bash client. Each game draws those values in its own look. Nothing in the platform knows about a particular game; games are reached only through the registry.
+A platform plus game data. The platform reads the Claude Code session (usage, rate limits, model, project, agents, tasks, system), turns it into raw metric values and a game-neutral reaction, and draws a skin through a render daemon and a bash client. A skin is a TOML tree of shared elements (containers and metric visuals); a game is only a folder of data: a manifest, skins, and assets published as its own npm package. Nothing in the platform knows about a particular game; games are reached only through the registry.
 
 Layers under `src/`:
-- entry files with stable paths: `hook.js`, `statusline.js`, `daemon.js`, `gamebar-client.sh` (and the shim `doombar-client.sh`), plus `render.js` (`renderSession`), `theme.js` and `package-root.js`;
-- `platform/`: runtime directory and file names, settings from the environment (`GAMEBAR_*` with `DOOMBAR_*` fallbacks), journal, daemon supervision, sweep, reaper, git and MSYS snapshots, the frame file;
-- `metrics/`: metric values and the game-neutral reaction;
-- `kit/`: drawing primitives, the width planner, the render context and the glyph raster;
+- entry files with stable paths: `hook.js`, `statusline.js`, `daemon.js`, `gamebar-client.sh` (and the shim `doombar-client.sh`), plus `render-core.js` (the shared render), `render.js` (`renderSession`, the render with skin scripts), `skin-select.js` (which skin a session draws), `skin-assets.js`, `theme.js` and `package-root.js`;
+- `platform/`: runtime directory and file names, settings from the environment (`GAMEBAR_*` with `DOOMBAR_*` fallbacks), journal, daemon supervision, sweep, reaper, git and MSYS snapshots, the frame file, the asset store (`assets.js`) and the script worker (`scripts/`);
+- `metrics/`: the metric catalogue, raw metric values and the game-neutral reaction;
+- `kit/`: drawing primitives, the elements (`elements/`), the skin loader, fit, draw and script pass (`skin/`), the chat's metrics library, colours and the glyph raster;
 - `install/`: settings, the statusLine command, daemons, the old package, the emoji font;
-- `games/`: the registry (`games/index.js`) and one folder per game:
-  - `doom/`: the boxes layout, the mugshot (portrait and face), presets `full`, `standard`, `minimal`, sprite assets;
-  - `minecraft/`: the hotbar layout, the chat, the `minecraft` preset.
+- `games/`: the registry (`games/index.js`) and one data folder per game (`game.toml` and `skins/*.toml`):
+  - `doom/`: skins `doom-full`, `doom-standard`, `doom-minimal`, and the low `doom-compact` and `doom-line`;
+  - `minecraft/`: skins `minecraft` and the low `minecraft-compact`.
 
-`bin/cli.js` is the `claude-game-bar` command. `CONTRIBUTING.md` describes how to add a game.
+Game assets (images, scripts, conversation libraries) live in `games/<game>/assets/`, the source of the npm package `@claude-game-bar/<game>`, pinned by version and integrity in the game's manifest.
+
+`bin/cli.js` is the `claude-game-bar` command. `CONTRIBUTING.md` describes how to add a game, the skin format and the skin script interface.
 
 The DOOM game's mapping: usage headroom is the mugshot's health, the 5h and 7d rate limits and the context window are bars, and the reaction is the face. The Minecraft game's mapping: the 5h rate limit is the hearts, context is hunger, the 7d rate limit is the XP bar, and the rest is a 9-slot hotbar.
 

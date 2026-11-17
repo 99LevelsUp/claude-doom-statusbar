@@ -1,0 +1,16 @@
+# The root container carries a parameter its descriptor does not know.
+version = 1
+root = "bar"
+
+[element.bar]
+kind = "row"
+glow = true
+children = ["name", "context"]
+
+[element.name]
+kind = "text"
+metric = "model.name"
+
+[element.context]
+kind = "progress"
+metric = "context.hp"

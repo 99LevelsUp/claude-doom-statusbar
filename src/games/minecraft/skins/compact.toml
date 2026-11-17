@@ -1,0 +1,158 @@
+# minecraft-compact: the Minecraft HUD in three rows, for a short or narrow terminal. Hearts and
+# hunger, the XP bar, and the hotbar's slots in a single row, each item beside its stack count,
+# without the hotbar's lines and without the chat.
+#
+# When the terminal is narrow the slots drop from the right; the hearts, hunger and the XP bar stay.
+# This is the last skin of the Minecraft chain: when even it does not fit, it is drawn cut at the
+# terminal's edge.
+version = 1
+name = "minecraft-compact"
+games = ["minecraft"]
+root = "hud"
+
+[element.hud]
+kind = "column"
+children = ["status", "xp", "hotbar"]
+
+# Hearts on the left, hunger on the right, a blank between them that takes what is left.
+[element.status]
+kind = "row"
+grow = "fill"
+children = ["hearts", "between", "hunger"]
+
+[element.hearts]
+kind = "icon-row"
+metric = "ratelimit.5h"
+count = 10
+glyph = "♥"
+empty_glyph = "♡"
+color = "#ff3b3b"
+empty_color = "#c07070"
+# A heart is one column, a shank of hunger two: a space between the hearts gives both rows of ten
+# about the same length.
+gap = 1
+invert = true
+when_absent = "full"
+
+[element.between]
+kind = "text"
+width = 34
+min_width = 1
+
+[element.hunger]
+kind = "icon-row"
+metric = "context.hp"
+count = 10
+glyph = "🍖"
+empty_glyph = "🦴"
+invert = true
+from_right = true
+
+[element.xp]
+kind = "progress"
+metric = "ratelimit.7d"
+cells = 73
+min_cells = 20
+fill = "━"
+partials = ""
+empty = "━"
+color = "#80ff20"
+empty_color = "#1f3a12"
+percent = "middle"
+track = "none"
+when_absent = "empty"
+
+# --- the hotbar ---------------------------------------------------------------------------------
+# The nine slots of the full skin in one row on the slots' background, each item beside its stack
+# count. Every slot has the same priority, so at a narrow width the rightmost drop first.
+[element.hotbar]
+kind = "row"
+separator = "  "
+separator_background = "#262626"
+frame = { kind = "box", header = false, background = "#262626", padding = 1 }
+children = ["window", "cost", "changes", "added", "agents", "tasks", "errors", "cpu", "clock"]
+
+[element.window]
+kind = "text"
+metric = "model.window"
+icon = "🪓"
+color = "#ffffff"
+width = 4
+min_width = 3
+overflow = "clip"
+priority = 2
+
+[element.cost]
+kind = "text"
+metric = "cost.total"
+icon = "💎"
+color = "#ffffff"
+width = 6
+min_width = 5
+overflow = "clip"
+priority = 2
+
+[element.changes]
+kind = "text"
+metric = "git.status"
+icon = "🌿"
+color = "#ffffff"
+width = 3
+min_width = 2
+overflow = "clip"
+priority = 2
+
+[element.added]
+kind = "text"
+metric = "loc.added"
+icon = "🧱"
+color = "#ffffff"
+width = 4
+min_width = 3
+overflow = "clip"
+priority = 2
+
+[element.agents]
+kind = "number"
+metric = "act.agents"
+icon = "🐺"
+color = "#ffffff"
+width = 2
+priority = 2
+
+[element.tasks]
+kind = "text"
+metric = "act.tasks"
+icon = "🏆"
+color = "#ffffff"
+width = 3
+min_width = 3
+overflow = "clip"
+priority = 2
+
+[element.errors]
+kind = "number"
+metric = "act.errors"
+icon = "💥"
+color = "#ffffff"
+width = 2
+priority = 2
+
+[element.cpu]
+kind = "number"
+metric = "sys.cpu"
+icon = "🔥"
+color = "#ffffff"
+suffix = "%"
+width = 4
+priority = 2
+
+[element.clock]
+kind = "text"
+metric = "sys.clock"
+icon = "🕓"
+color = "#ffffff"
+width = 5
+min_width = 5
+overflow = "clip"
+priority = 2

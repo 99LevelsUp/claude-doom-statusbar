@@ -43,7 +43,7 @@ try {
   const st = loadState({ session_id: sid });
   ok(st.msys?.n === 11, `loadState folded msys snapshot into state.msys (got ${JSON.stringify(st.msys)})`);
   const v = activityValues(st, now);
-  ok(v["sys.zombies"] === "11", `sys.zombies rendered from snapshot (got ${JSON.stringify(v["sys.zombies"])})`);
+  ok(v["sys.zombies"] === 11, `sys.zombies rendered from snapshot (got ${JSON.stringify(v["sys.zombies"])})`);
 
   // A state without an msys snapshot must not invent the field (non-win32 / no data).
   const v0 = activityValues({ errors: 0 }, now);

@@ -25,9 +25,9 @@ ok(v["act.tasks"] === "1/3", `act.tasks is done/total (got ${v["act.tasks"]})`);
 // tasklist: settled (completed, deleted) then open (in_progress, pending).
 const list = v["act.tasklist"];
 ok(Array.isArray(list) && list.length === 4, "tasklist has all 4 items");
-ok(list[0].mark === "✅" && list[1].mark === "❌", "settled on top: ✅ then ❌");
-ok(list[2].mark === "⏩" && list[3].mark === "🎯", "open below: ⏩ then 🎯");
-ok(Array.isArray(list[0].markRgb) && list[1].markRgb[0] === 224, "done green, deleted red");
+ok(list[0].status === "completed" && list[1].status === "deleted", "settled on top: completed then deleted");
+ok(list[2].status === "in_progress" && list[3].status === "pending", "open below: in progress then pending");
+ok(list.every((t) => Object.keys(t).sort().join() === "status,text"), "items carry a status and a title, no mark or colour");
 
 // Boxes are always shown — tasklist key emitted regardless of state/linger.
 const settled = { tasks: { a:{title:"x",status:"completed",ts:1} }, tasks_ts: 5 };
@@ -38,7 +38,7 @@ const empty = activityValues({}, now);
 ok(Array.isArray(empty["act.tasklist"]) && empty["act.tasklist"].length === 0, "no tasks -> act.tasklist []");
 ok(empty["act.tasks"] === "0/0", `no tasks -> act.tasks 0/0 (got ${empty["act.tasks"]})`);
 ok(Array.isArray(empty["act.subagents"]) && empty["act.subagents"].length === 0, "no agents -> act.subagents []");
-ok(empty["act.agents"] === "0", `no agents -> act.agents 0 (got ${empty["act.agents"]})`);
+ok(empty["act.agents"] === 0, `no agents -> act.agents 0 (got ${JSON.stringify(empty["act.agents"])})`);
 
 // Full agent list (no CAP collapse to '+k more').
 const sq = {}; for (let i=0;i<7;i++) sq["g"+i]={type:"explore",start:i,desc:"agent "+i};
