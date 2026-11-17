@@ -31,9 +31,10 @@
 #
 # Payload file layout (what the daemon parses):
 #   line 1  "gamebar-env", then for each forwarded variable that is set: a TAB and NAME=value.
-#           Forwarded, in this order: COLUMNS, then GAMEBAR_PRESET GAMEBAR_THEME GAMEBAR_SKIN
+#           Forwarded, in this order: COLUMNS LINES (the terminal's size, which Claude Code sets),
+#           then GAMEBAR_PRESET GAMEBAR_THEME GAMEBAR_SKIN
 #           GAMEBAR_TEXT_OVERFLOW GAMEBAR_INDENT GAMEBAR_FRAME_WINDOW GAMEBAR_STATE GAMEBAR_EVENTS
-#           GAMEBAR_LLMLINGUA GAMEBAR_SAVINGS_STATE, each followed by its old name (DOOMBAR_PRESET
+#           GAMEBAR_LLMLINGUA GAMEBAR_SAVINGS_STATE GAMEBAR_MAX_ROWS, each followed by its old name (DOOMBAR_PRESET
 #           and so on, MUGSHOT_STATE for GAMEBAR_STATE), then
 #           CLAUDE_CODE_TASK_LIST_ID CLAUDE_CONFIG_DIR WT_SESSION TERM_PROGRAM TMUX
 #           GAMEBAR_GLYPHS DOOMBAR_GLYPHS TERM VTE_VERSION (the terminal's identity picks the face's
@@ -176,12 +177,12 @@ __gamebar_client() {
 
   # Hand the payload over: the environment line, then the JSON. See the layout at the top.
   local envline=gamebar-env name val ws=$'\t\r\n'
-  for name in COLUMNS GAMEBAR_PRESET DOOMBAR_PRESET GAMEBAR_THEME DOOMBAR_THEME \
+  for name in COLUMNS LINES GAMEBAR_PRESET DOOMBAR_PRESET GAMEBAR_THEME DOOMBAR_THEME \
     GAMEBAR_SKIN DOOMBAR_SKIN \
     GAMEBAR_TEXT_OVERFLOW DOOMBAR_TEXT_OVERFLOW GAMEBAR_INDENT DOOMBAR_INDENT \
     GAMEBAR_FRAME_WINDOW DOOMBAR_FRAME_WINDOW GAMEBAR_STATE MUGSHOT_STATE \
     GAMEBAR_EVENTS DOOMBAR_EVENTS GAMEBAR_LLMLINGUA DOOMBAR_LLMLINGUA \
-    GAMEBAR_SAVINGS_STATE DOOMBAR_SAVINGS_STATE \
+    GAMEBAR_SAVINGS_STATE DOOMBAR_SAVINGS_STATE GAMEBAR_MAX_ROWS DOOMBAR_MAX_ROWS \
     CLAUDE_CODE_TASK_LIST_ID CLAUDE_CONFIG_DIR WT_SESSION TERM_PROGRAM TMUX \
     GAMEBAR_GLYPHS DOOMBAR_GLYPHS TERM VTE_VERSION; do
     [[ -n ${!name+set} ]] || continue

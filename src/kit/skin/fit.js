@@ -1,5 +1,5 @@
 // The fit: a loaded skin (src/kit/skin/load.js), the session's metric values and the terminal's
-// width become the tree that is drawn, each element with the columns it gets.
+// width and height become the tree that is drawn, each element with the columns it gets.
 //
 // When even the minimum widths do not fit, elements drop by the priority the skin gives them,
 // lowest first; of equal priorities the one later in the skin's tree (depth first) drops first. An
@@ -177,14 +177,20 @@ function cycleWarning(skin, name) {
   });
 }
 
-// Fits `skin` to `width` columns with the session's `values` (metric id to raw value).
-// `loadSmaller(name)` returns the loaded skin of that name, or null when there is none.
-export function fitSkin(skin, { values = {}, width, loadSmaller = () => null } = {}) {
+// Whether a fitted skin is taller than `rows`. Height never drops elements: in a row, dropping one
+// child seldom lowers the row, so a skin that is too tall goes down its chain instead.
+const tooTall = (result, rows) => Boolean(result.tree) && result.tree.m.rows > rows;
+
+// Fits `skin` to `width` columns and at most `rows` rows with the session's `values` (metric id to
+// raw value). A skin that does not fit either goes down its smaller-skin chain; the last skin of the
+// chain is drawn even when it is still too tall. `loadSmaller(name)` returns the loaded skin of that
+// name, or null when there is none.
+export function fitSkin(skin, { values = {}, width, rows = Infinity, loadSmaller = () => null } = {}) {
   const warnings = [];
   const seen = new Set([skin.name]);
   let current = skin;
   let result = fitOne(skin, values, width);
-  while (!result.fits) {
+  while (!result.fits || tooTall(result, rows)) {
     const name = current.smaller;
     if (!name) break;
     if (seen.has(name)) {

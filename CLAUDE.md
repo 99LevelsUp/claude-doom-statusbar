@@ -19,8 +19,8 @@ Layers under `src/`:
 - `kit/`: drawing primitives, the elements (`elements/`), the skin loader, fit, draw and script pass (`skin/`), the chat's metrics library, colours and the glyph raster;
 - `install/`: settings, the statusLine command, daemons, the old package, the emoji font;
 - `games/`: the registry (`games/index.js`) and one data folder per game (`game.toml` and `skins/*.toml`):
-  - `doom/`: skins `doom-full`, `doom-standard`, `doom-minimal`;
-  - `minecraft/`: skin `minecraft`.
+  - `doom/`: skins `doom-full`, `doom-standard`, `doom-minimal`, and the low `doom-compact` and `doom-line`;
+  - `minecraft/`: skins `minecraft` and the low `minecraft-compact`.
 
 Game assets (images, scripts, conversation libraries) live in `games/<game>/assets/`, the source of the npm package `@claude-game-bar/<game>`, pinned by version and integrity in the game's manifest.
 

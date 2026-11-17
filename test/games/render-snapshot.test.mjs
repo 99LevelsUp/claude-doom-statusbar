@@ -4,7 +4,8 @@
 //
 // The skins come from the game registry (every bundled skin), plus a user skin fixture that mixes
 // two games' parts (test/fixtures/skins/mixed.toml). Each bundled skin is drawn at three terminal
-// widths while nothing happens, and every skin at the widest for each of four reactions: ouch, kill,
+// widths while nothing happens, and on a short panel (56 columns, 5 rows: the Raspberry Pi's 58x16
+// display), and every skin at the widest for each of four reactions: ouch, kill,
 // god, and dead (out of usage, with the 5h limit used up as the statusline would have it), and once
 // more calm with no subagents and no tasks, so the boxes of empty lists are pinned too.
 //
@@ -54,6 +55,9 @@ const NOW = 1793500000;              // fixed clock: chat position, idle slot, i
 // at the edge), middle (parts shrunk) and wide (the whole skin). The reactions are drawn wide.
 const WIDTHS = [60, 100, 200];
 const REACTION_WIDTH = 200;
+// A short terminal as well: the Raspberry Pi's built-in panel, 58x16, whose bar gets 56 columns and
+// a third of the rows. Every bundled skin is drawn calm at it, down its chain to a low skin.
+const PANEL = { width: 56, rows: 5 };
 
 // The session at each moment drawn: its metric values and its reaction.
 const reactionTo = (o = {}, values = RAW_SAMPLE) => buildReaction({ st: {}, values, godUntil: 0, exhausted: false, now: NOW, ...o });
@@ -73,13 +77,15 @@ const MOMENTS = {
 // the skin's own paths are read from (a bundled skin's game folder, a user skin's own folder). The
 // mixed skin is narrower than any of the widths, so it is drawn calm at one width only.
 const SKINS = [
-  ...bundledSkins().map((s) => ({ name: s.name, file: s.file, folder: s.game.dir, widths: WIDTHS })),
+  ...bundledSkins().map((s) => ({ name: s.name, file: s.file, folder: s.game.dir, widths: WIDTHS, panel: true })),
   { name: "mixed", file: MIXED, folder: path.dirname(MIXED), widths: [REACTION_WIDTH] },
 ];
 
-// Every case: each skin calm at each of its widths, then each reaction at the widest.
+// Every case: each skin calm at each of its widths, a bundled skin calm on the panel, then each
+// reaction at the widest.
 const CASES = SKINS.flatMap((skin) => [
   ...skin.widths.map((width) => ({ name: `${skin.name}-${width}`, skin, width, moment: "calm" })),
+  ...(skin.panel ? [{ name: `${skin.name}-${PANEL.width}x${PANEL.rows}`, skin, ...PANEL, moment: "calm" }] : []),
   ...Object.keys(MOMENTS).filter((m) => m !== "calm")
     .map((moment) => ({ name: `${skin.name}-${REACTION_WIDTH}-${moment}`, skin, width: REACTION_WIDTH, moment })),
 ]);
@@ -106,11 +112,11 @@ function scriptsNotRun(tree, scripts) {
 
 // One case drawn: its lines, the skin that drew them (the case's own, or one down its smaller-skin
 // chain), and what went wrong on the way (warnings, scripts that did not run).
-function draw({ skin, width, moment }) {
+function draw({ skin, width, rows = Infinity, moment }) {
   const { values, reaction } = MOMENTS[moment];
   const assets = createAssetResolver({ folder: skin.folder });
   const loaded = loadSkin(skin.file);
-  const fit = fitSkin(loaded.skin, { values, width, loadSmaller: loadNamed });
+  const fit = fitSkin(loaded.skin, { values, width, rows, loadSmaller: loadNamed });
   const pass = createScriptPass({ budgetMs: 60000, callBudgetMs: 10000 });
   const run = runScripts(fit, { host, pass, values, reaction, now: NOW, tick: 0, folderOf: () => skin.folder, resolveAsset: assets.resolve });
   const lines = drawFit(run.fit, { values, width, scripts: run.scripts, ctx: { tick: 0, step: "octant", resolveAsset: assets.resolve, reaction, now: NOW } });

@@ -1,0 +1,80 @@
+# doom-line: the DOOM bar on a single row, for a terminal too short or too narrow for any other.
+# The model, the context, both rate limits and the branch on the panel colour; no mugshot.
+#
+# When the terminal is too narrow the branch drops, then the 7-day limit, then the model. This is
+# the last skin of the DOOM chain: when even it does not fit, it is drawn cut at the terminal's edge.
+version = 1
+name = "doom-line"
+games = ["doom"]
+root = "bar"
+
+[element.bar]
+kind = "row"
+separator = "  "
+separator_background = "#1c2036"
+frame = { kind = "box", header = false, background = "#1c2036" }
+children = ["model-name", "context", "limit-5h", "limit-7d", "branch"]
+
+[element.model-name]
+kind = "text"
+metric = "model.name"
+icon = "🤖"
+width = 12
+min_width = 8
+priority = 3
+
+[element.context]
+kind = "progress"
+metric = "context.hp"
+icon = "🧠"
+cells = 5
+min_cells = 3
+
+[element.limit-5h]
+kind = "row"
+separator = " "
+separator_background = "#1c2036"
+children = ["limit-5h-bar", "limit-5h-reset"]
+
+[element.limit-5h-bar]
+kind = "progress"
+metric = "ratelimit.5h"
+icon = "🕔"
+percent = "none"
+cells = 4
+min_cells = 2
+
+[element.limit-5h-reset]
+kind = "text"
+metric = "usage.reset5h"
+width = 6
+min_width = 5
+
+[element.limit-7d]
+kind = "row"
+separator = " "
+separator_background = "#1c2036"
+children = ["limit-7d-bar", "limit-7d-reset"]
+priority = 2
+
+[element.limit-7d-bar]
+kind = "progress"
+metric = "ratelimit.7d"
+icon = "📅"
+percent = "none"
+cells = 4
+min_cells = 2
+
+[element.limit-7d-reset]
+kind = "text"
+metric = "usage.reset7d"
+width = 6
+min_width = 5
+
+[element.branch]
+kind = "text"
+metric = "git.branch"
+icon = "🌿"
+width = 14
+min_width = 8
+priority = 1

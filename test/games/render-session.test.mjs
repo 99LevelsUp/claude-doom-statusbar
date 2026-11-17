@@ -38,11 +38,14 @@ const SB = mkdtempSync(path.join(os.tmpdir(), "gamebar-session-"));
 const TMPDIR = path.join(SB, "tmp");
 mkdirSync(TMPDIR, { recursive: true });
 // Before the import: the sandbox is the runtime directory for the renders. The terminal that runs the
-// tests must not pick the mugshot's glyphs, so its identifying variables go.
+// tests must not pick the mugshot's glyphs, so its identifying variables go, and neither its height
+// nor a row limit may pick the skin.
 Object.assign(process.env, { ...sandboxEnv(TMPDIR), PATH: "", GAMEBAR_MSYS_REAP: "0",
   GAMEBAR_THEME: "doom", GAMEBAR_RATELIMITS_SHARE: "0", GAMEBAR_PRESET: path.join(PRESETS, "minimal.toml") });
-for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "GAMEBAR_GLYPHS"]) delete process.env[k];
+for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "GAMEBAR_GLYPHS",
+  "LINES", "GAMEBAR_MAX_ROWS", "DOOMBAR_MAX_ROWS"]) delete process.env[k];
 const { renderSession } = await import("../../src/render.js");
+const { rowsOf } = await import("../../src/render-core.js");
 const { findSkin } = await import("../../src/skin-select.js");
 
 const NOW_MS = 1793500000123;
@@ -124,6 +127,27 @@ try {
     ok(r.status === 0 && strip(r.stdout).trimEnd().split("\n").at(-1) === strip(lines.at(-1)),
       `main() prints the same warning line and exits 0 (status ${r.status})`);
     ok(r.stderr === "", `main() writes nothing to stderr (got ${JSON.stringify(r.stderr.slice(0, 120))})`);
+  }
+
+  // The terminal's height: the bar takes at most a third of LINES, or GAMEBAR_MAX_ROWS (its old name
+  // too); without either it takes what it needs. A skin too tall goes down its chain.
+  {
+    ok(rowsOf({}) === Infinity && rowsOf({ LINES: "" }) === Infinity && rowsOf({ LINES: "x" }) === Infinity,
+      "no height, or one that is not a number: no row limit");
+    ok(rowsOf({ LINES: "15" }) === 5 && rowsOf({ LINES: "16" }) === 5 && rowsOf({ LINES: "96" }) === 32 && rowsOf({ LINES: "2" }) === 1,
+      "a third of the terminal's rows, rounded down, never under one");
+    ok(rowsOf({ LINES: "15", GAMEBAR_MAX_ROWS: "7" }) === 7 && rowsOf({ DOOMBAR_MAX_ROWS: "4" }) === 4,
+      "GAMEBAR_MAX_ROWS (or DOOMBAR_MAX_ROWS) sets the limit itself");
+    ok(rowsOf({ LINES: "15", GAMEBAR_MAX_ROWS: "0" }) === 5, "a limit of zero or less is no setting: the third of LINES counts");
+    const s = session("height", "height");
+    const rows = (over) => renderSession({ data: s.data, env: { ...s.env, GAMEBAR_PRESET: path.join(PRESETS, "full.toml"), ...over }, now: NOW, scripts: false }).length;
+    // This session reports few metrics, so its full bar is lower than the sample's 7 rows.
+    const full = rows({});
+    ok(full > 3, `a terminal that gives no height draws the full bar (${full} rows)`);
+    ok(rows({ LINES: "60" }) === full, "a tall terminal draws it too");
+    ok(rows({ COLUMNS: "58", LINES: "16" }) === 3, `the Raspberry Pi's 58x16 panel draws the 3-row doom-compact (${rows({ COLUMNS: "58", LINES: "16" })} rows)`);
+    ok(rows({ LINES: "9" }) === 3 && rows({ LINES: "9", GAMEBAR_MAX_ROWS: String(full) }) === full, "GAMEBAR_MAX_ROWS lets the full bar back in");
+    ok(rows({ LINES: "5" }) === 1, "a terminal of 5 rows draws the one-row doom-line");
   }
 
   // The passed environment's preset wins over process.env's (minimal here).

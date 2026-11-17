@@ -68,7 +68,9 @@ in short:
 
 - top level: `version` (1), `name` (the file name without `.toml` when absent), `games` (the games
   whose assets it uses), `root` (the id of the element the bar starts from) and `smaller` (the skin
-  to switch to when this one does not fit even with elements dropped);
+  to switch to when this one does not fit the width even with elements dropped, or is taller than
+  the rows the bar may take: a third of the terminal's, or `GAMEBAR_MAX_ROWS`; each skin down a
+  chain should be no wider and no taller than the one before it);
 - one `[element.<id>]` table per element, with its `kind` and the settings every element shares:
   `metric` (a catalogue id from `src/metrics/catalogue.js`), `priority` (a whole number, lowest
   dropped first when the bar is too narrow; no priority or `"keep"` is never dropped on its own),

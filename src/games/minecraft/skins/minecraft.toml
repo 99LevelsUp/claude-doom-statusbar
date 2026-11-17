@@ -4,11 +4,13 @@
 # hotbar of session stats. The highlighted slot jumps to what just happened, then wanders.
 #
 # When the terminal is narrow the chat drops first, then the hotbar's slots from the right; the
-# hearts, hunger and the XP bar stay.
+# hearts, hunger and the XP bar stay. When the terminal is too short for six rows (or too narrow
+# even so), the bar switches to minecraft-compact.
 version = 1
 name = "minecraft"
 games = ["minecraft"]
 root = "bar"
+smaller = "minecraft-compact"
 
 [element.bar]
 kind = "row"

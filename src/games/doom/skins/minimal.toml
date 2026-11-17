@@ -1,9 +1,10 @@
-# doom-minimal: MODEL, USAGE, the mugshot, PROJECT and ACTIVITY. The narrowest DOOM bar: when even
-# this does not fit, it is drawn cut at the terminal's edge.
+# doom-minimal: MODEL, USAGE, the mugshot, PROJECT and ACTIVITY. The narrowest DOOM bar with titled
+# boxes: when it does not fit the terminal's width or height, the bar switches to doom-compact.
 version = 1
 name = "doom-minimal"
 games = ["doom"]
 root = "bar"
+smaller = "doom-compact"
 
 [element.bar]
 kind = "row"

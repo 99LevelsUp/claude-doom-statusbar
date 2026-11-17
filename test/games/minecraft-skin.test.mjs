@@ -50,10 +50,16 @@ const SKIN = findSkin("minecraft");
 const reaction = ({ expr = null, age = 0, values = RAW_SAMPLE, exhausted = false, godUntil = 0, now = NOW } = {}) =>
   buildReaction({ st: expr ? { expr, ts: now - age } : {}, values, godUntil, exhausted, now });
 
-// The Minecraft skin fitted to `width`, its scripts run (unless `scripts` is false), and drawn.
-function draw({ width = 200, values = RAW_SAMPLE, react = reaction({ values }), now = NOW, scripts = true } = {}) {
+const smaller = (name) => {
+  const s = findSkin(name);
+  return s && s.file ? loadSkin(s.file).skin : null;
+};
+
+// The Minecraft skin fitted to `width` (and `rows`, which can take it down to minecraft-compact),
+// its scripts run (unless `scripts` is false), and drawn.
+function draw({ width = 200, rows = Infinity, values = RAW_SAMPLE, react = reaction({ values }), now = NOW, scripts = true } = {}) {
   const loaded = loadSkin(SKIN.file);
-  const fit = fitSkin(loaded.skin, { values, width });
+  const fit = fitSkin(loaded.skin, { values, width, rows, loadSmaller: smaller });
   let drawn = fit, outputs = {}, warnings = [];
   if (scripts) {
     const run = runScripts(fit, { host, pass: pass(), values, reaction: react, now, tick: 0, folderOf: () => minecraft.dir, resolveAsset: assets.resolve });
@@ -78,10 +84,13 @@ try {
   {
     const dir = path.join(ROOT, "src", "games", "minecraft");
     const files = readdirSync(dir, { recursive: true }).map((f) => f.replace(/\\/g, "/")).sort();
-    ok(same(files, ["game.toml", "skins", "skins/minecraft.toml"]), `src/games/minecraft holds the manifest and one skin, no code (${files.join(", ")})`);
-    const { skin, warnings } = loadSkin(SKIN.file);
-    ok(skin && skin.name === "minecraft" && warnings.length === 0,
-      `the minecraft skin loads without a warning${warnings.length ? `: ${warnings.map((w) => w.message).join("; ")}` : ""}`);
+    ok(same(files, ["game.toml", "skins", "skins/compact.toml", "skins/minecraft.toml"]),
+      `src/games/minecraft holds the manifest and two skins, no code (${files.join(", ")})`);
+    for (const name of ["minecraft", "minecraft-compact"]) {
+      const { skin, warnings } = loadSkin(findSkin(name).file);
+      ok(skin && skin.name === name && warnings.length === 0,
+        `the ${name} skin loads without a warning${warnings.length ? `: ${warnings.map((w) => w.message).join("; ")}` : ""}`);
+    }
     const pkg = JSON.parse(readFileSync(path.join(ROOT, "games", "minecraft", "assets", "package.json"), "utf8"));
     const pinned = minecraft.assets && minecraft.assets.version;
     ok(pkg.name === "@claude-game-bar/minecraft" && pkg.version === pinned,
@@ -90,6 +99,21 @@ try {
       const file = assets.resolve(ref);
       ok(file && existsSync(file), `${ref} is a Minecraft asset`);
     }
+  }
+
+  console.log("a short terminal:");
+  {
+    ok(draw({ rows: 6 }).fit.skin.name === "minecraft", "with room for six rows the full skin is drawn");
+    // The Raspberry Pi's panel: 56 columns for the bar, a third of 16 rows.
+    const panel = draw({ width: 56, rows: 5 });
+    ok(panel.fit.skin.name === "minecraft-compact" && panel.lines.length === 3 && panel.lines.every((l) => vlen(l) <= 56) && !panel.fit.clipped,
+      `a 56x5 panel draws minecraft-compact, three rows within the width (${panel.fit.skin.name}, ${panel.lines.length} rows)`);
+    ok(count(panel.plain[0], "♥") === 4 && count(panel.plain[0], "🍖") === 2 && /━ 31 ━/.test(panel.plain[1]),
+      "it keeps the hearts, the hunger and the XP bar");
+    ok(!/[┏┃┗]/.test(panel.plain.join("")) && ["🪓 1M", "💎 $1.83"].every((s) => panel.plain[2].includes(s)),
+      `its hotbar is one row of items beside their counts, no lines (${panel.plain[2].trim()})`);
+    const slots = hotbarOf(panel).children.map((k) => k.id);
+    ok(slots[0] === "window" && slots.length < 9, `the slots that do not fit drop from the right (${slots.join(" ")})`);
   }
 
   console.log("hearts, hunger, the XP bar and the hotbar:");

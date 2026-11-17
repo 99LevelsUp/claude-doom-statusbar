@@ -47,8 +47,8 @@ const SRC_CHECK_MS = 2000;
 // that sets only the old name is never overruled by a new name the daemon inherited. The savings
 // files (EVENTS, LLMLINGUA, SAVINGS_STATE) are per session too.
 export const FORWARDED_ENV = [
-  "COLUMNS", ...["PRESET", "THEME", "SKIN", "TEXT_OVERFLOW", "INDENT", "FRAME_WINDOW", "STATE",
-    "EVENTS", "LLMLINGUA", "SAVINGS_STATE"].flatMap(bothNames),
+  "COLUMNS", "LINES", ...["PRESET", "THEME", "SKIN", "TEXT_OVERFLOW", "INDENT", "FRAME_WINDOW", "STATE",
+    "EVENTS", "LLMLINGUA", "SAVINGS_STATE", "MAX_ROWS"].flatMap(bothNames),
   "CLAUDE_CODE_TASK_LIST_ID", "CLAUDE_CONFIG_DIR",
   "WT_SESSION", "TERM_PROGRAM", "TMUX", ...bothNames("GLYPHS"), "TERM", "VTE_VERSION",
 ];

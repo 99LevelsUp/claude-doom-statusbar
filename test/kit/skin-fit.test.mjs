@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-// The fit: a loaded skin, the session's values and the terminal's width become the tree that is
-// drawn. Elements take their natural widths when there is room, shrink towards their minimum when
-// there is not, then drop by the skin's priorities, lowest first; a skin that still does not fit
-// gives way to the smaller skin it names, and the last skin of that chain is drawn clipped.
+// The fit: a loaded skin, the session's values and the terminal's width and height become the tree
+// that is drawn. Elements take their natural widths when there is room, shrink towards their minimum
+// when there is not, then drop by the skin's priorities, lowest first; a skin that still does not
+// fit, or is taller than the rows it may take, gives way to the smaller skin it names, and the last
+// skin of that chain is drawn as it is (clipped when it is too wide).
 
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
@@ -131,6 +132,26 @@ try {
       "the warning has the same key on every render");
     const missing = fitSkin(byName("cycle-a"), { values: VALUES, width: 60, loadSmaller: () => null });
     ok(missing.skin.name === "cycle-a" && missing.clipped, "a smaller skin that cannot be loaded ends the chain at the skin before it");
+  }
+
+  console.log("a skin too tall for the rows goes down its chain");
+  {
+    // tall: a column of four rows, 10 columns wide; low: the same in one row, 23 columns wide.
+    const four = { a: txt("model.name", 10), b: txt("model.window", 10), c: txt("model.name", 10), d: txt("model.window", 10) };
+    const tall = inline({ bar: { kind: "column", children: ["a", "b", "c", "d"] }, ...four }, { name: "tall", smaller: "low" });
+    const low = inline({ bar: { kind: "row", separator: " ", children: ["a", "b"] }, a: four.a, b: four.b }, { name: "low" });
+    const chain = (name) => ({ low }[name] ?? null);
+    const fit = (rows, width = 100) => fitSkin(tall, { values: VALUES, width, rows, loadSmaller: chain });
+    ok(fitSkin(tall, { values: VALUES, width: 100, loadSmaller: chain }).skin === tall, "without a row limit the height does not count");
+    ok(fit(4).skin === tall && fit(4).tree.rows === 4, "a skin exactly as tall as the limit stays");
+    const short = fit(3);
+    ok(short.skin === low && short.tree.rows === 1 && !short.clipped && same(short.dropped, []),
+      "one row too many and the smaller skin is drawn, whole");
+    ok(fit(0).skin === low && !fit(0).clipped, "the last skin of the chain is drawn even when it is still too tall");
+    ok(fitSkin(tall, { values: VALUES, width: 100, rows: 3 }).skin === tall, "a skin with no smaller skin is drawn as tall as it is");
+    // Width and height together: low fits 3 rows but not 15 columns, so it is drawn clipped.
+    const both = fit(3, 15);
+    ok(both.skin === low && both.clipped, "a smaller skin that is low enough but too wide is drawn clipped");
   }
 
   console.log("widths do not follow the length of texts or lists");

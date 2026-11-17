@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-// DOOM as data: its game folder holds only its manifest and three skins (full, standard, minimal),
-// and what is particular to DOOM, the mugshot's frame for the session's reaction, is a script among
-// its assets. These pin the skins (they load without a warning, the boxes each width shows and how
-// the bar narrows from full to standard to minimal), the mugshot script's frames, the default
-// frame drawn when no script runs, and that the old preset setting still picks the size.
+// DOOM as data: its game folder holds only its manifest and its skins (full, standard, minimal, and
+// the low compact and line), and what is particular to DOOM, the mugshot's frame for the session's
+// reaction, is a script among its assets. These pin the skins (they load without a warning, the
+// boxes each width shows, how the bar narrows from full to standard to minimal, and how a short or
+// narrow terminal takes it on to compact and line), the mugshot script's frames, the default frame
+// drawn when no script runs, and that the old preset setting still picks the size.
 
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -12,7 +13,8 @@ import { TEMP_SANDBOX } from "../_temp-sandbox.mjs"; // before the modules that 
 import { RAW_SAMPLE } from "../_raw-sample.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "GAMEBAR_GLYPHS", "GAMEBAR_THEME", "GAMEBAR_PRESET", "GAMEBAR_SKIN"]) delete process.env[k];
+for (const k of ["WT_SESSION", "TERM_PROGRAM", "TERM", "TMUX", "VTE_VERSION", "GAMEBAR_GLYPHS", "GAMEBAR_THEME", "GAMEBAR_PRESET", "GAMEBAR_SKIN",
+  "LINES", "GAMEBAR_MAX_ROWS", "DOOMBAR_MAX_ROWS"]) delete process.env[k];
 Object.assign(process.env, { PATH: "", GAMEBAR_MSYS_REAP: "0", GAMEBAR_RATELIMITS_SHARE: "0" });
 
 const { findGame } = await import("../../src/games/index.js");
@@ -51,10 +53,10 @@ const smaller = (name) => {
   return s && s.file ? loadSkin(s.file).skin : null;
 };
 
-// A skin file fitted to `width`, its scripts run (unless `scripts` is false), and drawn.
-function draw(file, { width = 200, reaction = CALM, now = NOW, step = "octant", scripts = true, frames = null, values = RAW_SAMPLE } = {}) {
+// A skin file fitted to `width` and `rows`, its scripts run (unless `scripts` is false), and drawn.
+function draw(file, { width = 200, rows = Infinity, reaction = CALM, now = NOW, step = "octant", scripts = true, frames = null, values = RAW_SAMPLE } = {}) {
   const loaded = loadSkin(file);
-  const fit = fitSkin(loaded.skin, { values, width, loadSmaller: smaller });
+  const fit = fitSkin(loaded.skin, { values, width, rows, loadSmaller: smaller });
   const ctx = { tick: 0, step, resolveAsset: assets.resolve, reaction, now };
   let drawn = fit, outputs = frames ?? {};
   if (scripts && !frames) {
@@ -75,8 +77,8 @@ try {
   {
     const dir = path.join(ROOT, "src", "games", "doom");
     const files = readdirSync(dir, { recursive: true }).map((f) => f.replace(/\\/g, "/")).sort();
-    ok(same(files, ["game.toml", "skins", "skins/full.toml", "skins/minimal.toml", "skins/standard.toml"]),
-      `src/games/doom holds the manifest and three skins, no code (${files.join(", ")})`);
+    ok(same(files, ["game.toml", "skins", "skins/compact.toml", "skins/full.toml", "skins/line.toml", "skins/minimal.toml", "skins/standard.toml"]),
+      `src/games/doom holds the manifest and five skins, no code (${files.join(", ")})`);
     for (const name of ["doom-full", "doom-standard", "doom-minimal"]) {
       const s = findSkin(name);
       const { skin, warnings } = loadSkin(s.file);
@@ -152,6 +154,37 @@ try {
     ok(draw(skinFile("doom-standard"), { width: 200 }).fit.skin.name === "doom-standard"
       && same(titles(draw(skinFile("doom-standard"), { width: 200 }).lines), ["MODEL", "USAGE", "PROJECT", "ACTIVITY", "AGENTS", "TASKS"]),
       "doom-standard at 200 columns is full without SAVE and SYSTEM");
+  }
+
+  console.log("the skins at each height:");
+  {
+    const full = skinFile("doom-full");
+    const ids = (r) => r.fit.tree.children.map((k) => k.id);
+    const tall = draw(full, { width: 200, rows: 7 });
+    ok(tall.fit.skin.name === "doom-full" && tall.lines.length === 7, "with room for 7 rows doom-full is drawn whole");
+    const six = draw(full, { width: 200, rows: 6 });
+    ok(six.fit.skin.name === "doom-compact" && six.lines.length === 3,
+      `with 6 rows every titled skin is too tall and the bar goes down to doom-compact (${six.fit.skin.name}, ${six.lines.length} rows)`);
+    // The Raspberry Pi's panel: 58 columns less the indent, 16 rows of which the bar may take a third.
+    const panel = draw(full, { width: 56, rows: 5 });
+    ok(panel.fit.skin.name === "doom-compact" && same(ids(panel), ["model", "usage", "mugshot", "project"]) && !panel.fit.clipped,
+      `a 56x5 panel draws doom-compact whole (${panel.fit.skin.name}: ${ids(panel).join(" ")})`);
+    ok(panel.lines.length === 3 && panel.lines.every((l) => vlen(l) <= 56), "doom-compact is 3 rows within the width");
+    ok(!/[A-Z]{4,}/.test(strip(panel.lines.join("\n")).replace(/Opus/g, "")), "doom-compact's boxes have no title rows");
+    const narrow = draw(full, { width: 44, rows: 5 });
+    ok(narrow.fit.skin.name === "doom-compact" && same(ids(narrow), ["model", "usage", "mugshot"]),
+      `at 44 columns doom-compact has dropped PROJECT (${ids(narrow).join(" ")})`);
+    const short = draw(full, { width: 56, rows: 2 });
+    ok(short.fit.skin.name === "doom-line" && short.lines.length === 1 && vlen(short.lines[0]) <= 56,
+      `with 2 rows the bar is doom-line, one row (${short.fit.skin.name})`);
+    const oneRow = draw(full, { width: 56, rows: 1 });
+    ok(oneRow.fit.skin.name === "doom-line" && !oneRow.lines.some((l) => /[\u{1CD00}-\u{1CDE5}]/u.test(l)), "doom-line has no mugshot");
+    // With no room at all the last skin of the chain is drawn, never nothing.
+    const none = draw(full, { width: 56, rows: 0 });
+    ok(none.fit.skin.name === "doom-line" && none.lines.length === 1, "a terminal too short for any skin still gets doom-line");
+    // Width alone: below doom-minimal's width the bar now goes on to doom-compact instead of being cut.
+    const cut = draw(full, { width: 56 });
+    ok(cut.fit.skin.name === "doom-compact" && !cut.fit.clipped, "at 56 columns doom-compact is drawn instead of a cut doom-minimal");
   }
 
   console.log("empty lists, the cores and the rows of a box:");

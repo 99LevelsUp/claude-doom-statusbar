@@ -14,7 +14,7 @@ There are two games: **DOOM** (the default) and **Minecraft**. Each game comes a
 
 The Doomguy HUD: a mugshot whose face tracks your health, boxes for usage, model, project and system, and live lists of running agents and tasks. The mugshot is the real DOOM (1993) status-face sprite, rasterised into the terminal at runtime. It is not ASCII art of it.
 
-The HUD is a row of boxes with the mugshot among them. DOOM has three skins: `doom-full` shows every box, `doom-standard` leaves out SAVE and SYSTEM, and `doom-minimal` keeps MODEL, USAGE, the mugshot, PROJECT and ACTIVITY. In `doom-full`:
+The HUD is a row of boxes with the mugshot among them. DOOM has three skins with titled boxes: `doom-full` shows every box, `doom-standard` leaves out SAVE and SYSTEM, and `doom-minimal` keeps MODEL, USAGE, the mugshot, PROJECT and ACTIVITY. Two low skins take over in a short or narrow terminal: `doom-compact` (three rows, no titles, a smaller mugshot) and `doom-line` (one row). In `doom-full`:
 
 - **mugshot**: the Doomguy face. Its HP (how bloodied it looks) follows your *usage headroom*: `min(5h, 7d) rate-limit room`, with context as a fallback. It glances around when idle, winces on errors, snarls on writes, grins on a clean finish, dies when you're tapped out, and flashes invulnerable just after an advisor consult.
 - **MODEL**: model name and reasoning effort (a waxing-moon to sun icon), thinking and fast toggles, output style, and the configured `/advisor` model.
@@ -155,7 +155,7 @@ $env:FORCE_HYPERLINK = "1"; claude
 
 ## Skins
 
-A skin is the whole look of the bar: which elements it shows, how they are laid out, their characters, colours and icons, and the game assets they draw with. The bundled skins are `doom-full` (the default), `doom-standard`, `doom-minimal` and `minecraft`. Switch at any time. The status bar changes on its next refresh, with no restart.
+A skin is the whole look of the bar: which elements it shows, how they are laid out, their characters, colours and icons, and the game assets they draw with. The bundled skins are `doom-full` (the default), `doom-standard`, `doom-minimal`, `doom-compact`, `doom-line`, `minecraft` and `minecraft-compact`; the compact and line skins are the ones a short terminal switches to (see [Narrow and short terminals](#narrow-and-short-terminals)), and can be chosen like any other. Switch at any time. The status bar changes on its next refresh, with no restart.
 
 ### Switching skins
 
@@ -223,9 +223,11 @@ Elements can run scripts that change how they look on each render, such as the m
 
 When something in a skin does not hold (an unknown element, metric or parameter, often after an update), or a script fails, or an asset is missing, the bar skips that part, draws the rest, and shows one dim line under the bar for a minute: `gamebar: <the first problem> (+N more)`.
 
-### Narrow terminals
+### Narrow and short terminals
 
-As the terminal narrows, the elements first shrink to their minimum widths, each container by its own rule. When that is not enough, elements drop in the order of the `priority` numbers the skin gives them, lowest first; an element with no priority stays. When even that does not fit, the bar switches to the smaller skin the skin names in `smaller`: `doom-full`, then `doom-standard`, then `doom-minimal`. Widening the terminal brings the full skin back. Each refresh re-reads the terminal width (`COLUMNS`), so it follows live resizes.
+As the terminal narrows, the elements first shrink to their minimum widths, each container by its own rule. When that is not enough, elements drop in the order of the `priority` numbers the skin gives them, lowest first; an element with no priority stays. When even that does not fit, the bar switches to the smaller skin the skin names in `smaller`: `doom-full`, then `doom-standard`, `doom-minimal`, `doom-compact` and `doom-line`. Widening the terminal brings the full skin back. Each refresh re-reads the terminal width (`COLUMNS`), so it follows live resizes.
+
+The height counts too. The bar takes at most a third of the terminal's rows (`LINES`, which Claude Code sets), so it leaves room for the conversation and the prompt. A skin that is taller goes down the same chain: in a terminal of 16 rows, like a small built-in display, the DOOM bar is `doom-compact`, three rows of boxes without titles and a smaller mugshot, and in one of 8 rows or fewer it is `doom-line`, one row without the mugshot. Minecraft goes from `minecraft` (six rows) to `minecraft-compact` (three rows: hearts and hunger, the XP bar, and the hotbar's items in one row). Set `GAMEBAR_MAX_ROWS` to a number of rows to choose the limit yourself, for example `GAMEBAR_MAX_ROWS=7` for the full DOOM bar in any terminal tall enough to show it. The warning line under the bar does not count. The last skin of a chain is drawn even when it is still too tall or too wide (then cut at the terminal's edge).
 
 ### Game assets
 

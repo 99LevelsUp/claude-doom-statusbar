@@ -38,6 +38,8 @@ try {
   ok(out === skinCli("minecraft"), "and prints what skin minecraft prints");
   ok(!existsSync(env.GAMEBAR_THEME_FILE), "theme writes no theme file");
   cli("next");
+  ok(saved() === "minecraft-compact", `theme next goes to Minecraft's low skin, the last one (${saved()})`);
+  cli("next");
   ok(saved() === "doom-full" && render().includes("MODEL"), `theme next after the last skin wraps to the first, doom's (${saved()})`);
   cli("next");
   ok(saved() === "doom-standard", `theme next goes on through the skins (${saved()})`);

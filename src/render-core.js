@@ -1,7 +1,7 @@
 // Render one session's bar. The skin selection (src/skin-select.js) names the skin; it is loaded,
 // fitted to the width and drawn (src/kit/skin/), with a warning line under it while any part of it
 // needs the user's attention. A skin that cannot be loaded gives way to the default game's default
-// skin, with a warning. The skin's scripts run through the runner the caller passes: src/render.js
+// skin, with a warning. The fit takes the terminal's width and height (rowsOf). The skin's scripts run through the runner the caller passes: src/render.js
 // passes the script pass (src/kit/skin/scripts.js) for the render daemon; the one-shot status line
 // (statusline.js), which runs no scripts, imports this module directly so it never loads the
 // script host.
@@ -46,6 +46,17 @@ function sessionValues(data, env, now) {
 
 const indentOf = (env) => Number(envGet("INDENT", env) ?? 2); // Claude Code draws the status line 2 cols in
 const columnsOf = (env) => parseInt(env.COLUMNS || "100", 10);
+// The rows the bar may take: GAMEBAR_MAX_ROWS when set, else a third of the terminal's height
+// (LINES, which Claude Code sets before it runs the status line), else no limit, so a terminal that
+// gives no height draws as before. A skin taller than this goes down its smaller-skin chain. The
+// warning line under the bar does not count: it comes and goes, and the bar must not change skin
+// with it.
+export function rowsOf(env) {
+  const max = parseInt(envGet("MAX_ROWS", env) ?? "", 10);
+  if (max > 0) return max;
+  const lines = parseInt(env.LINES ?? "", 10);
+  return lines > 0 ? Math.max(1, Math.floor(lines / 3)) : Infinity;
+}
 
 // Returns the bar's lines, without trailing newlines. Everything about the session the drawing
 // reads is built here for this render only, so sessions rendered in turn by the daemon never see
@@ -116,7 +127,7 @@ function renderSkin({ selected, data, env, now, warningStore, scripts, runScript
     warnings.push(...r.warnings);
     return r.skin;
   };
-  const fitted = fitSkin(loaded.skin, { values, width, loadSmaller });
+  const fitted = fitSkin(loaded.skin, { values, width, rows: rowsOf(env), loadSmaller });
   warnings.push(...fitted.warnings);
   // Assets come through the asset store: the drawn skin's own references from its folder, a game's
   // from the checkout or the installed package. Every game the whole smaller chain uses is looked

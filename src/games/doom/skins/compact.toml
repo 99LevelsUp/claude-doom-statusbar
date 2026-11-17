@@ -1,0 +1,150 @@
+# doom-compact: a low DOOM bar for a short or narrow terminal, three rows high. MODEL, USAGE, a
+# smaller mugshot and PROJECT, as boxes without their title rows.
+#
+# When the terminal is too narrow PROJECT drops, then MODEL; when even that does not fit, or the
+# terminal is too short for three rows, the bar switches to doom-line.
+version = 1
+name = "doom-compact"
+games = ["doom"]
+root = "bar"
+smaller = "doom-line"
+
+[element.bar]
+kind = "row"
+separator = " "
+children = ["model", "usage", "mugshot", "project"]
+
+# --- MODEL --------------------------------------------------------------------------------------
+[element.model]
+kind = "column"
+grow = "fill"
+frame = { kind = "box", header = false, background = "#1c2036" }
+children = ["model-line", "model-mode", "cost"]
+priority = 2
+
+[element.model-line]
+kind = "row"
+grow = "fill"
+separator = " "
+separator_background = "#1c2036"
+children = ["model-name", "model-effort"]
+
+[element.model-name]
+kind = "text"
+metric = "model.name"
+icon = "🤖"
+width = 12
+min_width = 8
+
+[element.model-effort]
+kind = "icon"
+metric = "model.effort"
+
+[element.model-mode]
+kind = "icon"
+metric = "model.mode"
+width = 13
+
+[element.cost]
+kind = "text"
+metric = "cost.total"
+icon = "💰"
+width = 7
+min_width = 5
+
+# --- USAGE --------------------------------------------------------------------------------------
+[element.usage]
+kind = "column"
+grow = "fill"
+frame = { kind = "box", header = false, background = "#1c2036" }
+children = ["context", "limit-5h", "limit-7d"]
+
+[element.context]
+kind = "progress"
+metric = "context.hp"
+icon = "🧠"
+cells = 6
+min_cells = 3
+
+[element.limit-5h]
+kind = "row"
+grow = "fill"
+separator = " "
+separator_background = "#1c2036"
+children = ["limit-5h-bar", "limit-5h-reset"]
+
+[element.limit-5h-bar]
+kind = "progress"
+metric = "ratelimit.5h"
+icon = "🕔"
+percent = "none"
+cells = 4
+min_cells = 2
+
+[element.limit-5h-reset]
+kind = "text"
+metric = "usage.reset5h"
+width = 6
+min_width = 5
+
+[element.limit-7d]
+kind = "row"
+grow = "fill"
+separator = " "
+separator_background = "#1c2036"
+children = ["limit-7d-bar", "limit-7d-reset"]
+
+[element.limit-7d-bar]
+kind = "progress"
+metric = "ratelimit.7d"
+icon = "📅"
+percent = "none"
+cells = 4
+min_cells = 2
+
+[element.limit-7d-reset]
+kind = "text"
+metric = "usage.reset7d"
+width = 6
+min_width = 5
+
+# --- the mugshot --------------------------------------------------------------------------------
+# Three rows high: the face drawn smaller than in the other DOOM skins.
+[element.mugshot]
+kind = "animation"
+frames = "doom:images/mugshot"
+script = "doom:scripts/mugshot.js"
+default_frame = "doom:images/mugshot/STFST01.png"
+width = 8
+rows = 3
+glyphs = "octant"
+background = "#000000"
+
+# --- PROJECT ------------------------------------------------------------------------------------
+[element.project]
+kind = "column"
+grow = "fill"
+frame = { kind = "box", header = false, background = "#1c2036" }
+children = ["cwd", "branch", "churn"]
+priority = 1
+
+[element.cwd]
+kind = "text"
+metric = "loc.cwd"
+icon = "📁"
+width = 14
+min_width = 8
+
+[element.branch]
+kind = "text"
+metric = "git.branch"
+icon = "🌿"
+width = 14
+min_width = 8
+
+[element.churn]
+kind = "text"
+metric = "loc.churn"
+icon = "📝"
+width = 12
+min_width = 8
