@@ -83,7 +83,9 @@ try {
     ok(skin && skin.name === "minecraft" && warnings.length === 0,
       `the minecraft skin loads without a warning${warnings.length ? `: ${warnings.map((w) => w.message).join("; ")}` : ""}`);
     const pkg = JSON.parse(readFileSync(path.join(ROOT, "games", "minecraft", "assets", "package.json"), "utf8"));
-    ok(pkg.name === "@claude-game-bar/minecraft" && pkg.version === "0.0.0", "its assets are the package @claude-game-bar/minecraft, version 0.0.0");
+    const pinned = minecraft.assets && minecraft.assets.version;
+    ok(pkg.name === "@claude-game-bar/minecraft" && pkg.version === pinned,
+      `its assets are the package @claude-game-bar/minecraft at the version game.toml pins (${pkg.name}@${pkg.version}, pinned ${pinned})`);
     for (const ref of ["minecraft:scripts/hotbar-highlight.js", "minecraft:conversations/minecraft.js"]) {
       const file = assets.resolve(ref);
       ok(file && existsSync(file), `${ref} is a Minecraft asset`);

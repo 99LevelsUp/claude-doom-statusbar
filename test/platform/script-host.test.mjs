@@ -33,18 +33,34 @@ const EVAL = script(`function render() { return eval("1 + 1"); }`);
 const REQUIRE = script(`function render() { return require("node:fs").readdirSync("."); }`);
 const ASYNC = script(`async function render() { for (;;) await 0; }`);
 const ESM = script(`export default function render() { return {}; }`, "module-style.js");
-const SLOW = script(`function render() { const t = Date.now(); while (Date.now() - t < 100) {} return { slow: true }; }`);
+const SLOW = script(`function render(input) { const t = Date.now(); while (Date.now() - t < input.ms) {} return { slow: true }; }`);
 const HANG = script(`function render() { return { never: "reached" }; }`, "hangs.js");
 const PROMISE = script(`async function render() { return { frame: "late" }; }`);
 const SKINNED = script(`function render() { throw new Error("fails in every skin"); }`);
 const HOG = script(`var keep = []; function render() { for (;;) keep.push(new Array(1e5).fill(0.5)); }`);
 
+// The product's budget and grace, for the checks that time a batch against them.
 const BUDGET = 20;
 const GRACE = 40;
+// Every other check must not depend on how fast the machine is. On a loaded machine a call that
+// loads its file (read, compile, new context) can take seconds and a worker seconds to start;
+// one such call past its budget turns its script off for the 30 s cooldown and the checks after
+// it fail with it. So the scripts that return run on a host whose budget and grace no machine
+// runs a trivial call past.
+const LONG = 10000;
+const STARTUP = 30000;
+// A loop or a hang costs its host's budget (plus the grace for a hang) every time it runs, so
+// those run on hosts with a short budget, a grace that lets the vm timeout, not the backstop,
+// stop a loop that fires late, and a long batch deadline wherever a script has to load or a
+// loop has to be stopped: the deadline is what the backstop is measured from, and loading a
+// file is outside the vm timeout.
+const SHORT = 250;
+const SHORT_GRACE = 1000;
+const SLACK = { deadlineMs: 30000 };
 
 console.log(`measurements on node ${process.version}, ${process.platform}:`);
 const tSpawn = process.hrtime.bigint();
-const host = createScriptHost({ callBudgetMs: BUDGET, graceMs: GRACE, simulateNativeHang: HANG });
+const host = createScriptHost({ callBudgetMs: LONG, graceMs: LONG, startupMs: STARTUP });
 host.runBatch([call(FRAME)]);
 console.log(`  spawn and first call: ${fmt(ms(tSpawn))} ms`);
 {
@@ -62,40 +78,58 @@ console.log("a script within budget:");
   ok(e.status === "ok" && e.output.width === 42, "receives its input");
 }
 
+// A host for the scripts that must be stopped, with the ones that return already loaded.
+function stopHost(options = {}) {
+  const h = createScriptHost({ callBudgetMs: SHORT, graceMs: SHORT_GRACE, startupMs: STARTUP, ...options });
+  const warm = h.runBatch([call(FRAME), call(ECHO, { width: 1 })], SLACK);
+  ok(warm.every((r) => r.status === "ok"), "the worker starts");
+  return h;
+}
+
 console.log("a script that never returns:");
+const stops = stopHost();
 {
-  const spawns = host.spawns;
+  const spawns = stops.spawns;
+  const r = stops.runBatch([call(FRAME), call(LOOP), call(ECHO, { width: 7 })], SLACK);
+  ok(r[1].status === "timeout", `the looping call returns a timeout result (${r[1].status})`);
+  ok(stops.isDisabled(LOOP), "the looping script is disabled");
+  ok(r[0].status === "ok" && r[2].status === "ok" && r[2].output.width === 7, "the other calls in the batch return normally");
+  ok(stops.spawns === spawns, "the worker was not replaced");
+  const [again] = stops.runBatch([call(LOOP)]);
+  ok(again.status === "disabled", "the next call does not run it");
+}
+{
+  // Timed at the product's budget, on its own host warmed up first, so the worker's start and
+  // the first compile are not in the measurement.
+  const tight = createScriptHost({ callBudgetMs: BUDGET, graceMs: GRACE, startupMs: STARTUP });
+  tight.runBatch([call(FRAME), call(ECHO, { width: 1 })], SLACK);
   const t = process.hrtime.bigint();
-  const r = host.runBatch([call(FRAME), call(LOOP), call(ECHO, { width: 7 })]);
+  tight.runBatch([call(FRAME), call(LOOP), call(ECHO, { width: 7 })]);
   const took = ms(t);
   console.log(`  batch with a ${BUDGET} ms loop took ${fmt(took)} ms (the vm timeout fires ${fmt(took - BUDGET)} ms late at most)`);
-  ok(r[1].status === "timeout", `the looping call returns a timeout result (${r[1].status})`);
   // What the render pass relies on is the host's own promise, not the vm timer's precision: a
   // batch waits for its deadline (the call budget per call) plus the grace, and a call already
   // past its budget then gets at most its budget plus the grace more.
   const deadline = BUDGET * 3;
   ok(took < deadline + GRACE + BUDGET + GRACE, `the batch returns within its ${deadline} ms deadline, the ${GRACE} ms grace and one overdue call's budget plus grace (${fmt(took)} ms)`);
-  ok(host.isDisabled(LOOP), "the looping script is disabled");
-  ok(r[0].status === "ok" && r[2].status === "ok" && r[2].output.width === 7, "the other calls in the batch return normally");
-  ok(host.spawns === spawns, "the worker was not replaced");
-  const [again] = host.runBatch([call(LOOP)]);
-  ok(again.status === "disabled", "the next call does not run it");
+  tight.close();
 }
 
 console.log("a hang the vm timeout cannot reach:");
 {
-  const spawns = host.spawns;
+  const hung = stopHost({ simulateNativeHang: HANG });
+  const spawns = hung.spawns;
   const t = process.hrtime.bigint();
-  const r = host.runBatch([call(FRAME), call(HANG), call(ECHO, { width: 3 })]);
+  const r = hung.runBatch([call(FRAME), call(HANG), call(ECHO, { width: 3 })]);
   console.log(`  backstop fired after ${fmt(ms(t))} ms`);
   ok(r[1].status === "timeout", `the hanging call returns a timeout result (${r[1].status})`);
-  ok(host.isDisabled(HANG), "the script whose index was in the buffer is disabled");
+  ok(hung.isDisabled(HANG), "the script whose index was in the buffer is disabled");
   ok(r[1].retryMs === 30000 && /stopped/.test(r[1].message), `for 30 s, as for any timeout (${r[1].retryMs}: ${r[1].message})`);
-  ok(!host.isDisabled(FRAME) && !host.isDisabled(ECHO), "no other script is disabled");
+  ok(!hung.isDisabled(FRAME) && !hung.isDisabled(ECHO), "no other script is disabled");
   ok(r[0].status === "skipped" && r[2].status === "skipped", "the other calls draw their defaults this pass");
-  ok(host.spawns === spawns + 1, "the worker was replaced");
+  ok(hung.spawns === spawns + 1, "the worker was replaced");
   const t2 = process.hrtime.bigint();
-  const [next] = host.runBatch([call(FRAME)]);
+  const [next] = hung.runBatch([call(FRAME)], SLACK);
   console.log(`  first call on the respawned worker: ${fmt(ms(t2))} ms (includes waiting for its start)`);
   ok(next.status === "ok" && next.output.frame === "STFST01", "the first call on the respawned worker succeeds");
 
@@ -105,9 +139,10 @@ console.log("a hang the vm timeout cannot reach:");
   const later = new Date(Date.now() + 5000);
   utimesSync(HANG, later, later);
   const t3 = process.hrtime.bigint();
-  const [short] = host.runBatch([call(HANG)], { deadlineMs: 0 });
+  const [short] = hung.runBatch([call(HANG)], { deadlineMs: 0 });
   console.log(`  a hang under a short deadline was pinned after ${fmt(ms(t3))} ms`);
-  ok(short.status === "timeout" && host.isDisabled(HANG) && host.spawns === spawns + 2, `a hang under a short deadline is pinned in the same pass (${short.status})`);
+  ok(short.status === "timeout" && hung.isDisabled(HANG) && hung.spawns === spawns + 2, `a hang under a short deadline is pinned in the same pass (${short.status})`);
+  hung.close();
 }
 
 console.log("a script that throws:");
@@ -144,13 +179,14 @@ console.log("setTimeout, eval and require are not available:");
 
 console.log("an async script that loops on microtasks:");
 {
-  const spawns = host.spawns;
-  const r = host.runBatch([call(ASYNC), call(FRAME)]);
+  const spawns = stops.spawns;
+  const r = stops.runBatch([call(ASYNC), call(FRAME)], SLACK);
   ok(r[0].status === "timeout", `returns a timeout result (${r[0].status}: ${r[0].message})`);
-  ok(host.isDisabled(ASYNC), "it is the script disabled");
-  ok(!host.isDisabled(FRAME), "the other script is not");
-  const [next] = host.runBatch([call(FRAME)]);
-  ok(next.status === "ok" && host.spawns === spawns, "the next batch on the same worker succeeds");
+  ok(stops.isDisabled(ASYNC), "it is the script disabled");
+  ok(!stops.isDisabled(FRAME), "the other script is not");
+  const [next] = stops.runBatch([call(FRAME)], SLACK);
+  ok(next.status === "ok" && stops.spawns === spawns, "the next batch on the same worker succeeds");
+  stops.close();
 }
 
 console.log("a script returning a promise:");
@@ -239,8 +275,8 @@ console.log("a script that runs past its budget is off for a while, then retried
 console.log("a script that allocates without bound:");
 {
   // A small heap and a long budget, so the heap limit, not the vm timeout, stops it.
-  const small = createScriptHost({ callBudgetMs: 300, graceMs: GRACE, maxHeapMb: 32 });
-  const [warm] = small.runBatch([call(FRAME)]);
+  const small = createScriptHost({ callBudgetMs: 300, graceMs: GRACE, startupMs: STARTUP, maxHeapMb: 32 });
+  const [warm] = small.runBatch([call(FRAME)], SLACK);
   ok(warm.status === "ok", "the small-heap worker starts");
   const spawns = small.spawns;
   const t = process.hrtime.bigint();
@@ -248,7 +284,7 @@ console.log("a script that allocates without bound:");
   console.log(`  stopped after ${fmt(ms(t))} ms`);
   ok(r.status === "timeout" && small.isDisabled(HOG), `is stopped and disabled (${r.status}: ${r.message})`);
   ok(small.spawns === spawns + 1, "the worker hit its heap limit and was replaced; the host process lives on");
-  const [next] = small.runBatch([call(FRAME)]);
+  const [next] = small.runBatch([call(FRAME)], SLACK);
   ok(next.status === "ok", "the next call succeeds");
   small.close();
 }
@@ -261,17 +297,18 @@ console.log("a script using export:");
 
 console.log("a batch cut short by the pass, not by the script:");
 {
-  // A 100 ms script well inside a 300 ms budget, so a coarse system timer cannot let it finish
-  // before a 2 ms deadline gives up on it.
-  const roomy = createScriptHost({ callBudgetMs: 300, graceMs: GRACE });
-  const [warm] = roomy.runBatch([call(FRAME)]);
+  // A 1.5 s script well inside its budget, under a 500 ms deadline: long enough for a loaded
+  // worker to have picked the batch up (a worker that has not started any call of it by the
+  // deadline counts as stuck and is replaced), too short for the script to have finished.
+  const roomy = createScriptHost({ callBudgetMs: LONG, graceMs: GRACE, startupMs: STARTUP });
+  const [warm] = roomy.runBatch([call(FRAME)], SLACK);
   ok(warm.status === "ok", "the worker starts");
   const spawns = roomy.spawns;
-  const r = roomy.runBatch([call(SLOW)], { deadlineMs: 2, graceMs: 0 });
+  const r = roomy.runBatch([call(SLOW, { ms: 1500 })], { deadlineMs: 500, graceMs: 0 });
   ok(r[0].status === "skipped", `the element draws its default this pass (${r[0].status})`);
   ok(!roomy.isDisabled(SLOW), "the script is not disabled");
   ok(roomy.spawns === spawns, "the worker is not replaced");
-  const [next] = roomy.runBatch([call(SLOW)]);
+  const [next] = roomy.runBatch([call(SLOW, { ms: 1 })]);
   ok(next.status === "ok" && next.output.slow === true, `the next full batch runs it (${next.status})`);
   roomy.close();
 }
