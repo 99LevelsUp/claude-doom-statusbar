@@ -39,6 +39,9 @@ const sandbox = mkdtempSync(path.join(os.tmpdir(), "gamebar-client-"));
 const baseEnv = { ...process.env };
 for (const k of Object.keys(baseEnv)) if (FORWARDED.includes(k) || /^(GAMEBAR_|DOOMBAR_|MUGSHOT_)/i.test(k)) delete baseEnv[k];
 Object.assign(baseEnv, sandboxEnv(sandbox));
+// The client forwards CLAUDE_CONFIG_DIR, and the checks below list exactly what each test sets, so
+// the base environment carries none (the sandbox sets it so a render never reads a real account).
+delete baseEnv.CLAUDE_CONFIG_DIR;
 
 // Git Bash sets TERM itself when the environment has none; drop that item where a test did not set TERM.
 const shellTermless = (line) => line.split("\t").filter((item) => !item.startsWith("TERM=")).join("\t");
