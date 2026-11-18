@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-11-18
+
 ### Fixed
 
 - The AGENTS box named parallel subagents of one type after each other's launches (in a real
@@ -711,7 +713,8 @@ Note: no changes to the published package contents (`src`, `bin`, `presets`,
 - Mugshot tracking session health, plus usage, model, project, and system stats.
 - Live subagent list with always-visible AGENTS and TASKS boxes.
 
-[Unreleased]: https://github.com/99LevelsUp/claude-game-bar/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/99LevelsUp/claude-game-bar/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/99LevelsUp/claude-game-bar/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/99LevelsUp/claude-game-bar/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/99LevelsUp/claude-game-bar/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/99LevelsUp/claude-game-bar/compare/v0.16.0...v1.0.0
