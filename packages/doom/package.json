@@ -9,6 +9,6 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/99LevelsUp/claude-game-bar.git",
-    "directory": "games/doom/assets"
+    "directory": "packages/doom"
   }
 }

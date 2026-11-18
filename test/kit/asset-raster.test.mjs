@@ -24,7 +24,7 @@ utimesSync(OLD, twoDaysAgo, twoDaysAgo);
 
 const raster = await import("../../src/kit/raster/asset-raster.js");
 
-const SPRITES = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "games", "doom", "assets", "images", "mugshot");
+const SPRITES = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "packages", "doom", "images", "mugshot");
 const A = path.join(SB, "game-a", "STFST01.png");
 const B = path.join(SB, "game-b", "STFST01.png");
 mkdirSync(path.dirname(A));

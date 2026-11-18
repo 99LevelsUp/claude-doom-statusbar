@@ -3,7 +3,7 @@
 //
 // A skin names an asset as `<game>:<path>`; a path without a game is the skin's own, inside its
 // folder. A game's assets are found:
-//   1. in a checkout of the repository, in its games/<game>/assets/ folder;
+//   1. in a checkout of the repository, in its packages/<game>/ folder;
 //   2. else in the store, as the one version of the game's npm package its manifest pins:
 //      <user dir>/assets/<game>@<version>/node_modules/@claude-game-bar/<game>/
 // Two installations of the bar pinning two versions each use their own; neither touches the other's.
@@ -57,8 +57,8 @@ const GAME_REF = new RegExp(`^(${REF_GAME}):(.*)$`);
 export const GAME_PREFIX = new RegExp(`^${REF_GAME}:`);
 
 export const assetsDir = (env = process.env) => path.join(userDir(env), "assets");
-// Where a checkout keeps each game's assets; an installed package has no such folder.
-export const CHECKOUT_GAMES = path.join(PACKAGE_ROOT, "games");
+// Where a checkout keeps each game's asset package; an installed package has no such folder.
+export const CHECKOUT_PACKAGES = path.join(PACKAGE_ROOT, "packages");
 
 // The package a game's manifest pins: { game, package, version, integrity, key }, key being the
 // store folder's name <game>@<version>. Null when the manifest pins nothing usable: a placeholder
@@ -80,11 +80,11 @@ const packageIn = (folder, pkg) => path.join(folder, "node_modules", ...pkg.spli
 // come or go while the bar runs.
 const checkoutRoots = new Map();
 
-export function checkoutRoot(game, gamesRoot = CHECKOUT_GAMES) {
+export function checkoutRoot(game, packagesRoot = CHECKOUT_PACKAGES) {
   if (!game || !GAME_NAME.test(game.name || "")) return null;
-  const own = gamesRoot === CHECKOUT_GAMES;
+  const own = packagesRoot === CHECKOUT_PACKAGES;
   if (own && checkoutRoots.has(game.name)) return checkoutRoots.get(game.name);
-  const dir = path.join(gamesRoot, game.name, "assets");
+  const dir = path.join(packagesRoot, game.name);
   const root = isDir(dir) ? dir : null;
   if (own) checkoutRoots.set(game.name, root);
   return root;
@@ -282,7 +282,7 @@ const minutes = (ms) => Math.max(1, Math.ceil(ms / 60000));
 //   env        the session's environment
 //   now        the time in ms
 //   folder     the folder a skin's own references resolve in (a user skin's, a bundled skin's game's)
-//   gamesRoot  where a checkout keeps each game's assets
+//   packagesRoot  where a checkout keeps each game's asset package
 //   lookup     game name -> registry entry (the registry's findGame)
 //   install    starts a background install (startInstall)
 // Returns:
@@ -290,7 +290,7 @@ const minutes = (ms) => Math.max(1, Math.ceil(ms / 60000));
 //   need(name)    the folder of game `name`'s assets, starting its install when it is missing
 //   packages()    the store folders (<game>@<version>) of the pinned games met so far, sorted
 //   warnings()    what the bar should say, in the warning line's form, one per package or reference
-export function createAssetResolver({ env = process.env, now = Date.now(), folder = null, gamesRoot = CHECKOUT_GAMES,
+export function createAssetResolver({ env = process.env, now = Date.now(), folder = null, packagesRoot = CHECKOUT_PACKAGES,
   lookup = findGame, install = startInstall } = {}) {
   const roots = new Map(), warned = new Map(), used = new Set();
   const warn = (w) => { if (!warned.has(w.key)) warned.set(w.key, w); };
@@ -303,7 +303,7 @@ export function createAssetResolver({ env = process.env, now = Date.now(), folde
     } else {
       const game = lookup(name);
       if (!game) warn(warning("unknown-game", name, `no game is called ${name}; its assets are not used`));
-      else root = checkoutRoot(game, gamesRoot) || pinned(game);
+      else root = checkoutRoot(game, packagesRoot) || pinned(game);
     }
     roots.set(name, root);
     return root;

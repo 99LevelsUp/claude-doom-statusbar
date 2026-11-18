@@ -85,9 +85,9 @@ The face is produced by **chafa** from the original DOOM sprite, using the symbo
 Example at **8 character rows** — original sprite (left) and the actual chafa block-art mugshot (right), both at the same display height. Note how the right image is genuinely built from glyphs: half-blocks, quadrants, sextants/octants, and diagonal wedge cuts along the jaw and cheeks.
 
 <p>
-  <img src="../../assets/images/mugshot/STFST01-orig-08.png" alt="Original DOOM face sprite" height="220">
+  <img src="../images/STFST01-orig-08.png" alt="Original DOOM face sprite" height="220">
   &nbsp;&nbsp;➜&nbsp;&nbsp;
-  <img src="../../assets/images/mugshot/STFST01-blockart-08.png" alt="chafa block-art mugshot at 8 rows" height="220">
+  <img src="../images/STFST01-blockart-08.png" alt="chafa block-art mugshot at 8 rows" height="220">
 </p>
 
 > **Rendering note.** In a terminal, chafa's legacy-computing glyphs are drawn by the terminal's *built-in* glyph rasteriser (e.g. Windows Terminal) — no font required. A static PNG bake cannot reuse that path: no common installed font covers U+1FB00.. / U+1CD00.. (a font bake yields empty boxes/tofu), and a font-free pixel resample loses the glyph texture entirely (it just looks like a shrunken photo). The block-art preview above is therefore a **screenshot of chafa's real terminal output** — the exact glyphs the live HUD uses — with the terminal background keyed transparent. The original sprite (left) is the source DOOM face extracted from `DOOM1.WAD` (`assets/images/mugshot/wad/`), with real alpha transparency.
