@@ -28,6 +28,8 @@ export const CATALOGUE = {
   // absent in the default mode.
   "model.permission": m("Permission mode", "text"),
   "advisor.model": m("Advisor model", "text"),
+  // The newest model of each tier the bar has seen, by display name (src/metrics/models.js).
+  "model.family": m("The Claude model family", "list"),
 
   // Context, usage limits and cost.
   "context.hp": m("Context window used", "percentage"),

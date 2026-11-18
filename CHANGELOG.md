@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Skins: an `animation` without a `width` is as wide as its largest frame at its `rows`, every frame
   drawn on that one canvas. A row's `center_sides = "close"` puts the children on both sides of its
   `center` right against it.
+- The chat's model family is learned. The bar starts from Fable 5.2, Opus 5.5, Sonnet 5.5 and
+  Haiku 5.5, and every model a session runs (or consults as its advisor) teaches it: a newer
+  version replaces its tier's model, a new tier joins. It is kept in
+  `~/.claude/claude-game-bar/models.json`, so the Minecraft chat's players follow Anthropic's models
+  without a release. The metric `model.family` holds it.
 
 ## [2.1.0] - 2026-11-18
 
