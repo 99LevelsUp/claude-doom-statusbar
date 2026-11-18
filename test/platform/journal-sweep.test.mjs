@@ -38,6 +38,8 @@ const TTL = 7 * DAY;
     "gamebar_cpu.json",                   // SHARED CPU sample -> keep even when ancient
     "gamebar_ratelimits_global.json",     // SHARED rate limits -> keep even when ancient
     "gamebar_ratehealth_global.json",     // SHARED across sessions -> keep even when ancient
+    "gamebar_ratelimits_0123456789ab.json", // one account's rate limits -> keep even when ancient
+    "gamebar_ratehealth_0123456789ab.json", // one account's rate-health -> keep even when ancient
     "gamebar_reap_tick.json",             // process-wide throttle -> keep
     "gamebar_live.json",                  // this session -> keep
     "gamebar_live.json.jsonl",            // this session -> keep
@@ -61,6 +63,8 @@ const TTL = 7 * DAY;
   ok(!stale.includes("gamebar_ratehealth_global.json"),
     "the cross-session rate-health accumulator is NEVER deleted, however old");
   ok(!stale.includes("gamebar_reap_tick.json"), "the reap throttle marker is never deleted");
+  ok(!stale.includes("gamebar_ratelimits_0123456789ab.json") && !stale.includes("gamebar_ratehealth_0123456789ab.json"),
+    "an account's rate-limit pool and rate-health accumulator are never deleted");
   ok(!stale.includes("gamebar_cpu.json") && !stale.includes("gamebar_ratelimits_global.json"),
     "the shared CPU sample and rate-limit pool are never deleted");
   ok(!stale.includes("savings_idle.json"), "a fresh savings file is kept");

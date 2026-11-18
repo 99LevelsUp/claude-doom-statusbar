@@ -78,7 +78,9 @@ Claude Code runs the `statusLine` command about once a second and pipes the sess
    1. picks the session's skin (`src/skin-select.js`): the session's `GAMEBAR_SKIN`, the saved
       choice, the older theme, or the default game's default skin;
    2. builds the metric values (`src/metrics/`) from the payload, the hook's journal and git
-      snapshot, and system metrics from Node built-ins; and the game-neutral **reaction**
+      snapshot, and system metrics from Node built-ins, with the rate limits pooled across the
+      sessions of one Claude account (`src/metrics/ratelimits.js`, the account from
+      `src/platform/account.js`); and the game-neutral **reaction**
       (`src/metrics/reaction.js`): what just happened, how long ago, how hurt the player is;
    3. loads the skin (`src/kit/skin/load.js`), skipping and reporting any part that does not hold;
    4. fits it (`src/kit/skin/fit.js`) to the terminal's width and to a third of its rows: elements
