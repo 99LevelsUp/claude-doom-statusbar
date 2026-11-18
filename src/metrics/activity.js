@@ -12,7 +12,9 @@ const TASK_TEXT_CLIP = 60;
 const PERM_MODES = new Set(["plan", "auto", "acceptEdits", "bypassPermissions"]);
 const TASK_ORDER = { completed: 0, deleted: 0, in_progress: 1, pending: 2 };
 
-export function activityValues(st, now) {
+// `meta(id)` gives what Claude Code says about subagent `id` ({ description, finished },
+// src/metrics/subagents.js), or null.
+export function activityValues(st, now, meta = () => null) {
   const v = {};
   if (PERM_MODES.has(st.mode)) v["model.permission"] = st.mode;
   if ("spans" in st) {
@@ -34,12 +36,16 @@ export function activityValues(st, now) {
     v["act.geiger"] = series.map((c) => Math.min(1.0, c / binw));
   }
   // AGENTS + TASKS boxes (and their ACTIVITY counts) are always shown, even empty.
-  const squad = st.squad || {};
-  v["act.agents"] = Object.keys(squad).length;
-  const agents = Object.values(squad).sort((a, b) => a.start - b.start);
+  // A subagent Claude Code marks finished is left out, even if its SubagentStop was lost; its label
+  // is the description of its own launch when Claude Code names it, else what the hooks matched.
+  const agents = Object.entries(st.squad || {})
+    .map(([id, a]) => ({ ...a, meta: meta(id) }))
+    .filter((a) => !(a.meta && a.meta.finished))
+    .sort((a, b) => a.start - b.start);
+  v["act.agents"] = agents.length;
   // Clip generously (not 24): the box caps width and the label marquees, so a long
   // agent description should stay long enough to be worth scrolling through.
-  v["act.subagents"] = agents.map((a) => [clip(a.desc || a.type || "agent", 60), _dur(now - a.start)]);
+  v["act.subagents"] = agents.map((a) => [clip((a.meta && a.meta.description) || a.desc || a.type || "agent", 60), _dur(now - a.start)]);
 
   const tasks = st.tasks && typeof st.tasks === "object" ? Object.values(st.tasks) : [];
   // done/total: done = completed, total = done + open (pending, in_progress); deleted tasks

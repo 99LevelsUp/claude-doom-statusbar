@@ -4,6 +4,7 @@
 
 import { advisorInfo, godFlash, buildValues } from "./session.js";
 import { activityValues } from "./activity.js";
+import { subagentMeta } from "./subagents.js";
 import { tasksDir, readDiskTasks, mergeDiskTasks, loadState } from "./tasks.js";
 import { sysValues } from "./system.js";
 import { statsValues } from "./savings.js";
@@ -25,7 +26,9 @@ export function collectValues(data, env, now) {
   const st = mergeDiskTasks(loadState(data, env), readDiskTasks(tasksDir(data.session_id, env)));
   const cwd = data.cwd || (data.workspace || {}).current_dir;
   const values = {
-    ...buildValues(data, st.git, now), ...activityValues(st, now), ...sysValues(cwd, now, env), ...statsValues(data, cwd, env),
+    ...buildValues(data, st.git, now),
+    ...activityValues(st, now, (id) => subagentMeta(data.transcript_path, id)),
+    ...sysValues(cwd, now, env), ...statsValues(data, cwd, env),
   };
   const [advModel, advTs] = advisorInfo(data.transcript_path || "");
   if (advModel) values["advisor.model"] = advModel;
