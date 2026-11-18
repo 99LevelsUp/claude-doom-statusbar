@@ -8,6 +8,8 @@ origin: docs/brainstorms/2026-06-12-token-savings-metrics-requirements.md
 
 # feat: Token-savings metrics in the HUD
 
+> **Status (18.11.2026):** Implemented before 1.0.0, for the preset layout of that time; the SAVE box is now an element of the DOOM skins. Its origin document was removed in the docs cleanup of 18.11.2026; it is in the git history. The current architecture is described in [docs/architecture.md](../architecture.md).
+
 ## Summary
 
 Add a native value-source to `src/statusline.js` that defensively reads token-savings

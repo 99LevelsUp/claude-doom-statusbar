@@ -1,5 +1,7 @@
 # Cap-ratio accumulator fix — mugshot health bloodied at low usage
 
+> **Status (18.11.2026):** The `k >= 1` floor shipped before 1.0.0; the estimator redesign is open as [#54](https://github.com/99LevelsUp/claude-game-bar/issues/54), [#55](https://github.com/99LevelsUp/claude-game-bar/issues/55) and [#56](https://github.com/99LevelsUp/claude-game-bar/issues/56).
+
 **Date:** 2026-07-11
 **Trigger:** Mugshot rendered fully bloodied while 5h rate-limit usage was only 24%.
 

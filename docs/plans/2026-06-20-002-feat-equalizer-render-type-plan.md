@@ -1,13 +1,15 @@
 ---
 title: "feat: Add equalizer render type"
 type: feat
-status: active
+status: completed
 date: 2026-06-20
 origin: docs/superpowers/specs/2026-06-20-equalizer-render-design.md
 depth: lightweight
 ---
 
 # feat: Add equalizer render type
+
+> **Status (18.11.2026):** Implemented before 1.0.0; the equalizer is now an element (`src/kit/elements/equalizer.js`). Its origin document was removed in the docs cleanup of 18.11.2026; it is in the git history. The current architecture is described in [docs/architecture.md](../architecture.md).
 
 ## Summary
 

@@ -1,5 +1,7 @@
 # Git Bash pile-up from the statusline — stop spawning bash, or share one statusbar between sessions
 
+> **Status (18.11.2026):** The shared producer became the render daemon (0.14.0). Still open: [#50](https://github.com/99LevelsUp/claude-game-bar/issues/50) (what a render costs) and [#51](https://github.com/99LevelsUp/claude-game-bar/issues/51) (shared rate limits).
+
 **Date:** 2026-10-14
 **Trigger:** Stop hooks and every Bash tool call failing with
 `bash.exe: *** fatal error - add_item ("\??\C:\Program Files\Git", "/", ...) failed, errno 1`.

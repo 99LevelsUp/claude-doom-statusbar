@@ -7,6 +7,8 @@ mode: repo-grounded
 
 # Ideation: claude-doom-statusbar
 
+> **Status (18.11.2026):** The original idea of the bar, kept as written in June 2026 (the per-idea status lines in it are not maintained). What it proposed and is still open: [#57](https://github.com/99LevelsUp/claude-game-bar/issues/57), [#58](https://github.com/99LevelsUp/claude-game-bar/issues/58), [#59](https://github.com/99LevelsUp/claude-game-bar/issues/59), [#60](https://github.com/99LevelsUp/claude-game-bar/issues/60). The current architecture is described in [docs/architecture.md](../architecture.md).
+
 ## Grounding Context
 
 **Topic shape:** Retro-gaming-themed status bar/HUD for Claude Code CLI. Maps coding session metrics to DOOM (1993) game elements. Terminal-based UI fed by Claude Code's JSON stdin API + 12 reactive lifecycle hooks (PreToolUse, PostToolUse, Stop, SessionStart, SubagentStop, etc.).

@@ -1,5 +1,7 @@
 # Temp-file leaks and wasted hook work
 
+> **Status (18.11.2026):** Planned and mostly implemented in 0.14.0; still open: [#39](https://github.com/99LevelsUp/claude-game-bar/issues/39), [#40](https://github.com/99LevelsUp/claude-game-bar/issues/40), [#41](https://github.com/99LevelsUp/claude-game-bar/issues/41), [#42](https://github.com/99LevelsUp/claude-game-bar/issues/42), [#43](https://github.com/99LevelsUp/claude-game-bar/issues/43).
+
 **Date:** 2026-10-31
 **Trigger:** the owner keeps finding piles of small files the bar leaves behind and has to hunt them down
 and delete them by hand after sessions end.

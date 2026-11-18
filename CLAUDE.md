@@ -24,7 +24,7 @@ Layers under `src/`:
 
 Game assets (images, scripts, conversation libraries) live in `packages/<game>/`, the source of the npm package `@claude-game-bar/<game>`, pinned by version and integrity in the game's manifest.
 
-`bin/cli.js` is the `claude-game-bar` command. `CONTRIBUTING.md` describes how to add a game, the skin format and the skin script interface.
+`bin/cli.js` is the `claude-game-bar` command. `docs/architecture.md` describes how the bar is built; `CONTRIBUTING.md` describes how to add a game, the skin format, the skin script interface and releases. Open proposals and bugs are GitHub Issues (`docs/BACKLOG.md` only maps the old backlog IDs).
 
 The DOOM game's mapping: usage headroom is the mugshot's health, the 5h and 7d rate limits and the context window are bars, and the reaction is the face. The Minecraft game's mapping: the 5h rate limit is the hearts, context is hunger, the 7d rate limit is the XP bar, and the rest is a 9-slot hotbar.
 

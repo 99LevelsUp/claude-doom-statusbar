@@ -10,6 +10,8 @@ execution: code
 
 # Render Daemon on Linux - Plan
 
+> **Status (18.11.2026):** Implemented in 0.15.0. The current architecture is described in [docs/architecture.md](../architecture.md).
+
 ## Goal Capsule
 
 - **Objective:** on Linux and macOS, wherever a bash 5 or newer is found, the bar stays live at the 1-second refresh, and each tick costs about as much as starting bash, not a Node process. The bar's data is readable by its own user only.

@@ -9,6 +9,8 @@ execution: code
 
 # Temp-file leaks and render snapshot tests - Plan
 
+> **Status (18.11.2026):** Implemented in 0.14.0. The items it left open are issues [#39](https://github.com/99LevelsUp/claude-game-bar/issues/39), [#40](https://github.com/99LevelsUp/claude-game-bar/issues/40), [#41](https://github.com/99LevelsUp/claude-game-bar/issues/41), [#42](https://github.com/99LevelsUp/claude-game-bar/issues/42) and [#43](https://github.com/99LevelsUp/claude-game-bar/issues/43).
+
 ## Goal Capsule
 
 - **Objective:** The bar cleans up after itself: users no longer find hundreds of stale files in `%TEMP%` to delete by hand, tests no longer leave files in the developer's real temp directory, and today's DOOM and Minecraft output is pinned so later refactors can prove they change nothing on screen.

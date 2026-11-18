@@ -11,6 +11,8 @@ deepened: 2026-11-11
 
 # Built-in Glyph Renderer - Plan
 
+> **Status (18.11.2026):** Implemented in 0.14.0 (built-in glyph renderer, test card, chafa dropped). The current architecture is described in [docs/architecture.md](../architecture.md).
+
 ## Goal Capsule
 
 - **Objective:** by default the bar draws its images (today the DOOM mugshot, later the WC3 head and minimap) without starting any external process, at a quality the owner judges by eye to match chafa's. The optional chafa setting of R12 is the only exception.

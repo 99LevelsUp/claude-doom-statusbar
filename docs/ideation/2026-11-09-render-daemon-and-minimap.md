@@ -1,5 +1,7 @@
 # One render daemon, a bitmap-to-glyph renderer, and a living minimap
 
+> **Status (18.11.2026):** The render daemon (0.14.0) and the glyph renderer (0.14.0) are done. The minimap and the Warcraft III console are open: [#28](https://github.com/99LevelsUp/claude-game-bar/issues/28), [#29](https://github.com/99LevelsUp/claude-game-bar/issues/29), [#31](https://github.com/99LevelsUp/claude-game-bar/issues/31), [#32](https://github.com/99LevelsUp/claude-game-bar/issues/32), [#33](https://github.com/99LevelsUp/claude-game-bar/issues/33), [#34](https://github.com/99LevelsUp/claude-game-bar/issues/34), [#47](https://github.com/99LevelsUp/claude-game-bar/issues/47). The current architecture is described in [docs/architecture.md](../architecture.md).
+
 **Date:** 2026-11-09
 **Trigger:** the Warcraft III layout (G-8). The owner asked what the WC3 minimap could show. The answer
 needs a map that is larger than its view and scrolls on its own, which today's one-process-per-second

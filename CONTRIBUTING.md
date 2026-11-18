@@ -5,6 +5,22 @@ the npm package and its command are both `claude-game-bar`. Settings from the en
 `GAMEBAR_*`; the code reads them through `src/platform/env.js`, which falls back to the `DOOMBAR_*`
 names of releases before 1.0.0.
 
+[docs/architecture.md](docs/architecture.md) explains how the bar is built: the platform and the
+games, one tick from the client through the daemon to the drawn skin, hooks, scripts and assets.
+Read it first; this file covers how to change things.
+
+## Ideas and bugs
+
+Open proposals, ideas and bugs are [GitHub Issues](https://github.com/99LevelsUp/claude-game-bar/issues).
+Labels give the area (`daemon`, `render`, `skins`, `chat`, `wc3`, `install`, `housekeeping`,
+`performance`, `mugshot`, `legacy`), `bug` or `enhancement`, and the state when it is not plain
+open work: `idea` (not decided yet), `blocked` (waiting on something outside the project) or
+`needs-decision` (waiting on the maintainer). A pull request that finishes an issue says
+`Fixes #<number>` in its description, which closes the issue when it merges.
+
+The plans and ideation documents in `docs/` cite the IDs of the backlog that came before the issues
+(D-18, G-5, …); `docs/BACKLOG.md` maps each one to its issue.
+
 ## Changes go through a pull request
 
 `master` is protected: it cannot be force-pushed or deleted, and it takes changes only through a
@@ -262,7 +278,7 @@ Each game's assets are their own npm package, `@claude-game-bar/<game>`, publish
 checks that): an installed bar fetches the version its game manifests pin, in the background, the
 first time a skin needs it.
 
-`.github/workflows/publish-assets.yml` runs on every push to `master` that touches an assets folder.
+`.github/workflows/publish-assets.yml` runs on every push to `master` that touches an asset package.
 It publishes each package whose version is not on npm yet, with trusted publishing and provenance,
 from the GitHub environment `npm-assets`, whose deployment rule allows only `master`. A version
 already on npm, the placeholder `0.0.0` and a package npm does not know yet are skipped with a
@@ -294,5 +310,6 @@ hand:
 4. In the package's settings on npm, require two-factor authentication and disallow tokens.
 5. Pin the published version and its integrity in the manifest, as in step 3 above.
 
-Until both games are bootstrapped and pinned, an installed bar cannot fetch any game assets; a
-checkout works from its own `packages/` folders.
+Status: `@claude-game-bar/doom` and `@claude-game-bar/minecraft` were published by hand at 1.0.0
+and are pinned (steps 1, 2 and 5). Steps 3 and 4 are still to do for both, before the first change
+of either package goes through the workflow.

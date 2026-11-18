@@ -10,6 +10,8 @@ execution: code
 
 # Frame Deadline Contract - Plan
 
+> **Status (18.11.2026):** Implemented in 0.14.0 (the render daemon on Windows). The multi-slot frame reel is still open as [#30](https://github.com/99LevelsUp/claude-game-bar/issues/30). The current architecture is described in [docs/architecture.md](../architecture.md).
+
 ## Goal Capsule
 
 - **Objective:** The status bar keeps showing everything it shows today while Claude Code pays for nothing but the bash it already starts each tick, and the owner can always tell whether the bar's values are live. A dead render daemon shows as a greyed bar within seconds, a live one does not grey unless it misses its validity window (3 s by default), and the bar adds no measured slowdown to Claude Code.

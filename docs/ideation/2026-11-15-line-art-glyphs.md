@@ -1,11 +1,13 @@
 ---
 date: 2026-11-15
 topic: line-art glyphs in the renderer
-status: investigated, not planned
+status: investigated, open as #36
 backlog: D-17
 ---
 
 # Line-art glyphs in the renderer: feasibility and scope
+
+> **Status (18.11.2026):** Investigated, not implemented; open as [#36](https://github.com/99LevelsUp/claude-game-bar/issues/36), with [#33](https://github.com/99LevelsUp/claude-game-bar/issues/33) and [#64](https://github.com/99LevelsUp/claude-game-bar/issues/64).
 
 The owner asked (2026-11-15) to take every suitable glyph from
 [Wikipedia: Box-drawing characters](https://en.wikipedia.org/wiki/Box-drawing_characters) into the
