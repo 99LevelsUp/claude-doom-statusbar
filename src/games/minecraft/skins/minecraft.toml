@@ -51,8 +51,8 @@ glyph = "♥"
 empty_glyph = "♡"
 color = "#ff3b3b"
 empty_color = "#c07070"
-# A heart is one column, a shank of hunger two: two spaces between the hearts spread them out like
-# the game's (the row is a little longer than hunger's; a narrow bar closes them up first).
+# A heart is one column, a shank of hunger two: two spaces between the hearts and one between the
+# shanks give both rows of ten about the same length (a narrow bar closes the gaps up first).
 gap = 2
 invert = true
 # A session without a 5h limit (an API key, or before the first answer) has every heart.
@@ -61,8 +61,8 @@ priority = 3
 
 [element.between]
 kind = "text"
-# Hearts (28) + this + hunger (20) span the hotbar and the XP bar (73).
-width = 25
+# Hearts (28) + this + hunger (29) span the hotbar and the XP bar (73).
+width = 16
 min_width = 1
 
 [element.hunger]
@@ -71,6 +71,8 @@ metric = "context.hp"
 count = 10
 glyph = "🍖"
 empty_glyph = "🦴"
+# A space between the shanks, like the hearts' gaps (a narrow bar closes them up first).
+gap = 1
 invert = true
 from_right = true
 priority = 3
