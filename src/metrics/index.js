@@ -8,7 +8,11 @@ import { tasksDir, readDiskTasks, mergeDiskTasks, loadState } from "./tasks.js";
 import { sysValues } from "./system.js";
 import { statsValues } from "./savings.js";
 import { rateHealthValue, syncRateLimits } from "./ratelimits.js";
+import { modelFamily } from "./models.js";
 import { envGet } from "../platform/env.js";
+
+// A value's text: a link's text, a string as it is, anything else nothing.
+const textOf = (v) => (v && typeof v === "object" ? v.text : typeof v === "string" ? v : null);
 
 export function collectValues(data, env, now) {
   // Account-wide limits: use the freshest reading any session of the same Claude account has seen
@@ -29,5 +33,7 @@ export function collectValues(data, env, now) {
   // Rate-based mugshot health: when present, hpRow prefers it over the snapshot headroom.
   const headroom = rateHealthValue(data, env);
   if (headroom !== null) values["health.headroom"] = headroom;
+  // The model family the chat casts from, learned from the models this session runs (models.js).
+  try { values["model.family"] = modelFamily([values["model.name"], values["advisor.model"]].map(textOf), env); } catch { /* the chat keeps its seed */ }
   return { values, st, god_until };
 }

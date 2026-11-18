@@ -214,8 +214,11 @@ a working example.
 
 `facts` holds every fact the chat can say (model, effort, context, rate limits, branch, tasks, CPU
 and more), as strings and numbers, `null` when unknown; the list is `facts()` in the metrics
-library. `family` lists the current Claude model family by display name (`MODEL_FAMILY` there), so a
-library can cast other players from it without keeping its own list of models. The function returns:
+library. `family` lists the Claude model family by display name, one model per tier, so a library
+can cast other players from it without keeping its own list of models. The bar learns it
+(`src/metrics/models.js`, the metric `model.family`): it starts from a seed list and takes in every
+running or advisor model it sees, a newer version replacing its tier's model and a new tier joining
+at the end; what it learned is kept in `models.json` in the user directory. The function returns:
 
 ```js
 { cast: { a: "Ada", b: "Ben" }, conversations: { "<key>": [line, ...], ... } }
