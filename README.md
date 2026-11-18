@@ -233,7 +233,7 @@ The height counts too. The bar takes at most a third of the terminal's rows (`LI
 
 The game images, scripts and conversation libraries are not part of the `claude-game-bar` package. Each game's assets are an npm package of their own, `@claude-game-bar/<game>`, and the bar installs the version its release pins the first time a skin you use needs it. The install runs in the background with npm's package scripts disabled, into `~/.claude/claude-game-bar/assets/`; until it is done the affected elements draw a plain default (the mugshot a blank) and the warning line names the package. A failed install is retried after 10 minutes. `install` and `skin <name>` install what the chosen skin needs right away.
 
-`claude-game-bar install` also removes asset packages that no skin drawn within the last 30 days, and not your saved skin, needs. A clone of this repository uses its own `games/<game>/assets/` folders and installs nothing.
+`claude-game-bar install` also removes asset packages that no skin drawn within the last 30 days, and not your saved skin, needs. A clone of this repository uses its own `packages/<game>/` folders and installs nothing.
 
 ### Glyph test card
 
@@ -258,7 +258,7 @@ Set `GAMEBAR_GLYPHS` to one of the step names to override the pick, for example 
 
 ## How it works
 
-The bar has one general part, the platform, and one part per game. The platform collects the session data, computes the metric values, owns the elements every skin is built from, runs the render daemon, the client, the hooks and the skins' scripts, and installs the bar and the game assets. A game is data: a manifest and its skins under `src/games/<game>/`, and its assets (images, scripts, conversation libraries) as the npm package `@claude-game-bar/<game>`, kept in the repository under `games/<game>/assets/`. The game registry, `src/games/index.js`, finds the games' folders.
+The bar has one general part, the platform, and one part per game. The platform collects the session data, computes the metric values, owns the elements every skin is built from, runs the render daemon, the client, the hooks and the skins' scripts, and installs the bar and the game assets. A game is data: a manifest and its skins under `src/games/<game>/`, and its assets (images, scripts, conversation libraries) as the npm package `@claude-game-bar/<game>`, kept in the repository under `packages/<game>/`. The game registry, `src/games/index.js`, finds the games' folders.
 
 The statusLine command is a small bash client, not a renderer, wherever a suitable bash exists. The client (`src/gamebar-client.sh`) uses bash builtins only and starts no process. It hands the session JSON to the **render daemon** and prints the frame the daemon prepared. There is one daemon per installation (`src/daemon.js`), running at below-normal priority. The hooks start it and restart it when it dies or is outdated, and it exits on its own after `GAMEBAR_DAEMON_IDLE_MS` (default 10 minutes) with no active session. Upgrading the package in place updates the client without touching `settings.json`.
 

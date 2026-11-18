@@ -15,7 +15,7 @@ on:
       - src/kit/raster/asset-raster.js
       - src/kit/elements/animation.js
       - "src/games/doom/skins/**"
-      - "games/doom/assets/images/mugshot/**"
+      - "packages/doom/images/mugshot/**"
       - src/platform/assets.js
       - scripts/measure-oneshot.mjs
       - scripts/measure-client.mjs

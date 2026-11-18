@@ -91,7 +91,7 @@ try {
       ok(skin && skin.name === name && warnings.length === 0,
         `the ${name} skin loads without a warning${warnings.length ? `: ${warnings.map((w) => w.message).join("; ")}` : ""}`);
     }
-    const pkg = JSON.parse(readFileSync(path.join(ROOT, "games", "minecraft", "assets", "package.json"), "utf8"));
+    const pkg = JSON.parse(readFileSync(path.join(ROOT, "packages", "minecraft", "package.json"), "utf8"));
     const pinned = minecraft.assets && minecraft.assets.version;
     ok(pkg.name === "@claude-game-bar/minecraft" && pkg.version === pinned,
       `its assets are the package @claude-game-bar/minecraft at the version game.toml pins (${pkg.name}@${pkg.version}, pinned ${pinned})`);

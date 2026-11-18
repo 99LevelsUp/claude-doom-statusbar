@@ -36,8 +36,9 @@ two folders. A new kind of element, such as a minimap, is ordinary platform work
 src/games/<game>/
   game.toml          the manifest
   skins/*.toml       the game's bundled skins
-games/<game>/assets/ the npm package @claude-game-bar/<game>: images, scripts, conversation
-  package.json       libraries, in subfolders by kind
+packages/<game>/     the npm package @claude-game-bar/<game> (see packages/README.md)
+  package.json
+  images/, scripts/, conversations/   its assets, in subfolders by kind
 ```
 
 The registry, `src/games/index.js`, finds the game folders itself (sorted by name, the order
@@ -56,7 +57,7 @@ The manifest, `game.toml` (the comment at the top of `src/games/index.js` lists 
   `presets` maps a preset file name (without `.toml`) to the skin of that size.
 - `[assets]`: `package` (`@claude-game-bar/<game>`), `version` and `integrity`, the one version of
   the assets package the bar installs. `0.0.0` and an empty integrity pin nothing: the assets then
-  come only from a checkout's `games/<game>/assets/`. See [Asset packages](#asset-packages).
+  come only from a checkout's `packages/<game>/`. See [Asset packages](#asset-packages).
 
 `test/games/fixture-game/` is a working example of a game that is a folder and nothing else;
 `test/games/registry.test.mjs` registers and draws it.
@@ -119,8 +120,8 @@ This interface is internal and may change between releases. Its reference is the
 
 Any element can name a `script`: the bar runs it before the element is drawn, and what it returns
 changes how the element looks this render. An `animation` needs one to pick its frame; DOOM's
-mugshot (`games/doom/assets/scripts/mugshot.js`) and Minecraft's hotbar highlight
-(`games/minecraft/assets/scripts/hotbar-highlight.js`) are working examples.
+mugshot (`packages/doom/scripts/mugshot.js`) and Minecraft's hotbar highlight
+(`packages/minecraft/scripts/hotbar-highlight.js`) are working examples.
 
 A script is a plain JavaScript file, a classic script rather than a module (no `import` or
 `export`), that defines a global function `render(input)`. It runs in a context of its own with the
@@ -183,7 +184,7 @@ A `chat` element plays conversations about the session; it costs no tokens. The 
 library (`src/kit/chat/metrics-library.js`) always plays, the one-shot status line included. A skin
 adds libraries in the chat's `libraries` parameter; each is a script, found like any other, that
 defines `conversations(facts)` instead of `render`. Same budgets and failure rules; a library that
-fails is left out of the chat with a warning. `games/minecraft/assets/conversations/minecraft.js` is
+fails is left out of the chat with a warning. `packages/minecraft/conversations/minecraft.js` is
 a working example.
 
 `facts` holds every fact the chat can say (model, effort, context, rate limits, branch, tasks, CPU
@@ -257,7 +258,7 @@ through a pull request, then move the tag to the fixed commit on `master`:
 ### Asset packages
 
 Each game's assets are their own npm package, `@claude-game-bar/<game>`, published from
-`games/<game>/assets/`. The main package ships no game assets (`test/install/package-files.test.mjs`
+`packages/<game>/`. The main package ships no game assets (`test/install/package-files.test.mjs`
 checks that): an installed bar fetches the version its game manifests pin, in the background, the
 first time a skin needs it.
 
@@ -269,7 +270,7 @@ notice.
 
 To change a game's assets:
 
-1. In one pull request, change the files, bump `version` in `games/<game>/assets/package.json`, and
+1. In one pull request, change the files, bump `version` in `packages/<game>/package.json`, and
    set the same `version` in `src/games/<game>/game.toml` (`[assets]`). The package-files test
    fails while the two differ. A version is never `0.0.0`, which means "not published".
 2. Merge it. The workflow publishes the new version.
@@ -286,7 +287,7 @@ hand:
 
 1. Create the npm organisation `claude-game-bar` (once).
 2. Set the package's first version (not `0.0.0`) in its `package.json` and manifest, then publish
-   it from its folder: `cd games/<game>/assets && npm publish --access public`.
+   it from its folder: `cd packages/<game> && npm publish --access public`.
 3. On npm, add a trusted publisher to the package: this repository, workflow `publish-assets.yml`,
    environment `npm-assets`. In the repository settings, create the `npm-assets` environment with a
    deployment rule that allows only `master`.
@@ -294,4 +295,4 @@ hand:
 5. Pin the published version and its integrity in the manifest, as in step 3 above.
 
 Until both games are bootstrapped and pinned, an installed bar cannot fetch any game assets; a
-checkout works from its own `games/` folders.
+checkout works from its own `packages/` folders.

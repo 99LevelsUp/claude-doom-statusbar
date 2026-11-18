@@ -22,7 +22,7 @@ Layers under `src/`:
   - `doom/`: skins `doom-full`, `doom-standard`, `doom-minimal`, and the low `doom-compact` and `doom-line`;
   - `minecraft/`: skins `minecraft` and the low `minecraft-compact`.
 
-Game assets (images, scripts, conversation libraries) live in `games/<game>/assets/`, the source of the npm package `@claude-game-bar/<game>`, pinned by version and integrity in the game's manifest.
+Game assets (images, scripts, conversation libraries) live in `packages/<game>/`, the source of the npm package `@claude-game-bar/<game>`, pinned by version and integrity in the game's manifest.
 
 `bin/cli.js` is the `claude-game-bar` command. `CONTRIBUTING.md` describes how to add a game, the skin format and the skin script interface.
 

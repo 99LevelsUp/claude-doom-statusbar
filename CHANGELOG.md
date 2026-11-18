@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- For contributors: a game's asset package lives in `packages/<game>/` instead of
+  `games/<game>/assets/`, so the top-level folder no longer reads like a second `src/games/`.
+  `packages/README.md` describes it. The duplicate `images/mugshot-wad/` (byte for byte the same
+  sprites as `images/mugshot/`, never published) is gone, and the two illustrations of the original
+  ideation moved to `docs/images/`. Nothing changes for users: the published asset packages are
+  the same.
+- The backlog is GitHub Issues now; `docs/BACKLOG.md` maps the old IDs to them. The early design
+  notes in `docs/port/`, `docs/superpowers/` and `docs/brainstorms/` are removed (they stay in the
+  git history).
+
 ## [2.0.0] - 2026-11-17
 
 Games become skins. The bar is a tree of shared elements, and a skin describes that tree as data:

@@ -20,7 +20,7 @@ const { VALUE_TYPES, CATALOGUE } = await import("../../src/metrics/catalogue.js"
 const { vlen } = await import("../../src/kit/text.js");
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const SPRITES = path.join(ROOT, "games", "doom", "assets", "images", "mugshot");
+const SPRITES = path.join(ROOT, "packages", "doom", "images", "mugshot");
 const plain = (s) => s.replace(/\x1b\[[0-9;]*m|\x1b\]8;[^\x07\x1b]*(?:\x1b\\|\x07)/g, "");
 const defaults = (d) => d.validate({}).params;
 

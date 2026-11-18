@@ -31,7 +31,7 @@ const plain = (s) => s.replace(/\x1b\[[0-9;]*m|\x1b\]8;[^\x07\x1b]*(?:\x1b\\|\x0
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const WAD = path.join(ROOT, "games", "doom", "assets", "images", "mugshot-wad");
+const FRAMES = path.join(ROOT, "packages", "doom", "images", "mugshot");
 const USER = path.join(TEMP_SANDBOX, "user");
 
 // A skin folder of the user's: the skin file and the scripts beside it.
@@ -224,7 +224,7 @@ script = "face.js"
 `;
     const skin = load(userSkin("face", toml, { "face.js": "function render(i) { return { frame: \"STFKILL0\" }; }" }));
     const fit = fitOf(skin);
-    const resolveAsset = (ref) => (ref === "mugshot" ? WAD : ref === "idle" ? path.join(WAD, "STFST01.png") : null);
+    const resolveAsset = (ref) => (ref === "mugshot" ? FRAMES : ref === "idle" ? path.join(FRAMES, "STFST01.png") : null);
     const ctx = { ...CTX, resolveAsset };
     const r = run(fit, { resolveAsset });
     const node = fit.tree.children[0];

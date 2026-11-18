@@ -1,12 +1,12 @@
 name: Publish game assets
 
-# Publishes each game's assets package (games/<game>/assets, npm package @claude-game-bar/<game>)
+# Publishes each game's assets package (packages/<game>, npm package @claude-game-bar/<game>)
 # whose version is not on npm yet, with trusted publishing (OIDC, no token) and provenance. The bar
 # itself is published by publish.yml from a release tag; a game manifest (src/games/<game>/game.toml)
 # pins the asset version a release installs, so nothing published here reaches users until a release
 # pins it.
 #
-# Runs on pushes to master that touch an assets folder, and by hand. The job runs in the GitHub
+# Runs on pushes to master that touch an asset package, and by hand. The job runs in the GitHub
 # environment `npm-assets`, whose deployment rule allows only master, and each package's trusted
 # publisher on npm names this workflow and that environment, so no other branch can publish.
 #
@@ -18,7 +18,7 @@ on:
   push:
     branches: [master]
     paths:
-      - "games/*/assets/**"
+      - "packages/*/**"
       - .github/workflows/publish-assets.yml
   workflow_dispatch:
 
@@ -56,7 +56,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for manifest in games/*/assets/package.json; do
+          for manifest in packages/*/package.json; do
             dir="$(dirname "$manifest")"
             name="$(node -p 'require(process.argv[1]).name' "./$manifest")"
             version="$(node -p 'require(process.argv[1]).version' "./$manifest")"

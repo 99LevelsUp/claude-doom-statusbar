@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { sandboxEnv } from "../_sandbox-env.mjs";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const SPRITE = path.join(ROOT, "games", "doom", "assets", "images", "mugshot", "STFST01.png");
+const SPRITE = path.join(ROOT, "packages", "doom", "images", "mugshot", "STFST01.png");
 let fails = 0;
 const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fails++; };
 const strip = (s) => s.replace(/\x1b\[[0-9;]*m|\x1b\]8;[^\x07\x1b]*(?:\x1b\\|\x07)/g, "");
@@ -94,11 +94,11 @@ try {
   {
     const game = gameFolder("fixgame", "1.0.0", GOOD);
     const checkout = path.join(SB, "checkout");
-    mkdirSync(path.join(checkout, "fixgame", "assets", "images"), { recursive: true });
-    copyFileSync(SPRITE, path.join(checkout, "fixgame", "assets", "images", "face.png"));
+    mkdirSync(path.join(checkout, "fixgame", "images"), { recursive: true });
+    copyFileSync(SPRITE, path.join(checkout, "fixgame", "images", "face.png"));
     let started = 0;
-    const r = assets.createAssetResolver({ env, now: Date.now(), gamesRoot: checkout, lookup: () => game, install: () => { started++; } });
-    ok(r.resolve("fixgame:images/face.png") === path.join(checkout, "fixgame", "assets", "images", "face.png"),
+    const r = assets.createAssetResolver({ env, now: Date.now(), packagesRoot: checkout, lookup: () => game, install: () => { started++; } });
+    ok(r.resolve("fixgame:images/face.png") === path.join(checkout, "fixgame", "images", "face.png"),
       "a game with its folder in the checkout resolves there");
     ok(r.resolve("fixgame:../../outside.png") === null && r.resolve("fixgame:images/none.png") === null,
       "a path out of the game's folder, or one that is not there, resolves to nothing");
@@ -124,7 +124,7 @@ try {
     ok(existsSync(face), "the result is the store's fixgame@1.0.0");
     ok(storeNames().every((n) => !n.startsWith(".tmp-")) && !existsSync(path.join(STORE, "install.lock")),
       `no temporary folder and no lock are left (${storeNames().join(", ")})`);
-    const r = assets.createAssetResolver({ env, now: Date.now(), gamesRoot: path.join(SB, "no-checkout"), lookup: () => game, install: () => {} });
+    const r = assets.createAssetResolver({ env, now: Date.now(), packagesRoot: path.join(SB, "no-checkout"), lookup: () => game, install: () => {} });
     ok(r.resolve("fixgame:images/face.png") === face && r.warnings().length === 0, "a reference to it resolves into the store");
     ok(JSON.stringify(r.packages()) === JSON.stringify(["fixgame@1.0.0"]), "and the package is recorded as used");
     const again = await assets.installAssets(game, { env });
@@ -138,7 +138,7 @@ try {
     const res = await assets.installAssets(two, { env });
     ok(res.status === "installed", "the other version installs beside the first");
     ok(existsSync(path.join(STORE, "fixgame@1.0.0")) && existsSync(path.join(STORE, "fixgame@2.0.0")), "neither replaces the other");
-    const at = (game) => assets.createAssetResolver({ env, now: Date.now(), gamesRoot: path.join(SB, "no-checkout"), lookup: () => game, install: () => {} })
+    const at = (game) => assets.createAssetResolver({ env, now: Date.now(), packagesRoot: path.join(SB, "no-checkout"), lookup: () => game, install: () => {} })
       .resolve("fixgame:images/face.png") || "";
     ok(at(one).includes(`${path.sep}fixgame@1.0.0${path.sep}`) && at(two).includes(`${path.sep}fixgame@2.0.0${path.sep}`),
       "each resolves its own version");
@@ -154,7 +154,7 @@ try {
       `nothing reaches the store (${storeNames().join(", ")})`);
     ok(existsSync(path.join(STORE, "fixgame@3.0.0.retry")), "a retry-after marker is written");
     let started = 0;
-    const r = assets.createAssetResolver({ env, now: before + MIN, gamesRoot: path.join(SB, "no-checkout"), lookup: () => game, install: () => { started++; } });
+    const r = assets.createAssetResolver({ env, now: before + MIN, packagesRoot: path.join(SB, "no-checkout"), lookup: () => game, install: () => { started++; } });
     ok(r.resolve("fixgame:images/face.png") === null, "its assets resolve to nothing");
     const w = r.warnings();
     ok(w.length === 1 && w[0].message.includes("@claude-game-bar/fixgame@3.0.0") && /fail/.test(w[0].message) && w[0].key,
@@ -170,7 +170,7 @@ try {
     ok(res.status === "failed" && existsSync(path.join(STORE, "fixgame@4.0.0.retry")), "a failed npm writes a retry-after marker");
     const startsAt = (now) => {
       let started = 0;
-      assets.createAssetResolver({ env, now, gamesRoot: path.join(SB, "no-checkout"), lookup: () => game, install: () => { started++; } })
+      assets.createAssetResolver({ env, now, packagesRoot: path.join(SB, "no-checkout"), lookup: () => game, install: () => { started++; } })
         .resolve("fixgame:images/face.png");
       return started;
     };
@@ -209,7 +209,7 @@ try {
     const game = gameFolder("fixgame", "1.0.0", GOOD);
     let started = 0;
     const lookup = (name) => (name === "fixgame" ? game : null);
-    const r = assets.createAssetResolver({ env, now: Date.now(), gamesRoot: path.join(SB, "no-checkout"), lookup, install: () => { started++; } });
+    const r = assets.createAssetResolver({ env, now: Date.now(), packagesRoot: path.join(SB, "no-checkout"), lookup, install: () => { started++; } });
     ok(r.resolve("@evil/pkg:images/face.png") === null, "a reference naming a package resolves to nothing");
     r.need("@evil/pkg");
     ok(r.resolve("nosuchgame:images/face.png") === null, "a reference to a game that does not exist resolves to nothing");

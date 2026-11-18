@@ -14,7 +14,7 @@ const ok = (c, m) => { console.log((c ? "  ok   " : "  FAIL ") + m); if (!c) fai
 const glyphs = (f) => new Set(f.flat().map((cell) => cell[0]));
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const FACES = path.join(ROOT, "games", "doom", "assets", "images", "mugshot");
+const FACES = path.join(ROOT, "packages", "doom", "images", "mugshot");
 const IDLE = path.join(FACES, "STFST01.png");
 
 console.log("built-in faces:");
