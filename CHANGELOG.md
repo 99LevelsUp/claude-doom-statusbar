@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The AGENTS box named parallel subagents of one type after each other's launches (in a real
+  session, three of five reviews wore another review's label) and dropped a subagent after five
+  minutes although it was still running. The bar now reads each subagent's own description from
+  the record Claude Code keeps next to the session's transcript, keeps a subagent until its
+  SubagentStop (or until Claude Code marks it finished, should the Stop be lost), and matches a
+  launch that names no type to a general-purpose subagent when there is no record.
+
 ### Changed
 
 - DOOM: the mugshot sits in the middle of the terminal, whatever its width, with the boxes right

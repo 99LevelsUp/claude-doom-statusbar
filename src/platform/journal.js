@@ -8,6 +8,10 @@
 
 export const GEIGER_WINDOW = 30.0; // seconds of tool-run history kept for the sparkline
 export const MAX_RUN = 300.0; // drop an unclosed span after this (assume the Post was lost)
+// A subagent can run far longer than one tool call (a review takes ten minutes and more), so the
+// squad keeps one until its SubagentStop, or until Claude Code marks it finished
+// (src/metrics/subagents.js); this is only the backstop for a Stop that never came.
+export const MAX_SUBAGENT = 6 * 3600.0;
 export const TASK_LINGER = 10.0; // seconds the task list lingers after all tasks settle (the count stays)
 
 export const READ_TOOLS = new Set(["Read", "Grep", "Glob",
@@ -66,8 +70,12 @@ export function foldActivity(st, name, ev, now) {
     const aid = String(ev.agent_id || now);
     const atype = ev.agent_type || "agent";
     let desc = "";
-    for (let i = 0; i < st.pending.length; i++) { // FIFO match the launch by agent type
-      if (st.pending[i].type === atype) { desc = st.pending[i].desc; st.pending.splice(i, 1); break; }
+    // FIFO match the launch by agent type; a launch that names no type starts a general-purpose
+    // agent. This is only the fallback: the render takes the label from Claude Code's own record of
+    // the subagent (src/metrics/subagents.js) when there is one.
+    const sameType = (p) => p.type === atype || (p.type === "" && atype === "general-purpose");
+    for (let i = 0; i < st.pending.length; i++) {
+      if (sameType(st.pending[i])) { desc = st.pending[i].desc; st.pending.splice(i, 1); break; }
     }
     st.squad[aid] = { type: atype, start: now, desc };
   } else if (name === "SubagentStop") {
@@ -92,7 +100,7 @@ export function foldActivity(st, name, ev, now) {
 
   const win = now - GEIGER_WINDOW; // prune: closed spans out of window, orphaned open spans
   st.spans = st.spans.filter((s) => (s[1] === null ? s[0] >= now - MAX_RUN : s[1] >= win));
-  st.squad = Object.fromEntries(Object.entries(st.squad).filter(([, v]) => now - v.start < MAX_RUN));
+  st.squad = Object.fromEntries(Object.entries(st.squad).filter(([, v]) => now - v.start < MAX_SUBAGENT));
   // Tasks are never pruned here: the count (open/done/total) covers the whole session. Only the
   // task LIST hides once everything has settled; see TASK_LINGER in activityValues (src/metrics/activity.js).
 }
