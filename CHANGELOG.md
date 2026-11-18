@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-18
+
 ### Added
 
 - The chat's facts include `family`, the current Claude model family by display name. The Minecraft
@@ -680,7 +682,11 @@ Note: no changes to the published package contents (`src`, `bin`, `presets`,
 - Mugshot tracking session health, plus usage, model, project, and system stats.
 - Live subagent list with always-visible AGENTS and TASKS boxes.
 
-[Unreleased]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/99LevelsUp/claude-game-bar/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/99LevelsUp/claude-game-bar/compare/v2.0.0...v2.1.0
+[2.0.0]: https://github.com/99LevelsUp/claude-game-bar/compare/v1.0.0...v2.0.0
+[1.0.0]: https://github.com/99LevelsUp/claude-game-bar/compare/v0.16.0...v1.0.0
+[0.16.0]: https://github.com/99LevelsUp/claude-game-bar/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/99LevelsUp/claude-doom-statusbar/compare/v0.13.0...v0.13.1
