@@ -1,10 +1,16 @@
 // Rate limits: the rate-based mugshot health, and the account-wide rate limits pooled across
 // sessions.
 
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { runtimeDir, writeAtomic, readLearned, oldStateFile, FILE_PREFIX, OLD_FILE_PREFIX } from "../platform/runtime.js";
 import { envGet } from "../platform/env.js";
+import { accountKey } from "../platform/account.js";
+
+// The account-wide files, one per Claude account (src/platform/account.js): <name>_<key>.json, or
+// <name>_global.json, the one file every account shared before accounts were told apart, when the
+// account is not known.
+export const accountFileName = (name, key) => `${FILE_PREFIX}${name}_${key || "global"}.json`;
 
 // --- Rate-based mugshot health -------------------------------------------------------------
 // Health = distance to the FIRST rate-limit wall, in units of the 5h budget. Anthropic exposes
@@ -72,7 +78,7 @@ export function rateHeadroom(prev, cur) {
 // I/O wrapper: pull the rate-limit percentages from the payload, fold the persisted accumulator
 // through rateHeadroom, persist it, return the headroom (or null when there are no rate limits
 // -> hpRow uses its context fallback).
-export function rateHealthValue(data) {
+export function rateHealthValue(data, env = process.env) {
   const rl = data.rate_limits || {};
   // Throw-proof extraction: this runs on the render hot path and main() has no top-level catch,
   // so a malformed payload (e.g. a non-object window) must never blank the HUD. Numbers only.
@@ -83,11 +89,16 @@ export function rateHealthValue(data) {
   // samples the same used_percentage. A per-session accumulator made each session re-learn k from
   // scratch and almost always stall at k=1 (7d moves <1pp per session), so identical accounts
   // showed different health. One global file -> one shared k -> identical health everywhere, and
-  // it captures movement that happened while any given session wasn't sampling.
-  // A release before 1.0.0 kept it under the old name; that one is read until the new one exists.
-  const name = "ratehealth_global.json";
-  const file = path.join(runtimeDir(), `${FILE_PREFIX}${name}`);
-  const { text: raw, old } = readLearned(file, () => oldStateFile(`${OLD_FILE_PREFIX}${name}`));
+  // it captures movement that happened while any given session wasn't sampling. One file per
+  // Claude account, since k is a property of the account's plan.
+  // An account's first file starts from the shared one (the k learned before accounts were told
+  // apart), and a release before 1.0.0 kept that under the old name; each is read until the newer
+  // one exists.
+  const key = accountKey(env);
+  const file = path.join(runtimeDir(), accountFileName("ratehealth", key));
+  const globalFile = path.join(runtimeDir(), accountFileName("ratehealth", null));
+  const oldGlobal = () => oldStateFile(`${OLD_FILE_PREFIX}ratehealth_global.json`);
+  const { text: raw, old } = readLearned(file, () => (key && existsSync(globalFile) ? globalFile : oldGlobal()));
   let prev = null;
   try { prev = JSON.parse(raw); } catch { /* no accumulator yet */ }
   const { headroom, state } = rateHeadroom(prev, cur);
@@ -139,13 +150,15 @@ export function mergeRateLimits(mine, shared, now = Date.now() / 1000) {
   return out;
 }
 
-// The shared file, and where a release before 1.0.0 kept it (no old place when GAMEBAR_RATELIMITS
-// names the file: then there is only that one).
-const POOL = "ratelimits_global.json";
+// The pool: one file per Claude account. An account's pool starts empty rather than from the shared
+// file, which may hold another account's readings. Without a known account it is the shared file,
+// and where a release before 1.0.0 kept that. GAMEBAR_RATELIMITS names one file for every account.
 function rateLimitsFiles(env) {
   const set = envGet("RATELIMITS", env);
   if (set) return { file: set, oldFileOf: null };
-  return { file: path.join(runtimeDir(), `${FILE_PREFIX}${POOL}`), oldFileOf: () => oldStateFile(`${OLD_FILE_PREFIX}${POOL}`) };
+  const key = accountKey(env);
+  const file = path.join(runtimeDir(), accountFileName("ratelimits", key));
+  return { file, oldFileOf: key ? null : () => oldStateFile(`${OLD_FILE_PREFIX}ratelimits_global.json`) };
 }
 
 // I/O wrapper: read the shared snapshot, merge, write it back if anything got fresher.

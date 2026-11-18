@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The 5-hour reset time could go missing from the bar. The rate limits pooled across sessions kept
   an old 5-hour reading without a reset time because its percentage was higher; now a reading that
   names its window beats one that does not, and a window that has already reset is ignored.
+- Two Claude accounts on one machine no longer mix their rate limits. The bar pools the rate limits
+  and learns the mugshot's rate-health per account: it reads which account is logged in from Claude
+  Code's `.claude.json` (in `CLAUDE_CONFIG_DIR` or the home directory) and keeps only a short hash of
+  its id in the file names. Before, a session could show another account's 7-day reset time. Without
+  a readable account the bar keeps the one shared pool, as before.
 - DOOM: the effort icon sits right after the model's name instead of at the box's edge, and the
   lines added and removed are green and red again (`+185 / -62`).
 

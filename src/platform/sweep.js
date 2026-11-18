@@ -48,6 +48,9 @@ const P = `(?:${PREFIXES.join("|")})`;
 const SHARED_STATE = new Set(PREFIXES.flatMap((p) => [
   `${p}ratehealth_global.json`, `${p}ratelimits_global.json`, `${p}cpu.json`, `${p}reap_tick.json`,
 ]));
+// The rate-limit pool and the rate-health accumulator of one Claude account (src/metrics/ratelimits.js),
+// named by the account's key (src/platform/account.js).
+const ACCOUNT_STATE = new RegExp(`^${FILE_PREFIX}(?:ratehealth|ratelimits)_[0-9a-f]{12}\\.json(?:\\.\\d+\\.tmp)?$`);
 
 // The render daemon's own files (daemonPaths in src/platform/runtime.js): one heartbeat and one
 // claim per install hash, shared by every session the daemon serves.
@@ -85,7 +88,7 @@ export function staleStateFiles(names, ageOf, { ttl = JOURNAL_TTL, unrenderedTtl
       if (Number.isFinite(age) && age >= ttl) stale.push(n);
       continue;
     }
-    if (SHARED_STATE.has(n) || DAEMON_FILE.test(n) || n.startsWith(FACES_PREFIX) || mine.has(n)) continue; // shared state; this session's own files
+    if (SHARED_STATE.has(n) || ACCOUNT_STATE.test(n) || DAEMON_FILE.test(n) || n.startsWith(FACES_PREFIX) || mine.has(n)) continue; // shared state; this session's own files
     const key = sessionKeyOf(n);
     if (key === null) continue;                         // not ours
     if (!sessions.has(key)) sessions.set(key, []);

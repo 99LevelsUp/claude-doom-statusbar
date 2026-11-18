@@ -11,9 +11,9 @@ import { rateHealthValue, syncRateLimits } from "./ratelimits.js";
 import { envGet } from "../platform/env.js";
 
 export function collectValues(data, env, now) {
-  // Account-wide limits: use the freshest reading any session has seen (see syncRateLimits).
-  // A brand-new chat that hasn't called the API yet gets them too. GAMEBAR_RATELIMITS_SHARE=0
-  // turns it off.
+  // Account-wide limits: use the freshest reading any session of the same Claude account has seen
+  // (see syncRateLimits; the account comes from src/platform/account.js). A brand-new chat that
+  // hasn't called the API yet gets them too. GAMEBAR_RATELIMITS_SHARE=0 turns it off.
   if (envGet("RATELIMITS_SHARE", env) !== "0") {
     try { data.rate_limits = syncRateLimits(data.rate_limits, env); } catch { /* keep the session's own */ }
     if (!Object.keys(data.rate_limits || {}).length) delete data.rate_limits;
@@ -27,7 +27,7 @@ export function collectValues(data, env, now) {
   if (advModel) values["advisor.model"] = advModel;
   const god_until = godFlash(data, advTs, now, env);
   // Rate-based mugshot health: when present, hpRow prefers it over the snapshot headroom.
-  const headroom = rateHealthValue(data);
+  const headroom = rateHealthValue(data, env);
   if (headroom !== null) values["health.headroom"] = headroom;
   return { values, st, god_until };
 }

@@ -2,11 +2,12 @@
 // Account-wide rate limits are pooled across sessions: an idle chat shows the freshest
 // reading any chat has seen, instead of its own stale one.
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { fresherWindow, mergeRateLimits } from "../../src/metrics/ratelimits.js";
+import { fresherWindow, mergeRateLimits, accountFileName } from "../../src/metrics/ratelimits.js";
+import { accountKey, keyOfAccount } from "../../src/platform/account.js";
 import { sandboxEnv } from "../_sandbox-env.mjs";
 
 const ROOT = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "..");
@@ -77,6 +78,65 @@ try {
   ok(pooled?.seven_day?.used_percentage === 16, "and they are written to gamebar_ratelimits_global.json");
 } finally {
   rmSync(old, { recursive: true, force: true });
+}
+
+// The account key: a short hash of the logged-in account's id from Claude Code's config file.
+console.log("accounts:");
+{
+  const k = keyOfAccount("acc-a");
+  ok(/^[0-9a-f]{12}$/.test(k) && k === keyOfAccount(" acc-a ") && k !== keyOfAccount("acc-b"),
+    "an account id gives a stable 12-hex key, different per account");
+  ok(keyOfAccount("") === null && keyOfAccount(undefined) === null, "no id, no key");
+  const cfg = mkdtempSync(path.join(os.tmpdir(), "gamebar-acct-"));
+  try {
+    const env = { CLAUDE_CONFIG_DIR: cfg };
+    ok(accountKey(env) === null, "no config file: no key");
+    writeFileSync(path.join(cfg, ".claude.json"), JSON.stringify({ oauthAccount: { accountUuid: "acc-a", emailAddress: "x@example.com" } }));
+    ok(accountKey(env) === keyOfAccount("acc-a"), "the key of the account the config file names");
+    writeFileSync(path.join(cfg, ".claude.json"), JSON.stringify({ oauthAccount: { accountUuid: "acc-bb" }, more: true }));
+    ok(accountKey(env) === keyOfAccount("acc-bb"), "a switch of account is seen once the file changes");
+    writeFileSync(path.join(cfg, ".claude.json"), "{ broken");
+    ok(accountKey(env) === null, "an unreadable config file gives no key");
+  } finally {
+    rmSync(cfg, { recursive: true, force: true });
+  }
+}
+
+// End to end: two accounts on one machine keep their own pools.
+const acct = mkdtempSync(path.join(os.tmpdir(), "gamebar-rl-acct-"));
+try {
+  // The config folders are named by number: a folder named by the id would put the id into the
+  // paths the bar keeps, and the last check below looks for it.
+  const cfgOf = (id) => {
+    const dir = path.join(acct, `cfg-${id === "acc-a" ? 1 : 2}`);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, ".claude.json"), JSON.stringify({ oauthAccount: { accountUuid: id } }));
+    return dir;
+  };
+  const env = { ...process.env, GAMEBAR_THEME: "minecraft", COLUMNS: "120", GAMEBAR_STATE: path.join(acct, "state.json"),
+    ...sandboxEnv(acct), GAMEBAR_MSYS_REAP: "0" };
+  for (const k of ["GAMEBAR_RATELIMITS", "DOOMBAR_RATELIMITS", "GAMEBAR_RATELIMITS_SHARE", "DOOMBAR_RATELIMITS_SHARE"]) delete env[k];
+  // The rate-health accumulator learned before accounts were told apart.
+  writeFileSync(path.join(acct, "gamebar_ratehealth_global.json"), JSON.stringify({ p5: 10, p7: 2, sum5: 40, sum7: 4 }));
+  const render = (account, sid, rl) => strip(execFileSync(process.execPath, [path.join(ROOT, "src", "statusline.js")], {
+    env: { ...env, CLAUDE_CONFIG_DIR: cfgOf(account) }, encoding: "utf8",
+    input: JSON.stringify({ session_id: sid, cwd: acct, model: { display_name: "Opus 5.5" }, ...(rl ? { rate_limits: rl } : {}) }),
+  }));
+  const level = (out) => (/━ (\d+) ━/.exec(out) || [])[1];
+  ok(level(render("acc-a", "a1", { five_hour: w(40, W - 3600), seven_day: w(16) })) === "16", "account A's chat shows its 16");
+  ok(level(render("acc-b", "b1", { five_hour: w(10, W - 3600), seven_day: w(70, W + 3 * 86400) })) === "70", "account B's chat shows its own 70");
+  ok(level(render("acc-a", "a2", null)) === "16", "a new chat of account A gets A's 16, not B's later window");
+  ok(level(render("acc-b", "b2", null)) === "70", "and a new chat of account B gets B's 70");
+  const names = readdirSync(acct);
+  ok(names.includes(accountFileName("ratelimits", keyOfAccount("acc-a"))) && names.includes(accountFileName("ratelimits", keyOfAccount("acc-b")))
+    && !names.includes("gamebar_ratelimits_global.json"), `each account has its own pool file, no shared one (${names.filter((n) => /ratelimits/.test(n)).join(", ")})`);
+  const healthA = JSON.parse(readFileSync(path.join(acct, accountFileName("ratehealth", keyOfAccount("acc-a"))), "utf8"));
+  ok(healthA.sum5 >= 40 && healthA.sum7 >= 4, `an account's rate-health starts from the one learned before (sum5 ${healthA.sum5}, sum7 ${healthA.sum7})`);
+  ok(!names.some((n) => /acc-|x@example/.test(n)) && !readdirSync(acct).filter((n) => n.endsWith(".json")).some((n) => {
+    try { return /acc-a|acc-b/.test(readFileSync(path.join(acct, n), "utf8")); } catch { return false; }
+  }), "no file of the bar holds the account id");
+} finally {
+  rmSync(acct, { recursive: true, force: true });
 }
 
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILED`);
