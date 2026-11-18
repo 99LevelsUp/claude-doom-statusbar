@@ -93,19 +93,21 @@ function prune(t, values, absent) {
 
 // Minimum, natural and most width, and rows, of `t` and everything under it, kept on each node as
 // `m`. A container can always use more width (it aligns or grows its children into it).
-function measure(t, values) {
+// `ctx` is what a visual may measure with ({ resolveAsset }: an animation's width comes from its
+// largest frame).
+function measure(t, values, ctx) {
   const { node } = t;
   if (!node.container) {
-    const w = node.descriptor.widths(node.params, metricValue(node, values).value);
+    const w = node.descriptor.widths(node.params, metricValue(node, values).value, ctx);
     t.m = { min: w.min, natural: w.natural, max: w.max ?? Infinity, rows: node.descriptor.rows(node.params) };
     return t.m;
   }
-  const kids = t.kids.map((k) => measure(k, values));
+  const kids = t.kids.map((k) => measure(k, values, ctx));
   const p = layoutParams(node);
   const w = node.descriptor.widths(p, kids);
   const extra = extraOf(node, t.kids.length);
   const least = frameMin(node);
-  const rowsOf = t.shrunk ? t.shrunk.map((k) => measure(k, values).rows) : kids.map((k) => k.rows);
+  const rowsOf = t.shrunk ? t.shrunk.map((k) => measure(k, values, ctx).rows) : kids.map((k) => k.rows);
   t.m = {
     min: Math.max(least, w.min + extra.columns),
     natural: Math.max(least, w.natural + extra.columns),
@@ -141,14 +143,14 @@ function drop(t, root, dropped) {
 }
 
 // One skin fitted to `width`: its working tree, whether it fits, and what it lost.
-function fitOne(skin, values, width) {
+function fitOne(skin, values, width, ctx) {
   const absent = [], dropped = [];
   const tree = prune(grow(skin.root, null, { n: 0 }), values, absent);
   if (!tree) return { tree: null, fits: true, dropped, absent };
   // A root whose children have all dropped has nothing left to show: it does not fit.
   const emptied = () => tree.node.container && tree.node.children.length > 0 && tree.kids.length === 0 && !tree.shrunk;
   for (;;) {
-    measure(tree, values);
+    measure(tree, values, ctx);
     if (tree.m.min <= width && !emptied()) return { tree, fits: true, dropped, absent };
     const next = nextDrop(tree);
     if (!next) return { tree, fits: false, dropped, absent };
@@ -184,12 +186,13 @@ const tooTall = (result, rows) => Boolean(result.tree) && result.tree.m.rows > r
 // Fits `skin` to `width` columns and at most `rows` rows with the session's `values` (metric id to
 // raw value). A skin that does not fit either goes down its smaller-skin chain; the last skin of the
 // chain is drawn even when it is still too tall. `loadSmaller(name)` returns the loaded skin of that
-// name, or null when there is none.
-export function fitSkin(skin, { values = {}, width, rows = Infinity, loadSmaller = () => null } = {}) {
+// name, or null when there is none. `measureCtx(skin)` gives what that skin's visuals measure with
+// ({ resolveAsset }), or nothing: an animation sized by its frames then takes two columns a row.
+export function fitSkin(skin, { values = {}, width, rows = Infinity, loadSmaller = () => null, measureCtx = () => ({}) } = {}) {
   const warnings = [];
   const seen = new Set([skin.name]);
   let current = skin;
-  let result = fitOne(skin, values, width);
+  let result = fitOne(skin, values, width, measureCtx(skin) || {});
   while (!result.fits || tooTall(result, rows)) {
     const name = current.smaller;
     if (!name) break;
@@ -202,7 +205,7 @@ export function fitSkin(skin, { values = {}, width, rows = Infinity, loadSmaller
     if (!next) break;
     seen.add(next.name);
     current = next;
-    result = fitOne(next, values, width);
+    result = fitOne(next, values, width, measureCtx(next) || {});
   }
   const { tree, fits, dropped, absent } = result;
   // A root row with a centre (src/kit/elements/containers.js) takes the whole width, so its centre

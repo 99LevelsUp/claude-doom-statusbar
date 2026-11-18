@@ -127,7 +127,12 @@ function renderSkin({ selected, data, env, now, warningStore, scripts, runScript
     warnings.push(...r.warnings);
     return r.skin;
   };
-  const fitted = fitSkin(loaded.skin, { values, width, rows: rowsOf(env), loadSmaller });
+  // What the fit measures with: each skin's assets found from its own folder, so an animation is
+  // sized by its frames. Lookups only: a missing package is installed and reported below.
+  const measureCtx = (skin) => ({
+    resolveAsset: createAssetResolver({ env, now: now * 1000, folder: folders.get(skin.file) ?? path.dirname(skin.file), install: () => {} }).resolve,
+  });
+  const fitted = fitSkin(loaded.skin, { values, width, rows: rowsOf(env), loadSmaller, measureCtx });
   warnings.push(...fitted.warnings);
   // Assets come through the asset store: the drawn skin's own references from its folder, a game's
   // from the checkout or the installed package. Every game the whole smaller chain uses is looked

@@ -9,12 +9,19 @@
 // The frame is drawn at the glyph step the image asks for, never above what the session's terminal
 // draws. Asset references are turned into file paths by the render context's resolveAsset; without
 // it no asset can be found and the default visual is a blank.
+//
+// Every frame of a 2D animation is drawn on one canvas, the size of the folder's largest frame
+// (frameCanvas), so frames of different sizes keep one scale and one place and the animation never
+// jumps. With `width = 0` the animation is as wide as that canvas drawn at its `rows`: no column of
+// padding beside the frame. At more rows than that width allows, the frame is drawn at the most rows
+// that fit and centred in the rest.
 
 import path from "node:path";
 import { TERM_RGB } from "../ansi.js";
 import { rgbOf, bgsgrBox } from "../colors.js";
 import { STEPS, stepIndex } from "../raster/glyphs.js";
-import { rasterize, rasterLine } from "../raster/asset-raster.js";
+import { rasterize, rasterLine, frameCanvas, imageSize } from "../raster/asset-raster.js";
+import { faceSize } from "../raster/glyph-render.js";
 import { VALUE_TYPES } from "../../metrics/catalogue.js";
 import { define, param } from "./schema.js";
 import { block, fixedWidth } from "./paint.js";
@@ -22,8 +29,8 @@ import { block, fixedWidth } from "./paint.js";
 const ANY_VALUE = VALUE_TYPES.filter((t) => t !== "conversation");
 
 const sizeParams = () => ({
-  width: param("integer", 9, "Columns the animation takes; the frame is centred in them", { min: 1 }),
-  rows: param("integer", 4, "Rows the animation asks for; frames are drawn at the rows it is given", { min: 1 }),
+  width: param("integer", 0, "Columns the animation takes, the frame centred in them; 0 sizes it to its largest frame drawn at `rows`", { min: 0 }),
+  rows: param("integer", 4, "Rows the animation asks for and is sized for; frames are drawn at the rows it is given, as many as its width allows", { min: 1 }),
   glyphs: param("text", "octant", "The richest glyph step the frames are drawn with; the terminal can only lower it", { allowed: STEPS }),
   background: param("color", "#000000", "Background the frames' transparent areas show", { keywords: ["term-bg"] }),
   default_frame: param("asset", "", "The image drawn when no frame comes from the script"),
@@ -40,21 +47,44 @@ const fileOf = (ref, ctx) => (ref && typeof ctx.resolveAsset === "function" ? ct
 // separator of any system, not "." or "..". Anything else would lead out of the folder.
 const plainName = (name) => name !== "" && name !== "." && name !== ".." && !/[\\/]/.test(name) && path.basename(name) === name;
 
+// The canvas every frame is drawn on, in pixels: the largest frame of the `frames` folder (a 2D
+// animation's), else the default frame's size; null when neither can be found.
+function canvasOf(p, ctx, frames = null) {
+  const dir = frames ? fileOf(frames, ctx) : null;
+  const fromFrames = dir ? frameCanvas(dir) : null;
+  if (fromFrames) return fromFrames;
+  const file = fileOf(p.default_frame, ctx);
+  return file ? imageSize(file) : null;
+}
+
+// The most rows, up to `height`, at which the canvas is drawn no wider than `width` columns.
+function rowsWithin(canvas, width, height) {
+  for (let r = height; r > 1; r--) if (faceSize(canvas.width, canvas.height, r).cols <= width) return r;
+  return 1;
+}
+
 // The image at `file` drawn as the element's lines, or null when it cannot be drawn.
-function drawImage(file, p, width, height, ctx, surface) {
+function drawImage(file, p, width, height, ctx, surface, canvas) {
   if (!file) return null;
   const bg = p.background === "term-bg" ? "term-bg" : rgbOf(p.background);
-  const rows = rasterize(file, height, { step: lowerStep(p.glyphs, ctx.step), background: rgbOf(p.background) });
+  const drawn = canvas ? rowsWithin(canvas, width, height) : height;
+  const rows = rasterize(file, drawn, { step: lowerStep(p.glyphs, ctx.step), background: rgbOf(p.background), canvas });
   if (!rows) return null;
+  const top = Math.floor((height - rows.length) / 2);
   const restore = bgsgrBox(surface);
-  return Array.from({ length: height }, (_, r) => rasterLine(rows[r] || [], width, bg) + restore);
+  return Array.from({ length: height }, (_, r) => rasterLine(rows[r - top] || [], width, bg) + restore);
 }
 
 // The default visual: the default frame, else a blank that keeps the element's place.
-const drawDefault = (p, width, height, ctx, surface) =>
-  drawImage(fileOf(p.default_frame, ctx), p, width, height, ctx, surface) ?? block([], width, height);
+const drawDefault = (p, width, height, ctx, surface, canvas) =>
+  drawImage(fileOf(p.default_frame, ctx), p, width, height, ctx, surface, canvas) ?? block([], width, height);
 
-const widths = (p) => fixedWidth(p.width);
+// A width of 0: the canvas drawn at the animation's rows, or two columns a row when there is no
+// canvas to measure (the asset is not there yet).
+function sizedWidth(p, canvas) {
+  if (p.width > 0) return fixedWidth(p.width);
+  return fixedWidth(canvas ? faceSize(canvas.width, canvas.height, p.rows).cols : p.rows * 2);
+}
 
 export const animation = define({
   name: "animation",
@@ -66,13 +96,14 @@ export const animation = define({
     script: param("asset", "", "The selection script that picks a frame by name"),
     ...sizeParams(),
   },
-  widths,
+  widths: (p, value, ctx = {}) => sizedWidth(p, canvasOf(p, ctx, p.frames)),
   rows: (p) => p.rows,
   draw({ params: p, width, height = p.rows, ctx = {}, script = {}, surface = TERM_RGB }) {
     const name = script.frame ? String(script.frame) : "";
     const dir = plainName(name) ? fileOf(p.frames, ctx) : null;
     const file = dir ? path.join(dir, path.extname(name) ? name : `${name}.png`) : null;
-    return drawImage(file, p, width, height, ctx, surface) ?? drawDefault(p, width, height, ctx, surface);
+    const canvas = canvasOf(p, ctx, p.frames);
+    return drawImage(file, p, width, height, ctx, surface, canvas) ?? drawDefault(p, width, height, ctx, surface, canvas);
   },
 });
 
@@ -86,9 +117,9 @@ export const animation3d = define({
     script: param("asset", "", "The selection script that picks the model's pose"),
     ...sizeParams(),
   },
-  widths,
+  widths: (p, value, ctx = {}) => sizedWidth(p, canvasOf(p, ctx)),
   rows: (p) => p.rows,
   draw({ params: p, width, height = p.rows, ctx = {}, surface = TERM_RGB }) {
-    return drawDefault(p, width, height, ctx, surface);
+    return drawDefault(p, width, height, ctx, surface, canvasOf(p, ctx));
   },
 });

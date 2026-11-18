@@ -286,9 +286,20 @@ try {
     const glyphs = new Set(half.flatMap((l) => [...plain(l)]));
     ok([...glyphs].every((ch) => " █▀▄▌▐".includes(ch)), "the terminal's glyph step is the ceiling");
 
+    // Every frame is drawn on the canvas of the folder's largest frame: with a folder of frames of
+    // two sizes, the auto width is the widest frame's, the same for each frame drawn in it.
+    const auto = a.widths(withDefault, null, CTX).min;
+    const big = a.widths(a.validate({ default_frame: "test:idle" }).params, null, CTX).min;
+    ok(auto >= big, `the auto width is the largest frame's, not the default frame's (${auto} >= ${big} columns)`);
+    const autoIdle = a.draw({ params: withDefault, width: auto, height: 4, ctx: CTX });
+    const autoDead = a.draw({ params: withDefault, width: auto, height: 4, ctx: CTX, script: { frame: "dead" } });
+    ok(autoIdle.every((l) => vlen(l) === auto) && autoDead.every((l) => vlen(l) === auto), "every frame fills the auto width exactly");
+    ok(a.widths(a.validate({ width: 9 }).params, null, CTX).min === 9, "a width the skin sets is kept");
+
     const a3 = VISUALS["animation-3d"];
     const model = a3.validate({ model: "test:model.glb", default_frame: "test:idle" }).params;
-    ok(JSON.stringify(a3.draw({ params: model, width: w, height: 4, ctx: CTX })) === JSON.stringify(idle), "a 3D animation draws its default frame");
+    const idleOnly = a.draw({ params: a.validate({ default_frame: "test:idle" }).params, width: w, height: 4, ctx: CTX });
+    ok(JSON.stringify(a3.draw({ params: model, width: w, height: 4, ctx: CTX })) === JSON.stringify(idleOnly), "a 3D animation draws its default frame");
     const bare = a3.validate({ model: "test:model.glb" }).params;
     ok(a3.draw({ params: bare, width: w, height: 4, ctx: CTX }).every((l) => l === " ".repeat(w)), "and without one a blank");
   }
