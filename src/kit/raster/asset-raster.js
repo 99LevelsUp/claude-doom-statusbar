@@ -7,7 +7,7 @@
 // from its new content on the next render. Images that cannot be read draw nothing: the caller
 // falls back to its default.
 
-import { readFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
+import { closeSync, openSync, readFileSync, readSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -77,7 +77,21 @@ function dropStaleCaches() {
   }
 }
 
-function convert(file, entry, key, rows, step, background) {
+// `img` on a transparent canvas of `canvas` pixels, centred across and standing on its bottom edge,
+// so every frame of an animation drawn on the same canvas keeps one scale and one place. An image
+// as large as the canvas, or larger, is drawn as it is.
+export function onCanvas(img, canvas) {
+  if (!canvas || (canvas.width <= img.width && canvas.height <= img.height)) return img;
+  const W = Math.max(canvas.width, img.width), H = Math.max(canvas.height, img.height);
+  const rgba = new Uint8Array(W * H * 4);
+  const ox = Math.floor((W - img.width) / 2), oy = H - img.height;
+  for (let y = 0; y < img.height; y++) {
+    rgba.set(img.rgba.subarray(y * img.width * 4, (y + 1) * img.width * 4), ((oy + y) * W + ox) * 4);
+  }
+  return { ...img, width: W, height: H, rgba };
+}
+
+function convert(file, entry, key, rows, step, background, canvas) {
   const disk = diskCache();
   const own = `${file}|${entry.stamp}|`;
   if (Array.isArray(disk[own + key])) return disk[own + key];
@@ -85,7 +99,7 @@ function convert(file, entry, key, rows, step, background) {
     try { entry.image = decodePng(readFileSync(file)); } catch { entry.image = null; }
   }
   if (!entry.image) return null;
-  const cells = convertImage(entry.image, rows, step, { background });
+  const cells = convertImage(onCanvas(entry.image, canvas), rows, step, { background });
   // The file's entries from an earlier version of it are never read again.
   for (const k of Object.keys(disk)) if (k.startsWith(`${file}|`) && !k.startsWith(own)) delete disk[k];
   disk[own + key] = cells;
@@ -95,8 +109,10 @@ function convert(file, entry, key, rows, step, background) {
 }
 
 // The image at `file` as `rows` rows of cells at glyph `step`, transparent areas fitted against
-// `background`, or null when the file is missing or not an image.
-export function rasterize(file, rows, { step = "octant", background = [0, 0, 0] } = {}) {
+// `background`, or null when the file is missing or not an image. With a `canvas` ({ width, height }
+// in pixels, see frameCanvas) the image is drawn on it (onCanvas), so frames of different sizes come
+// out at one scale and one size in cells.
+export function rasterize(file, rows, { step = "octant", background = [0, 0, 0], canvas = null } = {}) {
   const stamp = stampOf(file);
   if (!stamp) {
     _assets.delete(file);
@@ -107,9 +123,48 @@ export function rasterize(file, rows, { step = "octant", background = [0, 0, 0] 
     entry = { stamp, image: undefined, rows: new Map() };
     _assets.set(file, entry);
   }
-  const key = `${rows}@${step}@${background.join(",")}`;
-  if (!entry.rows.has(key)) entry.rows.set(key, convert(file, entry, key, rows, step, background));
+  const key = `${rows}@${step}@${background.join(",")}${canvas ? `@${canvas.width}x${canvas.height}` : ""}`;
+  if (!entry.rows.has(key)) entry.rows.set(key, convert(file, entry, key, rows, step, background, canvas));
   return entry.rows.get(key);
+}
+
+// The size in pixels of the PNG at `file`, from its header alone, or null when it is not a PNG.
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+export function imageSize(file) {
+  const head = Buffer.alloc(24);
+  let fd = null;
+  try {
+    fd = openSync(file, "r");
+    if (readSync(fd, head, 0, 24, 0) < 24) return null;
+  } catch {
+    return null;
+  } finally {
+    if (fd !== null) try { closeSync(fd); } catch { /* closed */ }
+  }
+  if (head.length < 24 || !head.subarray(0, 8).equals(PNG_SIGNATURE) || head.toString("latin1", 12, 16) !== "IHDR") return null;
+  const width = head.readUInt32BE(16), height = head.readUInt32BE(20);
+  return width > 0 && height > 0 ? { width, height } : null;
+}
+
+// The canvas of a folder of frames: the width of its widest PNG and the height of its tallest, in
+// pixels, or null when the folder holds none. Kept per folder until the folder changes (a frame
+// added, removed or replaced), so the fit measures the frames once, not on every render.
+const _canvases = new Map();
+export function frameCanvas(dir) {
+  let stamp;
+  try { stamp = Math.round(statSync(dir).mtimeMs); } catch { return null; }
+  const hit = _canvases.get(dir);
+  if (hit && hit.stamp === stamp) return hit.canvas;
+  let names = [];
+  try { names = readdirSync(dir).filter((n) => n.toLowerCase().endsWith(".png")); } catch { return null; }
+  let canvas = null;
+  for (const n of names) {
+    const s = imageSize(path.join(dir, n));
+    if (!s) continue;
+    canvas = canvas ? { width: Math.max(canvas.width, s.width), height: Math.max(canvas.height, s.height) } : s;
+  }
+  _canvases.set(dir, { stamp, canvas });
+  return canvas;
 }
 
 // One cell over the background: a colour, or "term-bg" for the terminal's own, which a transparent

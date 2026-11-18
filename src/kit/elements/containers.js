@@ -99,7 +99,10 @@ export const row = define({
     shrink: param("text", "lockstep", "How children shrink when the width runs short: all together, from the start, or from the end", { allowed: ["lockstep", "start", "end"] }),
     grow: growParam("What the row does with width it has to spare: none leaves it to `align`; fill shares it evenly among the children that can grow, each up to the most it can use"),
     center: param("text", "",
-      "The id of a child that sits in the middle of the row, the children before it at the row's start and those after it right behind it; when they leave no room for that, the children sit side by side. The bar's root row with a centre takes the terminal's whole width"),
+      "The id of a child that sits in the middle of the row, the others beside it as `center_sides` says; when one side leaves no room for that, the centre moves away from it, as far as it must, and with no room at all the children sit side by side. The bar's root row with a centre takes the terminal's whole width"),
+    center_sides: param("text", "edges",
+      "Where the children beside the centre sit: edges puts those before it at the row's start and those after it right behind it; close puts both sides right against it",
+      { allowed: ["edges", "close"] }),
     when_empty: whenEmptyParam(),
   },
   widths: (p, kids) => {
@@ -121,16 +124,20 @@ export const row = define({
     const lineOf = (c, r) => c.lines[r] ?? blank(c.width);
     const at = p.center ? ids.indexOf(p.center) : -1;
     if (at >= 0) {
-      // The children before the centre at the start, the centre in the middle of the row when
-      // they leave room for it, the rest right behind it.
+      // The centre in the middle of the row when both sides leave room for it; else as near the
+      // middle as the side that is short of room allows. The children before it start at the row's
+      // start (edges) or end right before it (close); those after it follow it right behind.
       const before = children.slice(0, at);
       const beforeW = sum(before.map((c) => c.width)) + sepW * before.length;
-      const start = Math.max(beforeW, Math.floor((width - children[at].width) / 2));
+      const afterW = used - beforeW - children[at].width;
+      const latest = Math.max(beforeW, width - children[at].width - afterW);
+      const start = Math.min(Math.max(beforeW, Math.floor((width - children[at].width) / 2)), latest);
       const gap = start - beforeW;
+      const close = p.center_sides === "close";
       return Array.from({ length: height }, (_, r) => {
         const head = before.map((c) => lineOf(c, r) + sep).join("");
         const tail = children.slice(at).map((c) => lineOf(c, r)).join(sep);
-        return head + blank(gap) + tail + blank(Math.max(0, room - gap));
+        return close ? blank(gap) + head + tail + blank(Math.max(0, room - gap)) : head + blank(gap) + tail + blank(Math.max(0, room - gap));
       });
     }
     const left = leftRoom(room, p.align);

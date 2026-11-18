@@ -107,10 +107,19 @@ in short:
     to `align`; `"fill"` gives each child of a column the column's whole width, and shares a row's
     surplus evenly among the children that can grow. A visual that cannot grow (an equalizer with
     `sizing = "values"`) keeps its width, and `align` places it;
-  - a row's `center`, the id of a child drawn in the middle of the row, the children before it at
-    the row's start and those after it right behind it; when they leave no room, the children sit
-    side by side. The bar's root row with a `center` takes the terminal's whole width, so its
-    centre child sits in the middle of the terminal (Minecraft's HUD, with the chat at the edge).
+  - a row's `center`, the id of a child drawn in the middle of the row, and `center_sides`, where
+    the others sit: `"edges"` (the default) puts the children before it at the row's start and
+    those after it right behind it (Minecraft's HUD, with the chat at the edge); `"close"` puts
+    both sides right against it (DOOM's mugshot among its boxes). A side too wide for its half
+    moves the centre away from it; with no room at all the children sit side by side. The bar's
+    root row with a `center` takes the terminal's whole width, so its centre child sits in the
+    middle of the terminal.
+
+An `animation` draws every frame of its `frames` folder on one canvas, the size of the folder's
+largest frame (`frameCanvas` in `src/kit/raster/asset-raster.js`), each frame centred across it and
+standing on its bottom edge, so frames of different sizes keep one scale and never jump. Its
+`width` of 0 (the default) makes it exactly as wide as that canvas drawn at its `rows`; the fit
+measures the frames through the render's asset lookup.
 
 A box is never narrower than its title and padding. The equalizer's `sizing` says where its width
 comes from: `"stretch"` (the default) spreads the values over `columns`; `"values"` gives each value

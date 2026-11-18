@@ -187,10 +187,16 @@ try {
       }
     }
     ok(strip(panel.lines[0]).includes("Opus") && !strip(panel.lines[0]).includes("4.8"), "doom-compact names the model without its version");
-    // The face is 5 or 6 columns in every frame; in 7 columns with no separator beside it, its own
-    // black margin of one column is the only gap to USAGE and PROJECT.
-    ok(byId(panel.fit.tree, "mugshot").width === 7 && panel.fit.tree.node.params.separator === "",
-      "doom-compact's mugshot is 7 columns and sits right against its neighbours");
+    // The mugshot is as wide as its largest frame at 3 rows (the 30x31 canvas: 6 columns), one
+    // column from USAGE and PROJECT, in the middle of the terminal.
+    ok(byId(panel.fit.tree, "mugshot").width === 6 && panel.fit.tree.node.params.separator === " "
+      && panel.fit.tree.node.params.center === "mugshot",
+      `doom-compact's mugshot is its largest frame's 6 columns, centred, one column from its neighbours (${byId(panel.fit.tree, "mugshot").width})`);
+    for (const skin of ["doom-full", "doom-standard", "doom-minimal"]) {
+      const f = draw(skinFile(skin), { width: 200 }).fit.tree;
+      ok(byId(f, "mugshot").width === 12 && f.node.params.center === "mugshot" && f.node.params.center_sides === "close",
+        `${skin}: the mugshot is its largest frame's 12 columns at 6 rows, centred with the boxes close (${byId(f, "mugshot").width})`);
+    }
     const narrow = draw(full, { width: 44, rows: 5 });
     ok(narrow.fit.skin.name === "doom-compact" && same(ids(narrow), ["model", "usage", "mugshot"]),
       `at 44 columns doom-compact has dropped PROJECT (${ids(narrow).join(" ")})`);

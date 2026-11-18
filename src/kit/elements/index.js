@@ -9,7 +9,8 @@
 //   accepts      the value types it can show (src/metrics/catalogue.js)
 //   params       its parameter schema
 //   validate(given) -> { params, problems }   the parameters to draw with, and what was skipped
-//   widths(params, value) -> { min, natural, max? }   columns, from its parameters. `value` is
+//   widths(params, value, ctx) -> { min, natural, max? }   columns, from its parameters; `ctx`
+//                 ({ resolveAsset }) lets it measure its assets (an animation's largest frame). `value` is
 //                 what the draw gets (src/kit/skin/draw.js metricValue); a visual may size by it
 //                 only where it holds while the bar runs (the equalizer's count of CPU cores), never
 //                 by the length of a text or a list. `max` is the most columns it can use (none:

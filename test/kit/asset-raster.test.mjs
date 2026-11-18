@@ -90,6 +90,26 @@ try {
     ok(plain(raster.rasterLine(cells, 1, "term-bg")) === "▀", "a row wider than its columns is cut");
   }
 
+  console.log("frame canvas:");
+  {
+    ok(same(raster.imageSize(path.join(SPRITES, "STFTL40.png")), { width: 30, height: 31 }), "a PNG's size comes from its header (STFTL40 is 30x31)");
+    ok(raster.imageSize(path.join(SB, "game-a")) === null && raster.imageSize(path.join(SB, "nope.png")) === null, "a folder or a missing file has no size");
+    ok(same(raster.frameCanvas(SPRITES), { width: 30, height: 31 }), "the mugshot frames' canvas is the widest by the tallest frame (30x31)");
+    ok(raster.frameCanvas(path.join(SB, "nowhere")) === null, "a missing folder has no canvas");
+    const canvas = raster.frameCanvas(SPRITES);
+    const cols = (f) => raster.rasterize(path.join(SPRITES, f), 6, { ...OCTANT, canvas })[0].length;
+    const widths = readdirSync(SPRITES).filter((f) => f.endsWith(".png")).map(cols);
+    ok(widths.every((w) => w === widths[0]), `on the canvas every frame is drawn equally wide (${[...new Set(widths)].join(", ")} columns)`);
+    const plainCols = (f) => raster.rasterize(path.join(SPRITES, f), 6, OCTANT)[0].length;
+    ok(plainCols("STFST01.png") < plainCols("STFTL40.png"), "without it a narrow frame comes out narrower than a wide one");
+    const img = { width: 2, height: 1, rgba: new Uint8Array([1, 1, 1, 255, 2, 2, 2, 255]) };
+    const on = raster.onCanvas(img, { width: 4, height: 3 });
+    const alpha = (x, y) => on.rgba[(y * on.width + x) * 4 + 3];
+    ok(on.width === 4 && on.height === 3 && alpha(1, 2) === 255 && alpha(2, 2) === 255 && alpha(0, 2) === 0 && alpha(1, 0) === 0,
+      "an image sits centred across the canvas and on its bottom edge");
+    ok(raster.onCanvas(img, { width: 2, height: 1 }) === img, "an image as large as the canvas is drawn as it is");
+  }
+
   console.log("no process:");
   {
     const src = readFileSync(new URL("../../src/kit/raster/asset-raster.js", import.meta.url), "utf8");

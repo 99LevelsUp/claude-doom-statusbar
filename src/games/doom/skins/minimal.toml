@@ -6,9 +6,13 @@ games = ["doom"]
 root = "bar"
 smaller = "doom-compact"
 
+# The mugshot sits in the middle of the terminal with the boxes right against it on both sides;
+# when one side is too wide for its half, the mugshot moves away from it.
 [element.bar]
 kind = "row"
 separator = " "
+center = "mugshot"
+center_sides = "close"
 children = ["model", "usage", "mugshot", "project", "activity"]
 
 # --- MODEL --------------------------------------------------------------------------------------
@@ -236,8 +240,8 @@ kind = "animation"
 frames = "doom:images/mugshot"
 script = "doom:scripts/mugshot.js"
 default_frame = "doom:images/mugshot/STFST01.png"
-width = 14
-rows = 4
+# As wide as the largest frame drawn at its rows (width = 0), every frame on that one canvas.
+rows = 6
 glyphs = "octant"
 background = "#000000"
 
