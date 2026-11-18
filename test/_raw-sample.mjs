@@ -8,7 +8,7 @@ export const RAW_SAMPLE = Object.freeze({
   "context.hp": 78, "ratelimit.5h": 64, "ratelimit.7d": 31, "cost.total": "$1.83",
   "git.branch": { text: "main", url: null }, "git.behind": 2, "git.ahead": 3, "git.status": 3,
   "git.work": [["changed", 3], ["behind", 2], ["ahead", 3]], "session.name": "doom-hud-demo", "session.title": "doom-hud-demo",
-  "pr.state": { text: "#1234", url: null }, "loc.cwd": { text: "claude-doom-statusbar", url: null }, "loc.added": 185,
+  "pr.state": { text: "#1234", url: null }, "loc.cwd": { text: "claude-doom-statusbar", url: null }, "loc.added": 185, "loc.removed": 62,
   "act.subagents": [["hook events", "2m13s"], ["find configs", "12s"]], "act.agents": 2,
   "act.tasklist": [
     { status: "completed", text: "scaffold project" },

@@ -108,6 +108,7 @@ export function buildValues(data, git, now = Date.now() / 1000) {
     const a = cost.total_lines_added || 0, r = cost.total_lines_removed || 0;
     v["loc.churn"] = `+${a} / -${r}`;
     v["loc.added"] = a;
+    v["loc.removed"] = r;
   }
 
   const m = data.model || {};

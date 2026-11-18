@@ -107,24 +107,33 @@ export function rateHealthValue(data) {
 // "Freshest" needs no timestamps: a window is identified by its resets_at, and within one
 // window used_percentage only ever rises. So per window: a later resets_at wins (a new window
 // started), the same resets_at takes the higher percentage, an earlier one is stale.
+//
+// A reading whose window has already reset (resets_at in the past) is stale whatever its
+// percentage, and a reading that names its window beats one that does not: a reading without
+// resets_at cannot be placed, and once it was pooled with a higher percentage it used to win
+// every later merge, hiding the live window's reset time.
 const SAME_WINDOW_S = 60; // resets_at readings this close are the same window (rounding jitter)
 
 // Pure: the fresher of two readings of one window, { used_percentage, resets_at } | null.
-export function fresherWindow(a, b) {
+// `now` is in seconds, like resets_at.
+export function fresherWindow(a, b, now = Date.now() / 1000) {
   const ok = (w) => w && typeof w === "object" && typeof w.used_percentage === "number";
   if (!ok(a)) return ok(b) ? b : null;
   if (!ok(b)) return a;
   const ra = typeof a.resets_at === "number" ? a.resets_at : null;
   const rb = typeof b.resets_at === "number" ? b.resets_at : null;
+  const overA = ra !== null && ra <= now, overB = rb !== null && rb <= now;
+  if (overA !== overB) return overA ? b : a; // a window that has reset is stale
+  if ((ra === null) !== (rb === null)) return ra === null ? b : a; // a known window beats an unknown one
   if (ra !== null && rb !== null && Math.abs(ra - rb) > SAME_WINDOW_S) return ra > rb ? a : b; // newer window
-  return b.used_percentage > a.used_percentage ? b : a; // same window (or unknown): usage only rises
+  return b.used_percentage > a.used_percentage ? b : a; // same window (or both unknown): usage only rises
 }
 
 // Pure: merge this session's rate_limits with the shared ones; returns the merged object.
-export function mergeRateLimits(mine, shared) {
+export function mergeRateLimits(mine, shared, now = Date.now() / 1000) {
   const out = { ...(mine && typeof mine === "object" ? mine : {}) };
   for (const k of ["five_hour", "seven_day"]) {
-    const w = fresherWindow(out[k], shared && shared[k]);
+    const w = fresherWindow(out[k], shared && shared[k], now);
     if (w) out[k] = w; else delete out[k];
   }
   return out;

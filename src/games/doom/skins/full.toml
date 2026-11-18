@@ -21,9 +21,9 @@ grow = "fill"
 frame = { kind = "box", title = "MODEL", background = "#1c2036" }
 children = ["model-line", "model-flags", "model-permission", "advisor"]
 
+# The effort icon sits right after the name (no grow: the row does not stretch to the box).
 [element.model-line]
 kind = "row"
-grow = "fill"
 separator = " "
 separator_background = "#1c2036"
 children = ["model-name", "model-effort"]
@@ -32,8 +32,8 @@ children = ["model-name", "model-effort"]
 kind = "text"
 metric = "model.name"
 icon = "🤖"
-width = 14
-min_width = 10
+width = 10
+min_width = 8
 
 [element.model-effort]
 kind = "icon"
@@ -223,12 +223,28 @@ kind = "icon"
 metric = "git.work"
 width = 13
 
+# Lines added in green and removed in red, as "+248 / -209".
 [element.churn]
-kind = "text"
-metric = "loc.churn"
+kind = "row"
+separator = " / "
+separator_background = "#1c2036"
+children = ["churn-added", "churn-removed"]
+
+[element.churn-added]
+kind = "number"
+metric = "loc.added"
 icon = "📝"
-width = 13
-min_width = 10
+prefix = "+"
+color = "#60c868"
+align = "right"
+width = 6
+
+[element.churn-removed]
+kind = "number"
+metric = "loc.removed"
+prefix = "-"
+color = "#e05440"
+width = 5
 
 [element.pr]
 kind = "text"

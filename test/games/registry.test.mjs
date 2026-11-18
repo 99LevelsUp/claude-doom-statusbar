@@ -232,9 +232,9 @@ try {
       ok(viaOld === viaNew && viaOld === render(s, { GAMEBAR_SKIN: "doom-full", COLUMNS: cols }) && viaOld.includes("MODEL"),
         `at ${cols} columns the old path draws doom-full`);
     }
-    // At 90 columns doom-full does not fit and goes down its smaller-skin chain.
-    ok(render(s, { GAMEBAR_THEME: "doom", GAMEBAR_PRESET: oldFull, COLUMNS: "90" }) === render(s, { GAMEBAR_SKIN: "doom-minimal", COLUMNS: "90" }),
-      "at 90 columns it draws what doom-minimal draws");
+    // At 80 columns doom-full does not fit and goes down its smaller-skin chain to doom-minimal.
+    ok(render(s, { GAMEBAR_THEME: "doom", GAMEBAR_PRESET: oldFull, COLUMNS: "80" }) === render(s, { GAMEBAR_SKIN: "doom-minimal", COLUMNS: "80" }),
+      "at 80 columns it draws what doom-minimal draws");
   }
 } finally {
   rmSync(SB, { recursive: true, force: true });
