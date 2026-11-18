@@ -1,124 +1,71 @@
 # Backlog
 
-One list of every open proposal and idea, so nothing gets lost between ideation documents. Details live in
-the linked documents; this file only tracks **what is open, in what order, and where it is described**.
+The backlog moved to [GitHub Issues](https://github.com/99LevelsUp/claude-game-bar/issues) on 18.11.2026. Open a new proposal or idea there.
 
-Update it when an item ships (move it to *Done*, with the version), when a new idea is written up, or
-when the owner decides against something (move it to *Won't do*, with the reason).
+Labels: the area (`daemon`, `render`, `skins`, `chat`, `wc3`, `install`, `housekeeping`,
+`performance`, `mugshot`, `legacy`), `bug` or `enhancement`, and the state when it is not plain open
+work: `idea` (not decided), `blocked` (waiting on something outside the project), `needs-decision`
+(waiting on the owner). A pull request that finishes an issue closes it with `Fixes #<number>`.
 
-Status: `next` = agreed, do soon · `open` = agreed direction, not scheduled · `idea` = not decided ·
-`blocked` = waiting on something outside the project.
+## Old backlog IDs
 
-Last reviewed: 17.11.2026 (games as skins, released in 2.0.0).
+Plans, ideation documents and the changelog cite the old IDs. This table says where each one went.
 
-## Render daemon, glyph renderer, minimap
-Source: [ideation/2026-11-09-render-daemon-and-minimap.md](ideation/2026-11-09-render-daemon-and-minimap.md)
+| ID | Now |
+|---|---|
+| D-2 | [#27](https://github.com/99LevelsUp/claude-game-bar/issues/27) |
+| D-5 | [#28](https://github.com/99LevelsUp/claude-game-bar/issues/28) |
+| D-6 | [#29](https://github.com/99LevelsUp/claude-game-bar/issues/29) |
+| D-7 | [#30](https://github.com/99LevelsUp/claude-game-bar/issues/30) |
+| D-9 | [#31](https://github.com/99LevelsUp/claude-game-bar/issues/31) |
+| D-10 | [#32](https://github.com/99LevelsUp/claude-game-bar/issues/32) |
+| D-11 | done with D-1 |
+| D-12 | [#33](https://github.com/99LevelsUp/claude-game-bar/issues/33) |
+| D-13 | [#34](https://github.com/99LevelsUp/claude-game-bar/issues/34) |
+| D-14 | [#35](https://github.com/99LevelsUp/claude-game-bar/issues/35) |
+| D-16 | done in 2.0.0 |
+| D-17 | [#36](https://github.com/99LevelsUp/claude-game-bar/issues/36) |
+| D-18 | [#37](https://github.com/99LevelsUp/claude-game-bar/issues/37) |
+| D-19 | [#38](https://github.com/99LevelsUp/claude-game-bar/issues/38) |
+| L-D | [#39](https://github.com/99LevelsUp/claude-game-bar/issues/39) |
+| L-A | [#40](https://github.com/99LevelsUp/claude-game-bar/issues/40) |
+| L-H | [#41](https://github.com/99LevelsUp/claude-game-bar/issues/41) |
+| L-I | [#42](https://github.com/99LevelsUp/claude-game-bar/issues/42) |
+| L-J | [#43](https://github.com/99LevelsUp/claude-game-bar/issues/43) |
+| R-9 | [#44](https://github.com/99LevelsUp/claude-game-bar/issues/44) |
+| R-10 | [#45](https://github.com/99LevelsUp/claude-game-bar/issues/45) |
+| G-2 | done with R-8 (PR #10) |
+| G-3 | done in 2.0.0 |
+| G-4 | done in 2.0.0 |
+| G-5 | done in 2.0.0 |
+| G-6 | [#46](https://github.com/99LevelsUp/claude-game-bar/issues/46) |
+| G-7 | done in 2.0.0 |
+| G-8 | [#47](https://github.com/99LevelsUp/claude-game-bar/issues/47) |
+| G-10 | done in 2.0.0 |
+| G-9 | [#48](https://github.com/99LevelsUp/claude-game-bar/issues/48) |
+| G-11 | [#49](https://github.com/99LevelsUp/claude-game-bar/issues/49) |
+| P-1 | [#50](https://github.com/99LevelsUp/claude-game-bar/issues/50) |
+| P-2 | done with D-1 (the daemon renders every session) |
+| P-3 | [#51](https://github.com/99LevelsUp/claude-game-bar/issues/51) |
+| P-6 | [#52](https://github.com/99LevelsUp/claude-game-bar/issues/52) |
+| P-4 | [#53](https://github.com/99LevelsUp/claude-game-bar/issues/53) |
+| H-A | [#54](https://github.com/99LevelsUp/claude-game-bar/issues/54) |
+| H-B | [#55](https://github.com/99LevelsUp/claude-game-bar/issues/55) |
+| H-C | [#56](https://github.com/99LevelsUp/claude-game-bar/issues/56) |
+| F-1 | [#57](https://github.com/99LevelsUp/claude-game-bar/issues/57) |
+| F-2 | [#58](https://github.com/99LevelsUp/claude-game-bar/issues/58) |
+| F-3 | [#59](https://github.com/99LevelsUp/claude-game-bar/issues/59) |
+| F-4 | [#60](https://github.com/99LevelsUp/claude-game-bar/issues/60) |
+| S-1 | [#61](https://github.com/99LevelsUp/claude-game-bar/issues/61) |
+| S-2 | [#62](https://github.com/99LevelsUp/claude-game-bar/issues/62) |
+| S-3 | done in 2.0.0 |
+| S-5 | [#64](https://github.com/99LevelsUp/claude-game-bar/issues/64) |
+| S-4 | [#63](https://github.com/99LevelsUp/claude-game-bar/issues/63) |
+| S-6 | done in 2.0.0 |
+| S-7 | [#65](https://github.com/99LevelsUp/claude-game-bar/issues/65) |
+| S-8 | done in 2.0.0 |
 
-Owner's order: daemon first, renderer second, minimap and WC3 after. The daemon (D-1) and the renderer (D-3, D-4, D-8) are done, see *Done*; next are the minimap and WC3.
-
-| ID | Item | Status |
-|---|---|---|
-| D-2 | Hook events into the daemon without a spawn per tool call (HTTP hooks, if Claude Code supports them and fails safe) | idea |
-| D-5 | WC3 minimap: layered metrics (terrain, fog, units per agent, pings), map larger than the view, event-driven camera. Which metric goes to which layer is open | idea |
-| D-6 | WC3 console elements beyond the minimap: portrait with races (original art), info panel, inventory, command card, resource bar, day/night clock | idea |
-| D-7 | Frame reel with a deadline, read by a write-once client (Part 6 idea 1). The deadline header shipped with D-1 (`slots=1`); the multi-slot reel is still open | open |
-| D-9 | Per-repo ledger behind the map, "changed since Claude read it" layer, provenance, allied sessions (Part 6 idea 3). Data model for D-5 | idea |
-| D-10 | Animation cadence per element: telemetry on data arrival, effects as fast as the display allows (~10 ms), DOOM mugshot fixed at ~1 s; pose-to-pose sampling where the display is 1 Hz (Part 6 idea 4). For D-6 portrait | idea |
-| D-11 | Crash-only daemon with a version-named pipe as singleton and upgrade path (Part 6 idea 5). Absorbed by D-1: one pipe per installation, version mismatch restarts the daemon | done with D-1 |
-| D-12 | Cell-space compositor with two resolvers: lookup table for map and chrome, error search for portrait (Part 6 idea 6). Shape of D-3. The lookup-table resolver for chrome is part A of D-17 | idea |
-| D-13 | XP from resolved work, kept per repo (Part 6 idea 7). For D-6 / G-8 | idea |
-| D-14 | A new session shows `doombar: offline` for about 3 s before its first frame, even with the daemon running (live test 2026-11-11): the first statusLine call writes the payload and finds no frame. (With no daemon running, `SessionStart` now waits up to 10 s for the payload and starts the daemon then; before, the first frame waited for the first tool call or Stop) | idea |
-| D-16 | `install --local` over a global install registers every hook twice: it writes the full hook set into `settings.local.json`, and Claude Code merges hooks across scopes (found on the Raspberry Pi, 2026-11-13). Wanted: a dev checkout overrides only the statusLine and env of a global production install, with no second hook set. Option: skip hook entries the user scope already has, or note that hooks stay global. Whether Claude Code dedupes identical exec-form entries is unverified.<br>2026-11-16: skipping the local hooks would leave the checkout's daemon unsupervised (a hook supervises only its own installation's daemon) and run the global hook code against the checkout's daemon. Owner's choice instead: both sets stay, and the hooks of the installation that does not draw the session step aside (`servedElsewhere` in `src/platform/runtime.js`: its client wrote no payload for the session, another installation's did within the daemon idle period). Fixes the double journal; the second `node` start per event remains | done in 2.0.0 |
-| D-17 | Line art in the renderer (owner, 2026-11-13).<br>• Box drawing (U+2500–257F): horizontal and vertical lines, corners, T-junctions and crossings in light, heavy and double weights, rounded corners `╭╮╯╰`, dashed lines, and the diagonals `╱ ╲ ╳`.<br>• Symbols for Legacy Computing (U+1FB00–1FBFF): one-eighth lines and diagonal line segments at more angles.<br>• Line glyphs from the Symbols for Legacy Computing Supplement where terminals draw them.<br>Use: frames and dividers for game chrome (WC3 console, minimap edges) and line drawing in the glyph raster. Which glyphs a terminal draws is checked with the test card (D-8) and limited by the glyph level, as for the mugshot. Belongs in `kit/` after the restructure.<br>2026-11-15: the owner widened it to every suitable glyph on [Wikipedia: Box-drawing characters](https://en.wikipedia.org/wiki/Box-drawing_characters). Investigated in [ideation/2026-11-15-line-art-glyphs.md](ideation/2026-11-15-line-art-glyphs.md): **possible**. It splits into A, chrome lines through a new `kit/lines.js` resolver (with D-12, for D-5, D-6, G-4 and G-8); B, line glyphs in the mugshot raster, only after compare-faces measurement and owner sign-off as in D-4; and C, thin meter rails (with S-5). It needs a line level per terminal next to the glyph step (`GAMEBAR_LINES`, forwarded per session) and test-card sections for it. Four owner questions are open there.<br>Owner, 2026-11-15: the test card stays available and working; the glyph set (fill step and line level) is detected automatically where possible, otherwise the user picks it at install or in configuration. Detection runs only in `install` / `test-card`, where a TTY exists (cursor-position query for width, XTVERSION/DA2 and env for identity, fontconfig on Linux). What cannot be detected (a glyph drawn wrong) is asked with the test card's samples. Results are stored per terminal identity, so a different terminal in Claude Code gets its own choice. Details in section 4a of the note | open |
-| D-18 | Claude Code cuts some bar lines short with `…` although they fit the terminal (found on the Pi, 2026-11-17, a 58-column terminal). Claude Code seems to count some glyphs wider than the terminal draws them: the octants of the mugshot (U+1CDxx), the OSC 8 link around the branch, some emoji. With `GAMEBAR_INDENT=4` the bar is narrower and nothing is cut. Wanted: find which glyphs Claude Code counts differently and keep a margin for them, or avoid them at the right edge | open |
-| D-19 | Glyph step that stays: the step comes from the terminal's identity in the environment, and a terminal that draws more than its identity promises (the Pi's VTE terminal draws octants, the bar picks wedges) needs `GAMEBAR_GLYPHS` set by hand. Wanted: `install` (or `test-card`) records the step the user confirmed, so it holds until the next install. Fits the glyph-set choice of D-17 part 4a | idea |
-
-## Housekeeping: temp-file leaks and wasted hook work
-Source: [ideation/2026-10-31-temp-file-leaks-and-hook-cost.md](ideation/2026-10-31-temp-file-leaks-and-hook-cost.md)
-
-| ID | Item | Status |
-|---|---|---|
-| L-D | No git / tasklist probes in headless sessions (verify `CLAUDE_CODE_ENTRYPOINT` or probe only after first render) | open |
-| L-A | Own directory `%TEMP%/claude-game-bar/<session>/`, sweep lists only that; first sweep removes old-style files. On Linux and macOS the bar already uses a private runtime directory (D-15); L-A narrows it per session | open, with R-1 |
-| L-H | Give the savings file a bar-specific prefix (the sweep now owns the generic `savings_` prefix in the temp dir) and narrow `.tmp` cleanup to bar-owned names under a custom `MUGSHOT_STATE`; both disappear with L-A | open, with L-A |
-| L-I | An async Stop hook still running at session end can recreate a journal line or git marker after SessionEnd cleanup; the 1-hour sweep collects them. Revisit with L-A | idea |
-| L-J | Add a `windows-latest` job to the Test workflow; Windows runs only locally today | idea |
-
-## Rename to `claude-game-bar` and restructure (1.0.0)
-Source: [ideation/2026-10-31-shared-game-layout-engine.md](ideation/2026-10-31-shared-game-layout-engine.md), section *Rename*; structure audit and phasing: [ideation/2026-11-13-repo-structure-audit.md](ideation/2026-11-13-repo-structure-audit.md)
-
-Requirements: [plans/2026-11-13-1359-refactor-claude-game-bar-1-0-plan.md](plans/2026-11-13-1359-refactor-claude-game-bar-1-0-plan.md).
-
-Owner, 2026-11-13: rename on GitHub and npm together with 1.0.0; the bar becomes a platform with one general rendering part and game parts (DOOM, Minecraft, Warcraft III next).
-
-R-0 to R-8 shipped with 1.0.0, see *Done*. What is left:
-
-| ID | Item | Status |
-|---|---|---|
-| R-9 | Remove the `claude-doom-statusbar` package from npm entirely (owner, 2026-11-15). Every version is deprecated with the move message and 0.16.0 shows a move row, so a user who installs it learns about the rename; removing it would drop that message. npm allows unpublishing a package older than 72 hours only with no dependents, low weekly downloads and a single owner. Revisit once downloads have died down | idea |
-| R-10 | Remove the old-name fallbacks (`DOOMBAR_*`, `MUGSHOT_STATE`, `~/.claude/doombar-theme.json`, learned state under old names, the old `presets/` paths, `src/doombar-client.sh`, the sweep of old names) in a later 1.x release marked as breaking, as the 1.0.0 changelog announces | open |
-
-## Shared game layout engine
-Source: [ideation/2026-10-31-shared-game-layout-engine.md](ideation/2026-10-31-shared-game-layout-engine.md)
-
-Owner, 2026-11-16: a game is assets plus skins, and the bar is a tree of shared elements that skins compose; there is no per-game skeleton. Requirements: [plans/2026-11-16-1247-feat-game-as-skin-plan.md](plans/2026-11-16-1247-feat-game-as-skin-plan.md). It absorbs G-3, G-4, G-5 and G-10 and changes the chat items G-6 and G-7 (a standard chat element with conversation libraries).
-
-| ID | Item | Status |
-|---|---|---|
-| G-2 | Layout registry instead of `if (layout === …)` in `statusline.js` | done with R-8 (PR #10) |
-| G-3 | User-level preset overlay `~/.claude/<bar>/<theme>.toml` so slot choices survive npm updates | done in 2.0.0: user skins in `~/.claude/claude-game-bar/skins/<name>/`, never touched by an update |
-| G-4 | Extract the shared HUD kit: cell fit (escape-safe), gauge row (merge `rIcons` + `glyphCells`), meter bar, grid, selection, portrait | done in 2.0.0: the shared elements and visuals in `src/kit/elements/` |
-| G-5 | Hotbar uses the shared width planner, `[bar].fallback` and `text_overflow` | done in 2.0.0: every skin shrinks, drops by priority and falls back to its `smaller` skin |
-| G-6 | Chat as data: script in TOML, declarative conditions, generic facts, cast from data. Unreleased: the chat is a standard element; generic facts and the cast come from conversation libraries, and a skin adds conversations as text in TOML. The conditions are code in the libraries, not declarative | open (partly done) |
-| G-7 | Chat packs: universal metric lines keyed, a game pack overrides by key and adds atmosphere lines; chat refers to sockets (`{hearts}`), not metrics. Unreleased: the platform's metrics library is keyed, a game's library or a skin replaces, drops or adds conversations by key; lines name facts, not sockets | done in 2.0.0 |
-| G-8 | Warcraft III layout on top of the kit (minimap: see D-5, after D-1 and D-3) | open |
-| G-10 | Assets on demand: a DOOM user does not need WC3 models and a WC3 user does not need mugshots, and the WC3 bar will let the user pick which heads to show. Assets may live in the repo, but the bar downloads the ones the settings need and removes the ones they no longer need (owner, 2026-11-11). Own brainstorm; dropping the `.ans` faces (D-3 plan, R13) already shrinks the DOOM set | done in 2.0.0: asset packages `@claude-game-bar/<game>`, installed on demand and removed by `install` after 30 days unused; 1.0.0 of both published by hand, later versions by `publish-assets.yml` |
-| G-9 | Decide who owns conversation order: game skeleton pulling universal lines, or universal lines dealt into gaps | idea |
-| G-11 | Visual configurator in the terminal (owner, 2026-11-16). Today the bar is defined by preset TOML files, and nobody knows what can be changed or how. Wanted: a universal configurator, ideally one for every game, where the user sets the bar's parameters with checkboxes and choices in a text-mode terminal window: what is shown and in what arrangement (which metrics, which boxes or sockets, their order, icons, the preset and its fallback, the theme), with a live preview of the bar. Needs: a description of what each game's layout offers (its sockets and options, the `sockets(cfg)` idea of the layout ideation), so the configurator is driven by data and not written per game; somewhere to save the choices that survives updates (G-3); the metric catalogue with a human name per metric. Could also host the glyph-set choice of D-17 (part 4a: what cannot be detected is asked there). Not now; first settle what a game is (see the owner's question of 2026-11-16 on what tells DOOM, Minecraft and WC3 apart) | idea |
-
-## Performance: bash spawns, shared statusbar
-Source: [ideation/2026-10-14-bash-spawn-and-shared-statusbar.md](ideation/2026-10-14-bash-spawn-and-shared-statusbar.md)
-
-| ID | Item | Status |
-|---|---|---|
-| P-1 | Find out what is expensive in a render and what really needs the 1 s refresh (refresh stays at 1 s) | open |
-| P-2 | One shared producer for account- and machine-wide data (limits, CPU/RAM, clock); renders only read | done with D-1 (the daemon renders every session) |
-| P-3 | Shared rate limits: treat a window past its `resets_at` as reset; scope the file per Claude account, not per OS user | idea |
-| P-6 | Every hook is a new `node` process, and on the owner's PC starting one is slow: a bare `node -e 0` took 1–4.4 s idle and up to 50 s with every core busy (2026-11-11; a hook costs about the same, so the cost is the process start, likely per-process security scanning). Hooks are async, so Claude Code does not wait, but each one still costs a process start. D-2 (events without a spawn) would remove it | idea |
-| P-4 | Detached `node hook.js --reap` processes sometimes never exit and pile up (2026-11-10: 10 alive, oldest ~1 h, ~33 MB each, no children, parents gone; a reaper started by hand exits in 0.9 s). Suspected contributor to an out-of-memory crash the same day. Find where they block; the one-shot `maybeReap` path still starts one per interval regardless (the daemon now waits for its previous reaper to exit) | open |
-
-## Mugshot health estimator
-Source: [ideation/2026-07-11-cap-ratio-accumulator-fix.md](ideation/2026-07-11-cap-ratio-accumulator-fix.md)
-
-| ID | Item | Status |
-|---|---|---|
-| H-A | Paired instantaneous deltas with EWMA / median as the core `k` estimator | open |
-| H-B | Decay / TTL on the accumulator | open |
-| H-C | Fix the write race (atomic write, or freeze `k` once converged) | open |
-
-## Features from the original ideation
-Source: [ideation/2026-06-06-doom-statusbar-ideation.md](ideation/2026-06-06-doom-statusbar-ideation.md)
-(the *Status* lines in that document are from June and not maintained; this table is current)
-
-| ID | Item | Status |
-|---|---|---|
-| F-1 | Live "advising / reviewing now" indicator | blocked: needs a server-tool hook, a payload flag or mid-turn transcript flush from Claude Code |
-| F-2 | Session memory: local telemetry and an intermission screen at `Stop` | idea |
-| F-3 | Optimal session window (when to restart, 30–70 % context) | idea |
-| F-4 | Sound effects on hook events (opt-in, original sounds) | idea |
-
-## Small fixes from the 0.13.0 review
-
-| ID | Item | Status |
-|---|---|---|
-| S-1 | Chat jumps when a condition flips (loop length depends on the filtered list) | open (folds into G-6) |
-| S-2 | Hearts and hunger overlap below ~30 columns | open (folds into G-5) |
-| S-3 | Duplicate, outdated comment above `EFFORT_COLOR` in `hotbar.js` (now `src/games/minecraft/layout.js`). Removed | done in 2.0.0 |
-| S-5 | The fine bars draw with octants (`SPARK_OCTANT` in `src/render.js`) whatever the terminal; in the Windows console host they show as boxes. Let the glyph level of the D-3 plan cap them too. Same per-terminal check as the line level of D-17 (part C, thin rails) | idea |
-| S-4 | AGENTS box mislabels and miscounts subagents. Observed 2026-11-10: two running `general-purpose` agents ("Simplify review: test value", "Simplify review: comments") both showed as `iew: comments 3m`, while Claude Code's own list showed three running agents. Leads: `SubagentStart` takes the description from the first pending `Agent` launch of the same `agent_type` (FIFO in `src/fold.js`), so parallel launches of one type can get swapped or duplicated labels; an agent that stopped while its own background work still runs gets `SubagentStop`, so the bar drops it while Claude Code still lists it. Verify against the journal before fixing | open |
-| S-6 | A preset path that does not exist and is not a registered preset (`DOOMBAR_PRESET=…/nope.toml`) makes `src/statusline.js` print a raw `ENOENT` stack on stderr. Print one line naming the missing preset instead (found on the Pi, 2026-11-14). Fixed in `renderSession`, so the daemon shows the line too. With skins the preset no longer draws at all: the chosen game's skin is drawn with a warning naming the file | done in 2.0.0 |
-| S-7 | When the daemon exits because its source changed (a `git pull` in a checkout), nothing starts its successor until the next hook. An idle machine shows the last frame until it expires, then a grey bar until the next tool call. Option: spawn the successor on that exit path only (the socket singleton prevents doubles), or document "resumes at the next hook" (found on the Pi, 2026-11-13) | owner decision |
-| S-8 | The render daemon does not forward `EVENTS`, `LLMLINGUA` or `SAVINGS_STATE` per session, so a session that shares the daemon gets the values the daemon inherited when it started, not its own. This predates the rename to `claude-game-bar`. Proposal: forward both spellings (`GAMEBAR_*` and `DOOMBAR_*`) per session, and clear both inherited spellings before a session's values apply (found in the review of the rename, 2026-11-15). Fixed as proposed: the client and the daemon forward both names | done in 2.0.0 |
+The IDs before these (D-1, D-3, D-4, D-8, D-15, R-0 to R-8, L-B, L-C, L-E to L-G, G-1, P-5, H-D) are in *Done*.
 
 ## Done
 
