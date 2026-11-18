@@ -14,5 +14,7 @@ presets = { minecraft = "minecraft" }
 # The npm package of the game's assets, pinned to one version and its npm integrity.
 [assets]
 package = "@claude-game-bar/minecraft"
-version = "1.0.0"
-integrity = "sha512-NfuFx/6mctqAa1hwasedgRHKGqsyCAXDZ2yaCYjRpFiOJYv6P0b9hV0CqBkwog5HPfifhGZmdm7ByeuGtNu3Hw=="
+version = "1.0.1"
+# Empty until 1.0.1 is on npm: the integrity is pinned in a follow-up pull request
+# (CONTRIBUTING.md, Asset packages).
+integrity = ""

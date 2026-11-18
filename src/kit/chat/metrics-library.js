@@ -52,11 +52,19 @@ const flag = (pairs, name) => {
 // Claude Code's permission modes, by the word the chat says.
 const PERMISSION = { plan: "plan", auto: "auto", acceptEdits: "auto", bypassPermissions: "bypass" };
 
+// The current Claude model family by display name, one per tier, as Claude Code names the running
+// model (`model.name`). Libraries cast the other players of a chat from it (the `family` fact). It
+// lives here, not in a game's assets, so a new model generation takes a release of the bar and no
+// release of every asset package.
+export const MODEL_FAMILY = Object.freeze(["Fable 5.2", "Opus 5.5", "Sonnet 5.5", "Haiku 5.5"]);
+
 // Every fact the chat can say, from the session's raw metric values (src/metrics/catalogue.js):
-// strings and numbers, null when unknown. They travel as JSON to a script library.
+// strings and numbers, null when unknown, and `family`, the list above. They travel as JSON to a
+// script library.
 export function facts(values = {}) {
   const v = values || {};
   const F = {};
+  F.family = [...MODEL_FAMILY];
   F.model = textOf(v["model.name"]);
   F.effort = textOf(v["model.effort"]);
   F.window = textOf(v["model.window"]);

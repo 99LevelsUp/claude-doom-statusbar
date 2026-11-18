@@ -247,6 +247,15 @@ try {
     ok(out && out.cast && typeof out.cast.a === "string" && out.conversations && typeof out.conversations === "object",
       `it returns { cast, conversations } (${res.status}${res.message ? `: ${res.message}` : ""})`);
     ok(out && out.cast.a !== "Opus 4.8" && out.cast.b !== "Opus 4.8" && out.cast.c !== "Opus 4.8", "the running model is not among the others in the cast");
+    const castFor = (F) => host.runBatch([{ script: file, fn: "conversations", input: F }], { deadlineMs: 10000 })[0].output?.cast;
+    const own = castFor({ ...facts({ "model.name": "Kite 2" }), family: ["Kite 2", "Lark 2", "Wren 2", "Swift 2"] });
+    ok(own && own.a === "Lark 2" && own.b === "Wren 2" && own.c === "Swift 2",
+      `it casts the others from the platform's family fact, without the running model (${own && Object.values(own).join(", ")})`);
+    const old = { ...facts({ "model.name": "Opus 5.5" }) };
+    delete old.family;
+    const fallback = castFor(old);
+    ok(fallback && [fallback.a, fallback.b, fallback.c].every((m) => typeof m === "string" && m !== "Opus 5.5"),
+      `a bar without the family fact still gets a cast from the library's own list (${fallback && Object.values(fallback).join(", ")})`);
     const p = VISUALS.chat.validate({}).params;
     const lines = (values, lib) => playChat({ facts: facts(values), libraries: lib ? [lib] : [], params: p }).script.map((m) => m.map((x) => x.text).join(""));
     const full = lines(RAW_SAMPLE, out);

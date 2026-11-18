@@ -8,9 +8,15 @@
 // (src/kit/chat/metrics-library.js), and so are the facts and the line forms. A key of its own plays
 // after all of them.
 //
-// The other players are three of the model family; the running model is never one of them.
+// The other players are three of the model family, the platform's `family` fact; the running model
+// is never one of them. FAMILY stands in for a bar too old to give that fact.
 
-var FAMILY = ["Fable 5.1", "Opus 5.5", "Sonnet 5.5", "Haiku 5.5"];
+var FAMILY = ["Fable 5.2", "Opus 5.5", "Sonnet 5.5", "Haiku 5.5"];
+
+function familyOf(F) {
+  var list = Array.isArray(F.family) ? F.family.filter(function (m) { return typeof m === "string" && m !== ""; }) : [];
+  return list.length ? list : FAMILY;
+}
 
 function known(x) { return x !== null && x !== undefined; }
 
@@ -24,7 +30,7 @@ function advancement(who, name) {
 }
 
 function conversations(F) {
-  var others = FAMILY.filter(function (m) { return m !== F.model; }).slice(0, 3);
+  var others = familyOf(F).filter(function (m) { return m !== F.model; }).slice(0, 3);
   var c = {};
   // A conversation under `key` when `when` holds: its lines, those given as null left out.
   function say(key, when) {

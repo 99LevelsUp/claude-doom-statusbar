@@ -205,7 +205,8 @@ a working example.
 
 `facts` holds every fact the chat can say (model, effort, context, rate limits, branch, tasks, CPU
 and more), as strings and numbers, `null` when unknown; the list is `facts()` in the metrics
-library. The function returns:
+library. `family` lists the current Claude model family by display name (`MODEL_FAMILY` there), so a
+library can cast other players from it without keeping its own list of models. The function returns:
 
 ```js
 { cast: { a: "Ada", b: "Ben" }, conversations: { "<key>": [line, ...], ... } }

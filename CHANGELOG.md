@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The chat's facts include `family`, the current Claude model family by display name. The Minecraft
+  chat casts its other players from it (`@claude-game-bar/minecraft` 1.0.1), so a new model generation
+  no longer needs a new asset package; its own list, now with Fable 5.2, stays as the fallback.
+
 ### Changed
 
 - For contributors: a game's asset package lives in `packages/<game>/` instead of

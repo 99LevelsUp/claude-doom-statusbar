@@ -114,6 +114,11 @@ try {
     ok(lib && typeof lib.conversations === "object" && lib.cast && typeof lib.cast === "object", "it returns its cast and its conversations by key");
     ok(Object.hasOwn(lib.conversations, "ctx.ask") && Object.hasOwn(lib.conversations, "ctx.answer"), "context is asked and answered under ctx.ask and ctx.answer");
     ok(JSON.stringify(facts(RAW)) === JSON.stringify(JSON.parse(JSON.stringify(facts(RAW)))), "its facts travel as JSON, as a script library receives them");
+    const fam = facts({}).family;
+    ok(Array.isArray(fam) && fam.length >= 3 && new Set(fam).size === fam.length && fam.every((m) => typeof m === "string" && m.trim() === m && m !== ""),
+      `the family fact lists the model family by display name, each once (${fam.join(", ")})`);
+    fam.push("changed");
+    ok(!facts({}).family.includes("changed"), "each render gets its own copy of the family");
 
     // Context at 80 %: a line about it plays within one cycle.
     const at80 = { ...RAW, "context.hp": 80 };
