@@ -216,6 +216,18 @@ try {
     const r = CONTAINERS.row.validate({ separator: "│", align: "center" }).params;
     const rowLines = CONTAINERS.row.draw({ params: r, width: 9, height: 1, children: [{ lines: ["ab"], width: 2 }, { lines: ["cd"], width: 2 }] });
     ok(plain(rowLines[0]) === "  ab│cd  ", `a centred row joins its children with its separator (${plain(rowLines[0])})`);
+    // A row with a centre child: the face "FF" in the middle of 12 columns, a and b beside it.
+    const kid = (s) => ({ lines: [s], width: vlen(s) });
+    const around = (sides, width, kidsOf) => plain(CONTAINERS.row.draw({
+      params: CONTAINERS.row.validate({ separator: " ", center: "face", center_sides: sides }).params,
+      width, height: 1, children: kidsOf, ids: ["a", "face", "b"] })[0]);
+    ok(around("edges", 12, [kid("a"), kid("FF"), kid("b")]) === "a    FF b   ", `edges: the children before the centre at the start (${JSON.stringify(around("edges", 12, [kid("a"), kid("FF"), kid("b")]))})`);
+    ok(around("close", 12, [kid("a"), kid("FF"), kid("b")]) === "   a FF b   ", `close: both sides right against the centre (${JSON.stringify(around("close", 12, [kid("a"), kid("FF"), kid("b")]))})`);
+    ok(around("close", 12, [kid("a"), kid("FF"), kid("bbbbbb")]) === " a FF bbbbbb",
+      `a side too wide for its half moves the centre away from it (${JSON.stringify(around("close", 12, [kid("a"), kid("FF"), kid("bbbbbb")]))})`);
+    ok(vlen(around("close", 12, [kid("a"), kid("FF"), kid("bbbbbb")])) === 12 && vlen(around("edges", 12, [kid("aaaaaa"), kid("FF"), kid("b")])) === 12,
+      "and the row stays exactly its width");
+    ok(around("edges", 12, [kid("aaaaaa"), kid("FF"), kid("b")]) === "aaaaaa FF b ", "a wide side before the centre pushes it to the right");
     const kids = [{ min: 4, natural: 14 }, { min: 10, natural: 24 }, { min: 5, natural: 5 }];
     ok(JSON.stringify(CONTAINERS.row.share(defaults(CONTAINERS.row), 43, kids)) === JSON.stringify([14, 24, 5]), "children that fit keep their natural widths");
     const lock = CONTAINERS.row.share(defaults(CONTAINERS.row), 30, kids);
