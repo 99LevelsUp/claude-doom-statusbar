@@ -51,9 +51,9 @@ glyph = "♥"
 empty_glyph = "♡"
 color = "#ff3b3b"
 empty_color = "#c07070"
-# A heart is one column, a shank of hunger two: a space between the hearts gives both rows of ten
-# about the same length.
-gap = 1
+# A heart is one column, a shank of hunger two: two spaces between the hearts and one between the
+# shanks give both rows of ten about the same length (a narrow bar closes the gaps up first).
+gap = 2
 invert = true
 # A session without a 5h limit (an API key, or before the first answer) has every heart.
 when_absent = "full"
@@ -61,7 +61,8 @@ priority = 3
 
 [element.between]
 kind = "text"
-width = 34
+# Hearts (28) + this + hunger (29) span the hotbar and the XP bar (73).
+width = 16
 min_width = 1
 
 [element.hunger]
@@ -70,6 +71,8 @@ metric = "context.hp"
 count = 10
 glyph = "🍖"
 empty_glyph = "🦴"
+# A space between the shanks, like the hearts' gaps (a narrow bar closes them up first).
+gap = 1
 invert = true
 from_right = true
 priority = 3
@@ -100,7 +103,9 @@ frame = { kind = "grid" }
 script = "minecraft:scripts/hotbar-highlight.js"
 children = ["slot-window", "slot-cost", "slot-changes", "slot-added", "slot-agents", "slot-tasks", "slot-errors", "slot-cpu", "slot-clock"]
 
-# A slot's item: a leading space centres it in a cell of seven columns.
+# A slot's item: a leading space, the two-column emoji, the label's own space and one blank value
+# column, centred by the slot column: in a cell of seven, two blanks before the emoji, three after.
+# The value under it is kept while its metric is absent, so the slot keeps its width.
 [element.slot-window]
 kind = "column"
 align = "center"
@@ -110,7 +115,7 @@ priority = 2
 [element.window-item]
 kind = "text"
 icon = " 🪓"
-width = 3
+width = 1
 min_width = 1
 
 [element.window]
@@ -121,6 +126,7 @@ align = "center"
 overflow = "clip"
 width = 7
 min_width = 5
+when_absent = "empty"
 
 [element.slot-cost]
 kind = "column"
@@ -131,7 +137,7 @@ priority = 2
 [element.cost-item]
 kind = "text"
 icon = " 💎"
-width = 3
+width = 1
 min_width = 1
 
 [element.cost]
@@ -142,6 +148,7 @@ align = "center"
 overflow = "clip"
 width = 7
 min_width = 5
+when_absent = "empty"
 
 [element.slot-changes]
 kind = "column"
@@ -152,7 +159,7 @@ priority = 2
 [element.changes-item]
 kind = "text"
 icon = " 🌿"
-width = 3
+width = 1
 min_width = 1
 
 [element.changes]
@@ -163,6 +170,7 @@ align = "center"
 overflow = "clip"
 width = 7
 min_width = 5
+when_absent = "empty"
 
 [element.slot-added]
 kind = "column"
@@ -173,7 +181,7 @@ priority = 2
 [element.added-item]
 kind = "text"
 icon = " 🧱"
-width = 3
+width = 1
 min_width = 1
 
 [element.added]
@@ -184,6 +192,7 @@ align = "center"
 overflow = "clip"
 width = 7
 min_width = 5
+when_absent = "empty"
 
 [element.slot-agents]
 kind = "column"
@@ -194,7 +203,7 @@ priority = 2
 [element.agents-item]
 kind = "text"
 icon = " 🐺"
-width = 3
+width = 1
 min_width = 1
 
 [element.agents]
@@ -205,6 +214,7 @@ align = "center"
 overflow = "clip"
 width = 7
 min_width = 5
+when_absent = "empty"
 
 [element.slot-tasks]
 kind = "column"
@@ -215,7 +225,7 @@ priority = 2
 [element.tasks-item]
 kind = "text"
 icon = " 🏆"
-width = 3
+width = 1
 min_width = 1
 
 [element.tasks]
@@ -226,6 +236,7 @@ align = "center"
 overflow = "clip"
 width = 7
 min_width = 5
+when_absent = "empty"
 
 [element.slot-errors]
 kind = "column"
@@ -236,7 +247,7 @@ priority = 2
 [element.errors-item]
 kind = "text"
 icon = " 💥"
-width = 3
+width = 1
 min_width = 1
 
 [element.errors]
@@ -247,6 +258,7 @@ align = "center"
 overflow = "clip"
 width = 7
 min_width = 5
+when_absent = "empty"
 
 [element.slot-cpu]
 kind = "column"
@@ -257,7 +269,7 @@ priority = 2
 [element.cpu-item]
 kind = "text"
 icon = " 🔥"
-width = 3
+width = 1
 min_width = 1
 
 [element.cpu]
@@ -266,7 +278,7 @@ metric = "sys.cpu"
 suffix = "%"
 color = "#ffffff"
 align = "center"
-width = 5
+width = 7
 
 [element.slot-clock]
 kind = "column"
@@ -277,7 +289,7 @@ priority = 2
 [element.clock-item]
 kind = "text"
 icon = " 🕓"
-width = 3
+width = 1
 min_width = 1
 
 [element.clock]
@@ -288,3 +300,4 @@ align = "center"
 overflow = "clip"
 width = 7
 min_width = 5
+when_absent = "empty"
