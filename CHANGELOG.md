@@ -12,6 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The chat's facts include `family`, the current Claude model family by display name. The Minecraft
   chat casts its other players from it (`@claude-game-bar/minecraft` 1.0.1), so a new model generation
   no longer needs a new asset package; its own list, now with Fable 5.2, stays as the fallback.
+- The metric `loc.removed`, the lines removed in the session, next to `loc.added`.
+
+### Fixed
+
+- The 5-hour reset time could go missing from the bar. The rate limits pooled across sessions kept
+  an old 5-hour reading without a reset time because its percentage was higher; now a reading that
+  names its window beats one that does not, and a window that has already reset is ignored.
+- DOOM: the effort icon sits right after the model's name instead of at the box's edge, and the
+  lines added and removed are green and red again (`+185 / -62`).
 
 ### Changed
 

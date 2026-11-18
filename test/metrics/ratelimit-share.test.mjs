@@ -26,6 +26,13 @@ ok(fresherWindow(w(2, W + 7 * 86400), w(90)).used_percentage === 2, "an older wi
 ok(fresherWindow(null, w(16)).used_percentage === 16, "no reading of my own -> take the shared one");
 ok(fresherWindow(w(16), null).used_percentage === 16, "nothing shared -> keep my own");
 ok(fresherWindow({ used_percentage: "x" }, null) === null, "malformed readings are ignored");
+const NOW = W - 7200;
+ok(fresherWindow(w(15, W - 3600), { used_percentage: 30 }, NOW).resets_at === W - 3600,
+  "a reading that names its window beats a higher one without resets_at (the reset time stays)");
+ok(fresherWindow({ used_percentage: 30 }, w(15, W - 3600), NOW).used_percentage === 15, "whichever side the unknown reading is on");
+ok(fresherWindow(w(15, W - 3600), w(80, NOW - 60), NOW).used_percentage === 15, "a window that has already reset is stale, whatever its percentage");
+ok(fresherWindow(w(80, NOW - 60), w(15, W - 3600), NOW).used_percentage === 15, "also when it is the session's own");
+ok(fresherWindow({ used_percentage: 12 }, { used_percentage: 16 }, NOW).used_percentage === 16, "two unknown windows: the higher reading wins");
 const m = mergeRateLimits({ five_hour: w(40, W - 3600), seven_day: w(12) }, { seven_day: w(16) });
 ok(m.five_hour.used_percentage === 40 && m.seven_day.used_percentage === 16, "windows merge independently");
 

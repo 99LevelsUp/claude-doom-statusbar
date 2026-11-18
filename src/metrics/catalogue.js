@@ -45,6 +45,7 @@ export const CATALOGUE = {
   "loc.cwd": m("Project folder", "text"),
   "loc.churn": m("Lines added and removed", "text"),
   "loc.added": m("Lines added", "number"),
+  "loc.removed": m("Lines removed", "number"),
   "git.branch": m("Git branch", "text"),
   "git.status": m("Changed files", "number"),
   "git.behind": m("Commits behind upstream", "number"),
