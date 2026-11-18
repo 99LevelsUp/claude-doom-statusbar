@@ -78,7 +78,6 @@ If you used the bar under its old package name, the same two commands move you o
 
 ```bash
 claude-game-bar install --skin minecraft # the skin to draw (default: keep the current one, else doom-full)
-claude-game-bar install --preset minimal # the size of the current game's skin, as before skins: full | standard | minimal
 claude-game-bar install --project       # write ./.claude/settings.json instead of ~/.claude
 claude-game-bar install --local         # write ./.claude/settings.local.json (overrides settings.json)
 claude-game-bar install --refresh 5     # redraw every 5 s as well as on events (default 1; 0 = events only)
@@ -258,27 +257,19 @@ Set `GAMEBAR_GLYPHS` to one of the step names to override the pick, for example 
 
 ## How it works
 
-The bar has one general part, the platform, and one part per game. The platform collects the session data, computes the metric values, owns the elements every skin is built from, runs the render daemon, the client, the hooks and the skins' scripts, and installs the bar and the game assets. A game is data: a manifest and its skins under `src/games/<game>/`, and its assets (images, scripts, conversation libraries) as the npm package `@claude-game-bar/<game>`, kept in the repository under `packages/<game>/`. The game registry, `src/games/index.js`, finds the games' folders.
+The bar is a general **platform** plus **games** that are only data. The platform reads your session, turns it into values such as context use, rate limits, cost, agents and tasks, and draws the **skin** you chose: a tree of shared elements (boxes, bars, lists, a chat, animations) described in a TOML file. A game brings its skins and an npm package of assets (images, scripts, conversation libraries). Hooks record what happens in the session (tool runs, errors, subagents, tasks), and that drives the reactions: the mugshot's face, the hearts, the highlighted hotbar slot.
 
-The statusLine command is a small bash client, not a renderer, wherever a suitable bash exists. The client (`src/gamebar-client.sh`) uses bash builtins only and starts no process. It hands the session JSON to the **render daemon** and prints the frame the daemon prepared. There is one daemon per installation (`src/daemon.js`), running at below-normal priority. The hooks start it and restart it when it dies or is outdated, and it exits on its own after `GAMEBAR_DAEMON_IDLE_MS` (default 10 minutes) with no active session. Upgrading the package in place updates the client without touching `settings.json`.
+The `statusLine` command is a tiny bash client wherever bash 5 (or Git Bash on Windows) exists. It starts no process: it hands the session to the bar's **render daemon**, one per installation, and prints the frame the daemon has ready. The hooks start the daemon and restart it when it dies or is outdated; it stops on its own after `GAMEBAR_DAEMON_IDLE_MS` (default 10 minutes) with no active session. Elsewhere the `statusLine` is the slower one-shot renderer, which draws the same skin without its scripts, so the mugshot keeps its idle face.
 
-- On **Windows with Git Bash** the installer writes `GAMEBAR_ROOT_HASH=<install hash>; f="<package>/src/gamebar-client.sh"; if [ -r "$f" ]; then . "$f"; else echo 'gamebar: offline'; fi`, which sources the client into the bash Claude Code already starts for each tick. The daemon is a single instance through the named pipe `\\.\pipe\gamebar-<install hash>`.
-- On **Linux and macOS with bash 5** Claude Code runs the statusLine through `/bin/sh` (dash on Debian), so the installer writes `b='<bash>'; f='<package>/src/gamebar-client.sh'; if [ -r "$f" ] && [ -x "$b" ]; then unset BASH_ENV; exec "$b" --norc --noprofile "$f" <install hash>; else echo 'gamebar: offline'; fi`. A tick costs about as much as starting bash: 3 ms on a GitHub Actions Linux runner, against 40 ms there for the one-shot renderer (on a Raspberry Pi 5 the one-shot takes about 250 ms). The daemon is a single instance through the socket file `gamebar_daemon_<install hash>.sock` in the runtime directory below; a socket left by a daemon that was killed is taken over by the next one.
-- **Everywhere else** (macOS with its own bash 3.2, Windows without Git Bash) the statusLine stays the one-shot renderer `node "<package>/src/statusline.js"`. That command also keeps working where the client is used, so sessions opened before an upgrade keep their bar until Claude Code restarts them.
+[docs/architecture.md](docs/architecture.md) describes the parts and how a tick flows through them.
 
-**Where the files live.** On Windows, in the temp directory (`%TEMP%`), which belongs to one user. On Linux and macOS `/tmp` is shared by every user, so the bar keeps all its files (session state, the daemon's files, the face cache) in a private directory: `$XDG_RUNTIME_DIR/gamebar` (usually `/run/user/<uid>/gamebar`), on macOS `$TMPDIR/gamebar`, otherwise `/tmp/gamebar-<uid>`. The hooks create it with mode 0700. If it is not a real directory of this user (another user created it, or it is a link), nothing is read from or written to it and the bar shows `gamebar: offline`. `GAMEBAR_RUNTIME_DIR` overrides the place on every platform. The runtime directory is cleared at logout, so a session resumed after a logout starts its HUD state afresh.
+### Where the files live
 
-The main files:
+On Windows, in the temp directory (`%TEMP%`), which belongs to one user. On Linux and macOS `/tmp` is shared by every user, so the bar keeps all its files (session state, the daemon's files, the face cache) in a private directory: `$XDG_RUNTIME_DIR/gamebar` (usually `/run/user/<uid>/gamebar`), on macOS `$TMPDIR/gamebar`, otherwise `/tmp/gamebar-<uid>`. The hooks create it with mode 0700. If it is not a real directory of this user (another user created it, or it is a link), nothing is read from or written to it and the bar shows `gamebar: offline`. `GAMEBAR_RUNTIME_DIR` overrides the place on every platform. The runtime directory is cleared at logout, so a session resumed after a logout starts its HUD state afresh.
 
-- **`src/statusline.js`** is the one-shot statusLine command. Claude Code pipes session JSON on stdin, and it prints the bar the shared render builds from it, without skin scripts. It spawns nothing: git moved into the hook to keep the render path free of child processes.
-- **`src/render-core.js`** holds the render the one-shot command and the daemon share; **`src/render.js`** adds the skin scripts to it as `renderSession`, which the daemon calls. It picks the session's skin (`src/skin-select.js`), maps the session JSON (plus the hook's git snapshot, system metrics from Node built-ins, and the hook state file) to metric values (`src/metrics/`), builds the session's game-neutral reaction, and then loads, fits and draws the skin (`src/kit/skin/`), with the warning line under it when something needs your attention.
-- **`src/hook.js`** is an event bus. Lifecycle hooks write a small state file (the reaction with its decay, tool-run intervals for the geiger, the running-subagent squad). The status line reads it on each refresh, and the two never block each other. Those files live in the bar's runtime directory (see above), keyed by session id, or next to `GAMEBAR_STATE` when that is set. `SessionEnd` deletes a session's files when it ends, keeping only its savings total for a later resume. `SessionStart` sweeps what is left by sessions that ended without it: a session that never showed a bar (a headless `claude -p` run) after `GAMEBAR_UNRENDERED_TTL` (default 1 hour), any other after `GAMEBAR_JOURNAL_TTL` (default 7 days, `off` to disable). Shared state and a live session's files are never touched.
-- **`src/kit/elements/`** holds the elements skins are built from, each described with its parameters. An `animation` draws image assets, such as the mugshot's transparent sprites, converted to glyphs by **`src/kit/raster/glyph-render.js`** (cached by **`src/kit/raster/asset-raster.js`**, on disk too for the one-shot status line), with the step **`src/kit/raster/glyph-level.js`** picks for the terminal.
-- **`src/platform/scripts/`** runs the skins' scripts for the render daemon in one worker thread, each call under a time budget, so a slow or broken script never takes the bar down. The one-shot status line runs no scripts.
-- **`src/platform/assets.js`** finds a game's assets, installs a missing asset package in the background and removes unused ones.
-- **`bin/cli.js`** is the command line: install, uninstall, skin and test card.
+A session's files live there keyed by its id (or next to `GAMEBAR_STATE` when that is set). `SessionEnd` deletes them when the session ends, keeping only its savings total for a later resume. `SessionStart` sweeps what sessions that ended without it left behind: a session that never showed a bar (a headless `claude -p` run) after `GAMEBAR_UNRENDERED_TTL` (default 1 hour), any other after `GAMEBAR_JOURNAL_TTL` (default 7 days, `off` to disable). Shared state and a live session's files are never touched.
 
-See [`docs/ideation/`](docs/ideation/) for the design write-ups.
+Your own settings, skins and the installed game assets are in `~/.claude/claude-game-bar/` (`GAMEBAR_USER_DIR` overrides it).
 
 ### OFFLINE: when the bar is not live
 
@@ -289,7 +280,7 @@ The daemon gives every frame a validity window (`GAMEBAR_FRAME_WINDOW`, default 
 
 ### Troubleshooting the daemon
 
-- **Heartbeat**: `gamebar_daemon_<install hash>.json` in the runtime directory (`%TEMP%` on Windows, see [Where the files live](#how-it-works) elsewhere) holds the daemon's pid, start time, version, window and last renewal (on Linux also `startTicks`, its start time from `/proc`). The `<install hash>` is the one after `GAMEBAR_ROOT_HASH=` in your statusLine command, or its last word on Linux and macOS. Per-session files sit next to it as `gamebar_payload_<hash>_<session>.json` and `gamebar_frame_<hash>_<session>.json`, and on Linux and macOS the daemon's socket as `gamebar_daemon_<hash>.sock`.
+- **Heartbeat**: `gamebar_daemon_<install hash>.json` in the runtime directory (`%TEMP%` on Windows, see [Where the files live](#where-the-files-live) elsewhere) holds the daemon's pid, start time, version, window and last renewal (on Linux also `startTicks`, its start time from `/proc`). The `<install hash>` is the one after `GAMEBAR_ROOT_HASH=` in your statusLine command, or its last word on Linux and macOS. Per-session files sit next to it as `gamebar_payload_<hash>_<session>.json` and `gamebar_frame_<hash>_<session>.json`, and on Linux and macOS the daemon's socket as `gamebar_daemon_<hash>.sock`.
 - **A plain `gamebar: offline` that never goes away** on Linux or macOS: check that the bash in the statusLine command still exists and is version 5 (`"<bash>" --version`), and that the runtime directory is a directory you own with mode `drwx------` (`ls -ld "$XDG_RUNTIME_DIR/gamebar"` or `/tmp/gamebar-$(id -u)`). If another user created `/tmp/gamebar-<your uid>`, remove it or set `GAMEBAR_RUNTIME_DIR`.
 - **Restart**: run any tool in Claude Code. Every hook checks the daemon and starts a missing one, at most once per throttle window. A hung or outdated daemon is replaced after it has stayed suspect for the grace period. To force a fresh start, end the `node … src/daemon.js` process and the next tool call starts a new one. On Linux, where `KillUserProcesses=yes` (not the Debian default), a daemon started from an ssh session ends when that session logs out; the next tool call starts a new one.
 - **Knobs** go in the `env` block of `settings.json`. The hooks and the daemon they start inherit them.
@@ -331,7 +322,7 @@ The old names keep working for a few more releases, so a setup you have not move
 
 - `DOOMBAR_*` environment variables, and `MUGSHOT_STATE`, are read when the `GAMEBAR_*` name is not set;
 - `~/.claude/doombar-theme.json` is read while `~/.claude/gamebar-theme.json` is missing, and the saved theme picks the game when no skin is saved;
-- a preset path the old installer wrote picks the skin of the same size by its file name, wherever it points;
+- a preset path the old installer wrote picks the skin of the same size by its file name, wherever it points, and `install --preset full|standard|minimal` still sets the size that way (prefer `--skin doom-full` and the like);
 - `src/doombar-client.sh` still runs the client, so a `statusLine` that names it, such as one a repository checkout wrote before the move, keeps working;
 - the stale-file sweep and `uninstall` clean up files with the old names, including the old runtime directory `doombar`.
 
@@ -349,6 +340,10 @@ npm uninstall -g claude-game-bar
 `uninstall` removes the `statusLine`, the hooks, and the `GAMEBAR_SKIN`, `GAMEBAR_PRESET` and `FORCE_HYPERLINK` entries, and keeps everything else in the settings file. For `~/.claude/settings.json` it also forgets the saved skin and theme. Your own skins and the installed game assets stay in `~/.claude/claude-game-bar/`; delete that folder yourself if you want them gone. It stops this installation's render daemon and removes its files. It stops a pid only after the process list confirms it is node running this package's `src/daemon.js`, started when the heartbeat says (on Linux: the start time in `/proc` matches exactly). A heartbeat that names any other process is reported and left alone. On Linux and macOS it looks in every runtime directory of yours, because the shell you run it from may see another `XDG_RUNTIME_DIR` than Claude Code did, and removes the directory once it is empty. It cleans up files left under the old names too. A session still running keeps writing its payload until Claude Code restarts, so the hooks may start the daemon again until then.
 
 The emoji font stays installed (see [Emoji font on Linux](#emoji-font-on-linux)).
+
+## Contributing
+
+Ideas and bugs go to [GitHub Issues](https://github.com/99LevelsUp/claude-game-bar/issues). [CONTRIBUTING.md](CONTRIBUTING.md) covers the pull-request workflow, adding a game, the skin format, skin scripts, conversation libraries and releases; [docs/architecture.md](docs/architecture.md) explains how the bar is built.
 
 ## Credits
 

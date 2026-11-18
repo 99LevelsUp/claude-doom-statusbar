@@ -10,6 +10,8 @@ execution: code
 
 # claude-game-bar 1.0.0 - Plan
 
+> **Status (18.11.2026):** Implemented in 1.0.0. Its per-game layouts and presets were replaced in 2.0.0 by skins, and the game assets moved to `packages/<game>/`. The old-name fallbacks it keeps are to go in [#45](https://github.com/99LevelsUp/claude-game-bar/issues/45). The current architecture is described in [docs/architecture.md](../architecture.md).
+
 ## Goal Capsule
 
 - **Objective:** A new game for the bar is added as that game alone, without touching shared code, under a project name that belongs to no single game, while every existing user's bar keeps looking and working exactly as before.

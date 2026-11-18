@@ -1,11 +1,13 @@
 ---
 date: 2026-11-11
 topic: render daemon on Linux (and macOS)
-status: findings, not yet planned
+status: implemented in 0.15.0
 backlog: D-15
 ---
 
 # Render daemon on Linux
+
+> **Status (18.11.2026):** Planned and implemented in 0.15.0 (`docs/plans/2026-11-11-2301-feat-linux-render-daemon-plan.md`).
 
 The owner wants Linux as optimised as Windows: hooks collect per-session data, one render daemon per
 installation gathers the machine-wide data once and pre-renders every session's whole bar, and the

@@ -1,5 +1,7 @@
 # One metric engine, many game HUDs: sharing code between DOOM, Minecraft and what comes next
 
+> **Status (18.11.2026):** Led to the rename and restructure of 1.0.0 and to games as skins in 2.0.0, which replaced the per-game layouts it describes. Still open: [#46](https://github.com/99LevelsUp/claude-game-bar/issues/46), [#47](https://github.com/99LevelsUp/claude-game-bar/issues/47), [#48](https://github.com/99LevelsUp/claude-game-bar/issues/48), [#49](https://github.com/99LevelsUp/claude-game-bar/issues/49). The current architecture is described in [docs/architecture.md](../architecture.md).
+
 **Date:** 2026-10-31
 **Trigger:** review of the 0.12.0–0.13.0 contribution (`minecraft` theme: `src/hotbar.js`, `src/chat.js`,
 `src/theme.js`) and how it fits the project's concept.

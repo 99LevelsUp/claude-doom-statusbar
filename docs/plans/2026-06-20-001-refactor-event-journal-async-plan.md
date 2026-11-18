@@ -1,8 +1,10 @@
 # Refactor: async hooks + append-only event journal
 
+> **Status (18.11.2026):** Implemented before 1.0.0: hooks append to a per-session journal and the render folds it (`src/platform/journal.js`). The current architecture is described in [docs/architecture.md](../architecture.md).
+
 Date: 2026-06-20
 Branch: `refactor/event-journal-async` (from `master`, excludes the `b00c329` git-cache stopgap)
-Status: awaiting approval
+Status: implemented
 
 ## Problem
 

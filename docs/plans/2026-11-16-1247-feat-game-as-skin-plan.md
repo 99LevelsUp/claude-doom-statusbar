@@ -11,6 +11,8 @@ deepened: 2026-11-16
 
 # Games as Skins - Plan
 
+> **Status (18.11.2026):** Implemented in 2.0.0; this is the architecture of the bar today. Since then the asset packages moved from `games/<game>/assets/` to `packages/<game>/`. The current architecture is described in [docs/architecture.md](../architecture.md).
+
 ## Goal Capsule
 
 - **Objective:** a new look for the bar, whether a new game such as Warcraft III or a user's own mix, is made from data, scripts and assets alone, out of one shared set of bar elements, without writing a new layout in the platform. A user can compose, name and keep their own bar, and only the assets the chosen skins need are installed.

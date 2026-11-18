@@ -20,6 +20,15 @@ Do not run a plain `npm version`: it commits and tags locally, the push of the c
 to `master` is rejected, and a tag pushed with it would publish a commit that is not
 on `master`.
 
+## Game asset packages
+
+Each game's assets are a separate npm package, `@claude-game-bar/<game>`, published from
+`packages/<game>/` by `.github/workflows/publish-assets.yml` on a push to `master` whose package
+version is not on npm yet. The bar installs the version its game manifest pins, so a new asset
+version reaches users only with the next release of the bar. The steps (bump, publish, pin the
+integrity, release) and the one-time setup of a new package are in
+[CONTRIBUTING.md, *Asset packages*](CONTRIBUTING.md#asset-packages).
+
 ## Prerequisites (one-time)
 
 - On npmjs.com, configure the `claude-game-bar` package with a **trusted publisher** for the

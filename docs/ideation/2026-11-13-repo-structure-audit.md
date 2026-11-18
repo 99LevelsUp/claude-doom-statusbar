@@ -1,5 +1,7 @@
 # Repository structure audit before `claude-game-bar` 1.0.0
 
+> **Status (18.11.2026):** Carried out in 1.0.0; 2.0.0 then replaced the game layouts with skins, and the cleanup of 18.11.2026 moved the asset packages to `packages/<game>/` and removed `docs/superpowers/`, `docs/port/` and `docs/brainstorms/`. The current architecture is described in [docs/architecture.md](../architecture.md).
+
 **Date:** 2026-11-13, at 0.15.0 (`f0f6c13`)
 **Trigger:** the owner's decision of 2026-11-13:
 - The project is renamed to `claude-game-bar` on GitHub and npm, together with version 1.0.0. The contributor has agreed to the rename (R-0).

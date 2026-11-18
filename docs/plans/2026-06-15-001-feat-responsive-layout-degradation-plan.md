@@ -1,12 +1,14 @@
 ---
 title: "feat: Responsive layout degradation (shrink, then fall back presets)"
 type: feat
-status: active
+status: superseded
 date: 2026-06-15
 origin: docs/superpowers/specs/2026-06-15-responsive-layout-degradation-design.md
 ---
 
 # feat: Responsive layout degradation
+
+> **Status (18.11.2026):** Implemented before 1.0.0 for presets, then superseded in 2.0.0 by the skin fit (elements shrink, drop by priority, fall back to the `smaller` skin; `src/kit/skin/fit.js`). Its origin document was removed in the docs cleanup of 18.11.2026; it is in the git history. The current architecture is described in [docs/architecture.md](../architecture.md).
 
 ## Summary
 

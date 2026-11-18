@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sprites as `images/mugshot/`, never published) is gone, and the two illustrations of the original
   ideation moved to `docs/images/`. Nothing changes for users: the published asset packages are
   the same.
+- The README is for users again; how the bar is built moved to the new `docs/architecture.md`,
+  and every plan and ideation document starts with its status.
 - The backlog is GitHub Issues now; `docs/BACKLOG.md` maps the old IDs to them. The early design
   notes in `docs/port/`, `docs/superpowers/` and `docs/brainstorms/` are removed (they stay in the
   git history).
