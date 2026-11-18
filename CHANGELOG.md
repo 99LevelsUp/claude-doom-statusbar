@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- DOOM: the mugshot sits in the middle of the terminal, whatever its width, with the boxes right
+  against it on both sides. When one side is too wide for its half the mugshot moves away from it;
+  when nothing fits, boxes drop and the smaller skins follow as before.
+- DOOM: the mugshot no longer jumps as it animates, and no wide gap is left beside the face. Every
+  frame is drawn on one canvas the size of the largest frame (the faces looking aside are wider),
+  and the mugshot is exactly as wide as that canvas.
+
+### Added
+
+- Skins: an `animation` without a `width` is as wide as its largest frame at its `rows`, every frame
+  drawn on that one canvas. A row's `center_sides = "close"` puts the children on both sides of its
+  `center` right against it.
+
 ## [2.1.0] - 2026-11-18
 
 ### Added
