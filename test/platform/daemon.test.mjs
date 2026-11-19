@@ -720,6 +720,15 @@ try {
     // Touching a file under the daemon's own src/ makes it exit.
     appendFileSync(path.join(A.dir, "src", "kit", "ansi.js"), "\n// touched\n");
     ok(await exitWithin(a1, 10000) !== "timeout", "a change under the daemon's own src/ makes it exit");
+    // Session "sa" still uses the bar, so the daemon started its successor from the new source:
+    // a new pid renews the heartbeat and keeps the session's frame fresh (#65).
+    ok(await waitFor(() => { const hb = heartbeat(A.hash, shared); return hb && hb.pid !== a1.pid; }, 10000),
+      "while a session uses the bar, the daemon starts its successor from the changed source");
+    const successor = heartbeat(A.hash, shared)?.pid;
+    if (successor) {
+      try { process.kill(successor); } catch {}
+      ok(await waitFor(() => { try { process.kill(successor, 0); return false; } catch { return true; } }, 10000), "the successor is ended for the next cases");
+    }
     ok(b1.exitCode === null, "the other installation's daemon keeps running");
     b1.kill();
     await b1.exited;

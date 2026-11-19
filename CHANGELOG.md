@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- After its source changed (a `git pull` in a checkout, an upgrade in place) the render daemon
+  exited and nothing started a new one until the session's next hook, so an idle session greyed
+  out and then showed `gamebar: offline`. The daemon now starts its successor from the new source
+  itself once its address is free, while a session still uses the bar.
+
 ## [2.2.0] - 2026-11-18
 
 ### Fixed

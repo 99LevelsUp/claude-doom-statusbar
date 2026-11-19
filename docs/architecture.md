@@ -73,7 +73,8 @@ Claude Code runs the `statusLine` command about once a second and pipes the sess
    this session, greyed with `OFFLINE` when the frame is past its deadline.
 2. **The daemon** (`src/daemon.js`) renders every active session of its installation, renews each
    frame's deadline about twice a second, runs at below-normal priority and exits after
-   `GAMEBAR_DAEMON_IDLE_MS` with no active session, or when its own source files change.
+   `GAMEBAR_DAEMON_IDLE_MS` with no active session, or when its own source files change; in that
+   case, while a session still uses the bar, it starts its successor from the new source itself.
 3. **The render** (`src/render-core.js`, with scripts through `src/render.js`):
    1. picks the session's skin (`src/skin-select.js`): the session's `GAMEBAR_SKIN`, the saved
       choice, the older theme, or the default game's default skin;
