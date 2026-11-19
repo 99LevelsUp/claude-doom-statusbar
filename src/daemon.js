@@ -14,7 +14,7 @@
 // renameFailures counts frame and heartbeat writes that failed. On Linux it also carries
 // startTicks, the process start time from /proc, which hooks compare before killing the pid.
 
-import { readFileSync, readdirSync, statSync, unlinkSync, openSync, closeSync, fstatSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, unlinkSync, openSync, closeSync, fstatSync } from "node:fs";
 import { spawn as spawnChild } from "node:child_process";
 import net from "node:net";
 import os from "node:os";
@@ -190,7 +190,8 @@ export function runPass(state, { dir = runtimeDir(), hash = rootHash(), now = Da
 }
 
 // The size and modification time of every file under `dir`, subfolders included, as one string:
-// a change anywhere in the package's source makes the daemon exit, so the hooks start the new code.
+// a change anywhere in the package's source makes the daemon exit and, while a session uses the
+// bar, start its successor from the new code (see startSuccessor).
 function srcSnapshot(dir) {
   const walk = (d, rel) => readdirSync(d, { withFileTypes: true })
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
@@ -285,7 +286,24 @@ export async function startDaemon({ root = PACKAGE_ROOT, env = process.env } = {
     try { if (JSON.parse(readFileSync(heartbeat, "utf8")).pid === process.pid) unlinkSync(heartbeat); } catch {}
   };
 
-  const stop = async () => {
+  // A daemon that leaves because its source changed (a `git pull` in a checkout, an upgrade in
+  // place) starts its successor from the new source once its own address is free, when a session
+  // still uses the bar: else nothing would start one until the session's next hook, and an idle
+  // session would grey out (#65). The successor is a daemon like any other: if another one took
+  // the address meanwhile, it exits at once. No successor after an idle exit, a SIGTERM, an
+  // address another daemon took over, or a source that is gone.
+  const daemonFile = path.join(root, "src", "daemon.js");
+  const startSuccessor = () => {
+    if (!existsSync(daemonFile)) return;
+    try {
+      const child = spawnChild(process.execPath, [daemonFile], { detached: true, stdio: "ignore", windowsHide: true, cwd: dir });
+      child.on("error", () => {});
+      child.unref();
+    } catch { /* the next hook starts one */ }
+  };
+  const inUse = (now) => [...state.sessions.values()].some((s) => now - s.seenAt < state.idleMs);
+
+  const stop = async ({ successor = false } = {}) => {
     if (stopping) return;
     stopping = true;
     clearTimeout(timer);
@@ -295,9 +313,12 @@ export async function startDaemon({ root = PACKAGE_ROOT, env = process.env } = {
     dropHeartbeat();
     setTimeout(() => process.exit(0), 2000).unref();
     if (!(await ownsSocket())) process.exit(0);
-    server.close(() => process.exit(0));
+    server.close(() => {
+      if (successor) startSuccessor();
+      process.exit(0);
+    });
   };
-  process.on("SIGTERM", stop);
+  process.on("SIGTERM", () => stop());
 
   try { os.setPriority(os.constants.priority.PRIORITY_BELOW_NORMAL); } catch {}
   try { process.chdir(dir); } catch {}
@@ -311,7 +332,8 @@ export async function startDaemon({ root = PACKAGE_ROOT, env = process.env } = {
     let now = Date.now();
     if (now - srcChecked >= SRC_CHECK_MS) {
       srcChecked = now;
-      if (srcSnapshot(src) !== original || !(await ownsSocket())) { stop(); return; }
+      if (srcSnapshot(src) !== original) { stop({ successor: inUse(now) }); return; }
+      if (!(await ownsSocket())) { stop(); return; }
       if (stopping) return; // a SIGTERM arrived while the socket was being asked
       now = Date.now();
     }
