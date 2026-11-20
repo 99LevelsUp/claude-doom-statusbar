@@ -25,7 +25,9 @@ Contents:
 10. The skin file format
 11. Worked examples
 12. Migration
-13. Decisions for the owner
+13. Decisions
+14. Considered and not adopted
+15. Open questions
 
 ---
 
@@ -176,7 +178,7 @@ A box is a list (all list parameters apply) that also draws its own look. It is 
 | `title` | text | the box's name. Empty means no title |
 | `title_align` | `start`, `center`, `end` | where the title sits |
 | `fill` | colour, gradient or `none` | a background behind the whole box, the DOOM panel look. A gradient (`["#3a6ea5", "#1c3a5e"]`) runs from the top row to the bottom row, the soft panels of The Sims |
-| `border` | `none`, `light`, `heavy`, `double`, `rounded`, `block`, `ascii`, or eight characters of your own | a frame around the box |
+| `border` | `none`, a line set (`light`, `heavy`, `double`, `rounded`, `block`, `ascii`, or a custom set of eleven characters, §7.4), or a pattern frame or image frame (§7.5) | a frame around the box |
 | `border_color` | colour | the frame's colour |
 | `padding` | columns | room inside the frame on the left and the right |
 
@@ -188,13 +190,13 @@ A box is a list (all list parameters apply) that also draws its own look. It is 
 | fill with a title | 1 (a title row) | 2 × padding |
 | border, with or without a title | 2 (the title sits *in* the top line: `┏━ MODEL ━━┓`) | 2 + 2 × padding |
 
-**Degradation.** A box first gives up decoration, then content:
+**Degradation.** A box gives up its decoration in this order:
 
 1. `padding` goes to 0.
 2. A `border` becomes a `fill` in the border's colour: −2 columns, and −1 or −2 rows.
 3. The title row goes. A box with a title is never narrower than its title until this step.
 
-Only after that do its children shrink and drop. A one-row bar can therefore still show a bordered box's content.
+These steps are step 2 of the one order in §8: they come after every node has shrunk to its minimum, and before inner switches and drops. A one-row bar can therefore still show a bordered box's content.
 
 **Used for.**
 
@@ -210,10 +212,10 @@ Only after that do its children shrink and drop. A one-row bar can therefore sti
 | Parameter | Values | Effect |
 |---|---|---|
 | `columns` | integer | cells per row. Default: all children in one row |
-| `lines` | a line set (§7.4) or `none` | the lines around and between the cells |
+| `lines` | a line set (§7.4), a pattern frame or image frame that supplies all eleven pieces (§7.5), or `none` | the lines around and between the cells |
 | `line_color` | colour | the colour of the lines |
 | `fill` | colour or `none` | the background of the cells |
-| `selected_lines` | a line set | the lines around a selected cell. Default: the same set as `lines` |
+| `selected_lines` | as `lines` | the lines around a selected cell. Default: the same set as `lines` |
 | `selected_color` | colour | the colour of the lines around a selected cell |
 | `selected_fill` | colour or `none` | the background of a selected cell. Default: the same as `fill` |
 | `cell_align` | one of the nine anchor places | where a child sits inside its cell. Default `center`, so an item glyph is centred without padding |
@@ -267,12 +269,14 @@ Example: cell 2 selected, light plain lines, heavy selected lines:
 
 **Pictures below, glyphs above.** The layers are of two kinds, composed in two steps:
 
-1. **Picture layers** (`sprite`) compose in pixels into one picture, the upper ones' transparent pixels letting the lower through (the map and the units on it, the face and a round frame over it). Only the result is rastered to glyphs. Rastering each and covering cells would leave jagged edges, because one terminal cell holds only two colours.
+1. **Picture layers** (`sprite` and `image`) compose in pixels into one picture, the upper ones' transparent pixels letting the lower through (the map and the units on it, the face and a round frame over it). Only the result is rastered to glyphs. Rastering each and covering cells would leave jagged edges, because one terminal cell holds only two colours.
 2. **Glyph layers** (`text`, `label`, `number`, `marks` and any other non-picture node) are then stamped over the rastered picture, in the order they are written. Glyph layers always lie above picture layers, even when written between them.
 
 **A glyph keeps the picture's background.** Where a glyph lands, it replaces the picture's glyph in that cell, but the cell keeps a background from the picture: **the average colour of the picture's pixels under that cell** (the 2×4 pixels of an octant cell). An enemy's `●` in red over grass sits on that grass's green, and a town's name is written over the terrain it names, not on a black hole. A glyph may set its own background instead.
 
-**Degradation.** Upper layers drop before the base.
+**A glyph over a glyph layer** follows the same rule: it replaces the lower layer's glyph in that cell and keeps the lower layer's background, unless it sets its own. A number written over the middle of a bar therefore sits on the bar's fill where the bar is full and on its track where it is empty, without punching a hole in it.
+
+**Degradation.** A layer is dropped only when it has a `priority` (§2). Among equal priorities, the topmost goes first.
 
 **Used for.**
 
@@ -285,16 +289,16 @@ This is what lets the bar itself stay simple: it draws the bar, and something el
 
 ### 3.6 `switch`: alternatives by a selection criterion
 
-**Layout: a `case when` over its alternatives.** A switch has `cases`, in order. Each case has a condition `when`, an expression (§7.2), and the node it draws. A case without `when` is the `else`.
+**Layout: a `case when` over its alternatives.** A switch has `cases`, in order. Each case has a condition `when`, an expression in the syntax of §7.2 (starting with `=`), and the node it draws. A case without `when` is the `else`.
 
 ```toml
 [element.console]
 kind = "switch"
 cases = [
-  { when = "$race = 'orc'",   node = "orc-console" },
-  { when = "$race = 'human'", node = "human-console" },
-  { when = "$rows < 3",       node = "line" },
-  { node = "default-console" },                      # else
+  { when = "= $race = 'orc'",   node = "orc-console" },
+  { when = "= $race = 'human'", node = "human-console" },
+  { when = "= $rows < 3",       node = "line" },
+  { node = "default-console" },                        # else
 ]
 ```
 
@@ -307,7 +311,8 @@ The two criteria combine as follows:
 - **Conditions only.** The first true condition wins, and the room decides nothing unless that node cannot fit at all.
 - **No conditions at all.** `children = [...]` is shorthand for cases without `when`. The switch is then the first alternative that fits, the skin chain.
 - **Both.** The conditions say which cases are allowed, and the room decides among them.
-- The size the switch was given is in the expression too, as `$width` and `$rows`, for a rule that wants to say it outright.
+- The size the switch was given is in the expression too, as `$width` and `$rows`, for a rule that wants to say it outright. These two exist only in a switch's conditions, which are therefore evaluated during placement, once the switch's room is known, rather than before the fit like other expressions (§7.2).
+- **The root's room.** At the root, `$width` is the terminal's width and `$rows` is the bar's row budget: `GAMEBAR_MAX_ROWS` when it is set, else a third of the terminal's height, as today. Below the root, both are what the parent granted.
 
 **Size.**
 
@@ -349,13 +354,13 @@ children = [{ kind = "repeat", template = "slot", items = [
 |---|---|---|
 | `metric` | a list metric | the items: running subagents, the task list, the model family, the CPU cores |
 | `template` | an element id | what one item looks like. Inside it, `$item` is the item, and `$item.<field>` one of its fields: `$item.text`, `$item.status`, `$item.time` |
-| `slots` | integer | how many items it shows at most. **The layout reserves exactly this many slots**, so the number of items never moves the bar (principle 6) |
+| `slots` | integer | how many items it shows at most. With `empty = "blank"`, **the layout reserves exactly this many slots**, so the number of items never moves the bar (principle 6) |
 | `layout` | `horizontal`, `vertical`, or `grid` with `columns` | how the slots are arranged. It is a list or a grid with these slots as children, and takes their parameters |
-| `empty` | per slot: `collapse` or `blank` | an unused slot disappears, or stays as an empty place. `blank` keeps the bar completely still |
+| `empty` | per slot: `collapse` (the default, as everywhere, §2) or `blank` | an unused slot disappears, or stays as an empty place. Only `blank` keeps the bar completely still; with `collapse` the bar follows the number of items, which is the presence exception of principle 6 |
 | `order` | `first`, `last`, `newest` | which items fill the slots when there are more of them than slots |
 | `overflow` | text with `{n}` | what the last slot shows when items are left out, e.g. `"+{n}"` |
 
-**Size.** The size of `slots` copies of the template, laid out by `layout`. A slot's size comes from the template, never from the item.
+**Size.** With `blank`, the size of `slots` copies of the template, laid out by `layout`; with `collapse`, only the used slots take room. A slot's size comes from the template, never from the item, so a template draws an item's values through visuals whose width comes from a type (§7.2), not through a `label` whose text is the value.
 
 **Degradation.** Optional slots go from the cut end, like the children of a list.
 
@@ -395,14 +400,14 @@ Each visual draws a value of certain types (§6), in its own way. Every visual h
 |---|---|---|---|---|
 | `text` | the value as text; a value longer than its width scrolls or is cut | shrinkable (min ≥ 1) | 1 | `icon` (prefix), `overflow = scroll \| clip \| ellipsis`, `link` |
 | `number` | a number, formatted by its type, coloured by thresholds | shrinkable: natural is the widest formatted value, min the compact form (`12.3k` → `12k`, `100%` → `100`) | 1 | `icon`, `prefix`, `suffix`, `sign`, `currency` (`$`, `§`, `€`, for a `money` value), `thresholds` / `color` gradient |
-| `bar` | a percentage as a filled bar, with the percentage beside it, inside it or not at all | shrinkable in cells; eighth-blocks give sub-cell precision | 1, or n when vertical | `direction = horizontal \| vertical` (vertical fills from the bottom in eighths, `▁▂▃▄▅▆▇█`: a mood or aspiration meter), `icon`, `label = right \| middle \| none`, `invert` (draw what is left instead of what is used), `fill`, `partials`, `empty`, `track`, `color` gradient |
+| `bar` | a percentage as a filled bar, with the percentage beside it, inside it or not at all | shrinkable in cells; eighth-blocks give sub-cell precision | 1, or n when vertical | `direction = horizontal \| vertical` (vertical fills from the bottom in eighths, `▁▂▃▄▅▆▇█`: a mood or aspiration meter), `icon`, `label = right \| middle \| none`, `invert` (draw what is left instead of what is used), `fill_glyph`, `partials`, `empty_glyph`, `track`, `color` gradient |
 | `meter` | a percentage as a fixed number of glyphs: hearts, shanks, pips | fixed, or stepped when `count = "auto"` (as many glyphs as fit, between `min_count` and `count`) | 1, or n when vertical | `direction = horizontal \| vertical`, `count`, `glyph`, `half_glyph`, `empty_glyph`, `gap`, `invert`, `from = start \| end` |
 | `state` | a known value as its icon (effort → moon phases), a list of flags as icons (thinking on, fast off), or a list of [part, count] as icon + count (git work) | fixed per icon; natural with text, min icons only | 1 | `icons` map, `show_text`, `other` |
 | `sparkline` | a time series as a one-row graph, newest on the right | shrinkable (samples per column) | 1–n | `style = block \| braille \| octant`, `max`, `color` |
 | `columns` | a list of channels from 0 to 1 as vertical bars (CPU cores) | stepped: one column (or `column_width`) per channel; `fit = all \| as_many_as_fit` | 1–n | `ramp`, `column_width`, `color` gradient |
 | `scroll` | a list, one item per row; a longer list shows a window with counts above and below; long items scroll sideways | shrinkable; rows between `min_rows` and `rows` | n | `marks` per status, `mark_colors`, `anchor = top \| boundary`, `overflow` |
 | `chat` | a conversation log | shrinkable; rows between `min_rows` and `rows` | n | `libraries`, `conversations`, colours |
-| `marks` | glyphs scattered over an area: units on a map as `●`, the player as `▲` turned by heading, place names. A draw script returns them as a list (§5.1); in `layers` they lie over the pictures and keep the picture's background (§3.5) | the size it is given | n | `draw` |
+| `marks` | glyphs scattered over an area: units on a map as `●`, the player as `▲` turned by heading, place names. A draw script returns them as a list (§5.1); in `layers` they lie over the pictures and keep the picture's background (§3.5) | the size it is given | n | `draw`, `crowd = move \| priority \| count` (what happens when marks crowd one cell, §5.1) |
 | `sprite` | a picture. Its source is either **frames** from an asset folder, the frame chosen by a script (the mugshot), or a **draw script** that computes the picture each render (a minimap, units on it, a 3D model) (§5.1) | frames: fixed, the largest frame at its rows. Drawn: the size it is given, so it can be shrinkable | n | `frames`, `default_frame` or `draw`; `glyphs`, `background` |
 
 **Trend.** `number`, `bar` and `meter` take `trend = true`. The platform keeps a short history of every metric's value, and the visual draws an arrow for where the value is heading: `↑↑`, `↑`, `↓`, `↓↓`, or nothing when it is steady. The Sims draws its needs this way. The arrows have a column of their own, reserved whether an arrow is drawn or not, so the trend never moves the layout. `trend_window` sets how far back the trend looks (default 60 s).
@@ -435,7 +440,7 @@ A `sprite` is a picture, whatever makes it. Today it is frames read from the dis
 Like every element script, a draw script cannot change its size. It draws into the size the fit gave it. Because it can draw any size, a drawn sprite can be shrinkable (`min_width`), unlike a sprite of frames.
 
 **The minimap, in this model.**
-1. **The world is made once.** The before script generates it once per session, by whatever rule the game likes: Perlin noise, or the shape of the repository (folders as regions, files as terrain). It keeps it in the session's `shared` data, together with what has been explored.
+1. **The world is made once.** The before script generates it once per session, by whatever rule the game likes: Perlin noise, or the shape of the repository (folders as regions, files as terrain), from the summary of the project tree the platform hands it (§9). It keeps the world in the session's `shared` data and what has been explored in its `state`, so the exploration survives when `shared` is lost and the world is rebuilt (§9). A generation that does not fit one call's time budget is spread over several renders.
 2. **The view is drawn every render.** The minimap's draw script turns the world into the picture to show:
    - a window that follows the player, as in GTA;
    - or a 3D-to-2D projection, as in a car's navigation;
@@ -455,8 +460,8 @@ Like every element script, a draw script cannot change its size. It draws into t
      A mark sits on a whole cell, but it is always readable: one pixel of octant graphics is a quarter of a glyph's height, a `●` is not. Each mark keeps the terrain's average colour as its background (§3.5). Single-cell symbols (`● ▲ ★ ◆ ⚑`) work best; an emoji takes two cells.
 
      **Positions in pixels, placed for reading.** A game that keeps its units in the map's pixels does not have to convert them. A mark may give `x, y` in the pixels of the picture under it, instead of `col, row`. The platform puts it in the cell that holds that pixel (2×4 pixels a cell), then places the marks for reading:
-     - **Two marks in one cell.** The second moves to the nearest free neighbouring cell, if one is free within one cell. Otherwise the mark with the higher `priority` stays, or, with `crowd = "count"`, the cell shows the count (`●3`).
-     - **A name.** It is written beside its point: to the right where there is room, else to the left. It never covers a mark, and it is cut only at the area's edge.
+     - **Two marks in one cell** (the layer's `crowd`). With `move` (the default) the second moves to the nearest free neighbouring cell, if one is free within one cell, and otherwise the mark with the higher `priority` stays. With `priority` the higher one stays at once. With `count` the cell shows the count (`●3`).
+     - **A name** is a mark whose `text` is longer than one glyph. It is written beside its point: to the right where there is room, else to the left. It never covers a mark, and it is cut only at the area's edge.
      - **Steadiness.** A mark that has moved keeps its cell until its pixel position is clearly in another cell, so a unit standing on a cell's edge does not flicker between two cells.
 
      So pixels can stay the game's own record of where things are, and the marks still read cleanly.
@@ -499,12 +504,21 @@ Proposal: give each metric a **semantic type** in the catalogue. The type tells 
 
 | Type | Value | Natural / min width | Metrics |
 |---|---|---|---|
-| `percent` | 0–100 | `100%` 4 / `99` 2 | `context.hp`, `ratelimit.5h`, `ratelimit.7d`, `health.headroom`, `sys.ram`, `sys.cpu`, `sys.disk` |
-| `count` | integer ≥ 0 | `12.3k` 5 / `12k` 3 | `loc.added`, `loc.removed`, `git.status`, `git.ahead`, `git.behind`, `act.agents`, `act.errors`, `sys.zombies`, `save.leanctx`, `save.lingua` (as token counts) |
-| `money` | US dollars | `$123.45` 7 / `$123` 4 | `cost.total` |
-| `duration` | seconds | `4h59m` 5 / `4h` 2 | `usage.reset5h`, `usage.reset7d`, `sys.session` |
+| `percent` | 0–100 | `100%` 4 / `100` 3 | `context.hp`, `ratelimit.5h`, `ratelimit.7d`, `health.headroom`, `sys.ram`, `sys.cpu`, `sys.disk`, and the saved shares `save.leanctx.share`, `save.lingua.share` |
+| `count` | integer ≥ 0 | `123k` 4 / `99k` 3 | `loc.added`, `loc.removed`, `git.status`, `git.ahead`, `git.behind`, `act.agents`, `act.errors`, `sys.zombies`, `save.leanctx`, `save.lingua` (token counts) |
+| `money` | US dollars | `$9999` 5 / `$99` 3 | `cost.total` |
+| `duration` | seconds | `23h` / `6d23h` 5 / `9d` 2 | `usage.reset5h`, `usage.reset7d`, `sys.session` |
 | `time` | clock time | `21:46` 5 / 5 | `sys.clock` |
-| `ratio` | [done, total] | `12/34` 5 / `12` 2 | `act.tasks` |
+| `ratio` | [done, total] | `99/99` 5 / `99` 2 | `act.tasks` |
+
+**Widths come from bounded formatters, not from examples.** Each of these types has one formatter, shared by the visuals and the chat's facts, whose output never exceeds the type's natural width. The widths in the table are what those formatters can produce at most:
+
+- `count`: three significant digits, `999`, `12.3k`, `123k`, `1.2M`;
+- `money`: cents only below $100 (`$12.34`), whole dollars from there (`$123`, `$9999`), thousands above (`$12k`);
+- `duration`: `59s`, `4h59m` below ten hours, whole hours from ten (`23h`), days above a day (`6d23h`);
+- `ratio`: two numbers of at most two digits each, and `99+` beyond.
+
+Today's formatters exceed these widths (`23h59m` is six columns, `$1234.56` eight), so they are replaced, not kept.
 | `label` | a short name | author's width | `model.name`, `advisor.model`, `model.window` |
 | `name` | a long name, may link | author's width | `session.name`, `session.title`, `loc.cwd`, `git.branch`, `pr.state` |
 | `enum` | one of a known set | its widest member | `model.effort`, `model.style`, `model.permission` |
@@ -518,11 +532,13 @@ Proposal: give each metric a **semantic type** in the catalogue. The type tells 
 Two side effects:
 
 - `loc.churn`, a text "+248 / -209", duplicates `loc.added` and `loc.removed`. It can be retired: a list of two `number`s with a `separator` draws it, coloured.
-- For most metrics the producer does not change: only the catalogue entry gains a type. The exception is `money`, `duration`, `time` and `ratio`, whose producers today emit preformatted text. They would emit raw numbers instead, and the visual formats them, so a narrow bar can choose the compact form.
+- For most metrics the producer does not change: only the catalogue entry gains a type. The exceptions are the four value types `money`, `duration`, `time` and `ratio` (six metrics: `cost.total`, `usage.reset5h`, `usage.reset7d`, `sys.session`, `sys.clock`, `act.tasks`), and the two token-savings metrics. Their producers today emit preformatted text. They would emit raw numbers instead, and the visual formats them, so a narrow bar can choose the compact form.
+- `save.leanctx` and `save.lingua` today emit text such as `12.3k 45%`. They become the raw token count (`count`), and the saved share becomes a metric of its own (`save.leanctx.share`, `save.lingua.share`, `percent`), so the SAVE box can still show both.
 - That exception has consumers beyond the skins, which must move with it:
-  - the chat's facts library reads the formatted text: `F.cost`, `F.reset5h`, `F.reset7d`, `F.tasks`, `F.uptime` and `F.clock` (`src/kit/chat/metrics-library.js:87-128`, where the hour is parsed out of `F.clock`). It would format the raw values itself, using the same formatters as the visuals.
-  - The published `@claude-game-bar/minecraft` conversations read only those facts (`F.cost`, `F.clock`), not the metrics. As long as the facts stay strings, the package does not change.
-  - Skin scripts receive raw metric values. None of the bundled scripts reads these four metrics today.
+  - the chat's facts library reads the formatted text: `F.cost`, `F.reset5h`, `F.reset7d`, `F.tasks`, `F.uptime`, `F.clock`, `F.saved` and `F.lingua` (`src/kit/chat/metrics-library.js`, where the hour is parsed out of `F.clock`). It would format the raw values itself, using the same formatters as the visuals.
+  - It also parses the lines removed out of `loc.churn` (`F.removed`). When `loc.churn` is retired, `F.removed` is read from `loc.removed`; otherwise the Minecraft line "{added} blocks placed, {removed} mined" silently loses its second half.
+  - The published `@claude-game-bar/minecraft` conversations read only those facts (`F.cost`, `F.clock`, `F.removed`), not the metrics. As long as the facts stay strings, the package does not change.
+  - Skin scripts receive raw metric values. None of the bundled scripts reads these metrics today.
 
 ### 6.2 The matrix: which visual draws which type
 
@@ -589,7 +605,7 @@ The dictionary is filled in this order, each step overriding the one before it:
    bad       = "#e05440"
    threshold = ["$good", "$warn", "$bad"]   # a gradient for numbers and bars
    ```
-2. **The skin file's own `[vars]`**, where it differs from its game.
+2. **The skin entry's own `[vars]`** (a `[skin.<name>]` entry in the game's skin file, §10), where that skin differs from its game.
 3. **The before script's output** (§9). This is how a session gets its race, its head or its biome.
 4. **`vars` on a node**, for that node's subtree only. For example, `{ ref = "panel", vars = { accent = "#b03020" } }` draws the same panel with another accent (§10).
 
@@ -620,13 +636,14 @@ empty_when = "= $act.errors = 0"
 | logic | `and`, `or`, `not` |
 | choice | `case when <condition> then <value> when … else <value> end`. Without `else`, nothing (`null`), and the parameter keeps its default |
 | functions | `has($x)` (the session reports it), `coalesce(a, b, …)`, `min`, `max`, `clamp(x, lo, hi)`, `round`, `floor`, `len` (text or list), `mix(colour, colour, 0–1)`, `format($x, 'compact')` |
-| time and room | `$now` (seconds), `$tick`, `$width`, `$rows` (the room the node was given) |
+| time | `$now` (seconds), `$tick` |
+| room (switch conditions only) | `$width`, `$rows`: the room the switch was given (§3.6) |
 
 **When it is evaluated.**
 - Every render, before the fit, once the variables and the metric values are known.
 - An expression is parsed once, when the skin loads. An expression that does not parse is reported, and its parameter keeps its default: the skin still draws.
 - The platform evaluates it itself. It is never JavaScript, so a skin cannot run code through it. Code belongs in scripts.
-- `$width` and `$rows` are the one exception: they exist only in a switch's conditions, where the room is known (§3.6).
+- A switch's conditions are the one exception: they may read `$width` and `$rows`, so they are evaluated during placement, once the switch's room is known (§3.6). Anywhere else, `$width` and `$rows` are reported as unknown names. A size parameter cannot read the room it is about to decide.
 
 **What expressions replace.** One mechanism instead of several special parameters:
 
@@ -645,8 +662,10 @@ empty_when = "= $act.errors = 0"
 - `metric` stays for the plain case: it names the value and its type at once.
 
 **Expressions and the size.** Principle 6 says a value never moves the layout.
-- An expression in a size parameter (`width`, `rows`, `columns`, `slots`, a switch condition) may read anything: game variables, the before script's output, the room.
-- When a size parameter reads a **metric**, the loader warns that the bar may jump with the value. It is allowed, because a game may want it, but it is then the designer's choice, not an accident.
+- A **measured parameter** is any parameter the fit reads to size a node: `width`, `rows`, `columns`, `slots`, a switch condition, and every text that is drawn at its own length: a `label`'s `text`, a box's `title`, an `icon`, a `prefix`, a `suffix`, a `separator`.
+- An expression in a measured parameter may read game variables and the before script's output.
+- When a measured parameter reads a **metric** (or an `$item` of `each`), the loader warns that the bar may jump with the value. It is allowed, because a game may want it, but it is then the designer's choice, not an accident.
+- A value that should be shown without moving the layout is drawn by a visual whose width comes from a type: `{ kind = "text", value = "$item.time", type = "duration" }`, not `{ kind = "label", text = "$item.time" }`.
 
 ### 7.3 Inheritance
 
@@ -694,6 +713,8 @@ A box's `border` and a grid's `lines` can be one of three levels, each richer an
 
 9-slice is the standard way game UIs stretch a decorated frame to any size (Godot's NinePatchRect, Unity's sliced sprites).
 
+**The pieces a frame supplies.** A box needs only the four corners and the two lines. A grid's inner lines, and the shared walls of `joined` boxes, also need the four joints and the cross, the eleven pieces of §7.4. A pattern or image frame used on a grid or a joined list therefore supplies all eleven. A frame without joints may still be used there: the loader reports it, and the joints and the cross are drawn from the game's line set in the frame's colour.
+
 **Thickness.** A frame of any level is one character thick on each side, so it costs what a line border costs (§3.3). The game's designer decides where frames are used at all. The minimap can have one and the portrait not: a frame is set per box.
 
 **Overhang.** An image frame may reach into the area it frames: a corner ornament over the edge of the minimap, a crest over the portrait. How that is drawn depends on what it falls on:
@@ -725,21 +746,14 @@ The fit turns the tree, the session's values and the terminal's width and rows i
 
 ### The order
 
-1. **Shrink** every node toward its minimum, all together, each by the same share of its own range. Stepped nodes round down to whole steps.
-2. **Simplify decoration:** padding to 0, then border to fill, then no title row (§3.3).
-3. **Switch** inner switches (a box's narrow form) to their next alternative.
-4. **Drop optional nodes**, the lowest priority first. Among equal priorities, the one nearest its list's `cut` end goes first. A container left with nothing collapses.
-5. When only essential nodes are left and their minimums still do not fit, the **enclosing switch** moves to its next alternative. For the root that means, for example, from the tall bar to the 3-row bar, and then to the 1-row bar.
+1. **Shrink** every node toward its minimum, all together, each by the same share of its own range. Stepped nodes round down to whole steps. For rows, a node uses its `min_rows` (a scroll list or a chat shows fewer rows).
+2. **Simplify decoration:** padding to 0, then border to fill, then no title row (§3.3). A frame first steps down its levels (§7.5).
+3. **Drop optional nodes**, the lowest priority first. Among equal priorities, the one nearest its list's `cut` end goes first. A container left with nothing collapses. For rows, it is a vertical list that drops its optional children.
+4. **Switch** inner switches (a box's narrow form) to their next alternative. This comes after the drops, so an essential box never takes its narrow form while an optional box is still drawn.
+5. When only essential nodes are left, in their narrowest forms, and their minimums still do not fit, the **enclosing switch** moves to its next alternative. For the root that means, for example, from the tall bar to the balanced bar, then to the 3-row bar, and then to the 1-row bar.
 6. If even the last alternative is too wide, it is drawn cut at the terminal's edge, as today.
 
-**Rows** follow the same order. A node taller than the rows it was given:
-
-1. first uses its `min_rows`, so a scroll list or a chat shows fewer rows;
-2. then its decoration gives up rows;
-3. then a vertical list drops its optional children;
-4. then its switch moves on.
-
-The root switch is the last resort here too.
+**Rows follow the same order**, step for step, as the notes under steps 1 and 3 say. The root switch is the last resort for rows too.
 
 ### What a skin has to say
 
@@ -747,7 +761,7 @@ The root switch is the last resort here too.
 
 So a skin marks the optional parts, and only those, with a number:
 
-- DOOM, as today: SYSTEM `1`, SAVE `2`, and new: AGENTS and TASKS `3`. As the terminal narrows these go in that order, and the tall bar then looks like what were the standard and minimal skins. Once only the essential boxes are left and they do not fit their halves, the switch moves on.
+- DOOM, as today: SYSTEM `1`, SAVE `2`, and new: AGENTS and TASKS `3`. As the terminal narrows these go, **each within its own half**: SAVE sits on the left and SYSTEM, AGENTS and TASKS on the right, so the side that overflows first drops first, whatever the numbers say across sides. The tall bar then looks like what was doom-standard. Once only the essential boxes are left and they do not fit their halves, the switch moves on to the balanced bar, which is what doom-minimal was (§11.1).
 - Minecraft: the chat `1`, the hotbar's slots `2` (from the cut end, so from the right).
 
 The shared defaults do the rest:
@@ -771,7 +785,14 @@ These are checked by the tests in §12:
 
 ## 9. Scripts
 
-The interface stays as it is (`src/kit/skin/scripts.js`).
+The interface of today (`src/kit/skin/scripts.js`) is kept and extended. What changes:
+
+- `selected` was a single index; it becomes a list, so a grid can highlight several cells at once (§3.4). The Minecraft highlight script returns a list of one.
+- A script may return `image` (a draw script, §5.1) or `marks` (a `marks` layer, §5.1).
+- Draw scripts get the picture's size in pixels and the session's `shared` data (§5.1).
+- The `before` script is a new kind of script (below).
+
+`frame`, `params` and `state` are unchanged.
 
 **What a script gets.** Its node's value, the reaction, the time, the size it was given, its children and its own state.
 
@@ -779,14 +800,12 @@ The interface stays as it is (`src/kit/skin/scripts.js`).
 
 - `frame`: a sprite's frame;
 - `image`: a drawn sprite's picture, or `unchanged` (a draw script, §5.1);
-- `marks`: a `marks` layer's glyphs, each `{ col, row }` or `{ x, y }` in pixels, with `text`, `color` and optionally `background`, `priority` and `label` (§5.1);
+- `marks`: a `marks` layer's glyphs, each `{ col, row }` or `{ x, y }` in pixels, with `text` (one glyph, or a name), `color` and optionally `background` and `priority` (§5.1);
 - `selected`: the cells a grid highlights, as a list of child indices or ids (any number, or none);
 - `params`: parameters drawn instead of the skin's for this render, such as colours, glyphs and icons;
 - `state`.
 
 **What a script never does.** It never changes a node's size. The fit is done before scripts run, so a script cannot make the bar jump.
-
-**One change.** `selected` was a single index; it becomes a list, so a grid can highlight several cells at once (§3.4). The Minecraft highlight script returns a list of one.
 
 ### The before script
 
@@ -798,24 +817,31 @@ A skin may name one `before` script. It runs **before the fit**, every render, a
 |---|---|
 | `session` | the session id |
 | `model` | the model's name, and the advisor's |
-| `project` | the project folder |
+| `project` | the project folder, and a bounded summary of its tree: the top folders with their file counts, collected by the daemon once per session (scripts cannot read files themselves) |
 | `size` | the terminal's columns and rows |
 | `now` | the time |
 | `values` | the session's metric values |
 | `state` | what it returned as `state` last time, kept for the whole session |
+| `shared` | the session's shared data, or `null` when it has been lost (below) |
 
 **Its output is free:**
 
 - `vars`: a dictionary of names and values, any names the game chooses. The rest of the bar reads its variables from it: a frame, an accent colour, which head to draw, the condition a `switch` tests.
-- `shared`: the session's large data, such as a generated world map and what of it has been explored.
-  - It stays in the script host for the whole session.
-  - The draw scripts read it (§5.1), and the before script may update it on a later run (more of the map explored).
+- `shared`: the session's large data, such as a generated world map.
+  - It lives in the script host. The draw scripts read it (§5.1), and the before script may update it on a later run.
   - It never travels to the render process. Only pictures do.
+  - **It is a cache that may be lost at any time.** The host replaces a worker that hangs, and the daemon exits when idle or when the bar is upgraded. The before script then receives `shared = null` and rebuilds it. Anything that must outlive that, such as what of the map has been explored, belongs in `state`.
 - `state`: kept for the next run.
 
-**Stable within a session.** The script chooses once, keeps the choice in `state` and returns it again on every later run. A session's race or head therefore never changes while it runs, and the next session gets its own. The choice can be random, follow the model, the project or anything else in the input: that is the game's rule, not the platform's.
+**Stable within a session.**
+- The script chooses once, keeps the choice in `state` and returns it again on every later run. A session's race or head therefore never changes while it runs, and the next session gets its own. The choice can be random, follow the model, the project or anything else in the input: that is the game's rule, not the platform's.
+- **The platform persists the before script's `state` per session** in the runtime directory, beside the session's other files. A daemon that exits when idle, or restarts after an upgrade, hands the same choice back. Today a script's state lives only in the daemon's memory, which is not enough for this promise.
+- **The platform keeps the last successful `vars`.** While the before script is late, cooling down after running past its time budget, or failing, the bar keeps using them. The game's defaults apply only before its first successful run. Otherwise a busy machine would flip a session's race for the length of a cooldown.
 
-**Cost.** It runs in the same script host as the other scripts, as a small batch before the fit. Because it usually returns its stored choice, it is cheap. The platform may skip it while its input is unchanged.
+**Cost.**
+- It runs in the same script host as the other scripts, as a small batch before the fit, with the same budget per call as any script (20 ms today).
+- Because it usually returns its stored choice, it is cheap.
+- Work that does not fit one call, such as generating a world, is spread over several renders, keeping its progress in `shared` and `state`.
 
 **What it does not do.** It does not draw and does not see the layout. It runs before there is one.
 
@@ -823,7 +849,9 @@ A skin may name one `before` script. It runs **before the fit**, every render, a
 
 ## 10. The skin file format
 
-**One file per game.** It holds the game's components and its named skins. A skin is an entry point into the tree: a root and a few overrides. The five DOOM files and the two Minecraft files become one each.
+**One skin file per game.** It holds the game's components and its named skins. A skin is an entry point into the tree: a root and a few overrides. The five DOOM files and the two Minecraft files become one each.
+
+A game keeps **two files**: `game.toml`, its manifest (name, asset package, version, integrity) with its default `[vars]` and custom `[lines]`; and its skin file, with the components and the skin entries.
 
 ```toml
 version = 2
@@ -839,7 +867,7 @@ root = "line"
 # (the leaves shared by the tall, compact and line alternatives); each place draws its own copy.
 [element.bar]
 kind = "switch"
-children = ["tall", "compact", "line"]
+children = ["tall", "balanced", "compact", "line"]
 
 # Small leaves can be written inline, without an id of their own.
 [element.context]
@@ -897,6 +925,12 @@ cross = "stretch"
 gap = 1
 children = ["activity", "agents", "tasks", "system"]
 
+[element.balanced]                  # 6 rows, what doom-minimal was: PROJECT moves to the right
+kind = "anchor"
+left = { kind = "list", direction = "horizontal", align = "end", cross = "stretch", gap = 1, children = ["model", "usage"] }
+center = "mugshot"
+right = { kind = "list", direction = "horizontal", align = "start", cross = "stretch", gap = 1, children = ["project", "activity"] }
+
 [element.usage]
 kind = "box"
 title = "USAGE"
@@ -904,6 +938,15 @@ fill = "$panel"
 direction = "vertical"
 cross = "stretch"
 children = ["context", "limit-5h", "limit-7d", "ram", "cost"]
+
+# In fewer rows the box keeps context, 5h and 7d: these two rows are optional.
+[element.ram]
+priority = 1
+# … its children as in tall
+
+[element.cost]
+priority = 2
+# … its children as in tall
 
 [element.limit-5h]
 kind = "list"
@@ -964,20 +1007,22 @@ children = ["model-name", "context", "limit-5h", "limit-7d", "branch"]
 
 - **Tall layout.**
   - Every box shrinks first.
-  - Then the optional boxes go, each on its own side: SYSTEM (right), SAVE (left), then AGENTS and TASKS (right).
+  - Then the optional boxes go, each within its own half (§8): SAVE on the left; SYSTEM, then AGENTS and TASKS on the right. The side that overflows first drops first.
   - Each side stays inside its own half, and the mugshot stays in the middle.
-- **When the essential boxes (MODEL, USAGE, PROJECT, ACTIVITY) no longer fit their halves, the switch moves to `compact`, and then to `line`.**
-- **When the terminal is shorter than 6 rows the switch skips `tall`. When it is shorter than 3 rows, it goes to `line`.**
+- **When the essential boxes (MODEL, USAGE and PROJECT on the left, ACTIVITY on the right) no longer fit their halves, the switch moves to `balanced`.** It moves PROJECT across to the right, as doom-minimal does today, so the two halves weigh about the same. A tree can only drop nodes, never move them, so this is an alternative of its own.
+- **Then to `compact`, and then to `line`.**
+- **Rows.** When the bar's row budget is below 6 rows (`GAMEBAR_MAX_ROWS`, else a third of the terminal's height, §3.6), the switch skips `tall` and `balanced`. Below 3 rows it goes to `line`.
 
-The old `full`, `standard` and `minimal` skins become what the tall layout looks like at different widths. They are no longer files.
+The old `full` and `standard` skins become what the tall layout looks like at different widths, and `minimal` is the balanced alternative. They are no longer files.
 
-**The boxes `compact` shares with `tall` are the same elements.** In 3 rows they come out lower on their own: a box's rows degrade by §8 (its scroll list uses its `min_rows`), so no second copy of a box is written.
+**The boxes `compact` shares with `tall` are the same elements.** In 3 rows they come out lower on their own, by the row steps of §8: a box loses its title row, a vertical list drops its optional rows (USAGE's RAM and cost, MODEL's permission and advisor, which carry priorities for that), and a scroll list shows its `min_rows`. So no second copy of a box is written. Unlike today's doom-compact, which moves the cost into MODEL, the 3-row bar simply leaves the cost out.
 
 ### 11.2 Minecraft
 
 ```toml
 [element.bar]
 kind = "anchor"
+balance = "mirror"                  # the HUD exactly in the middle (decision 1); the chat gets the left half
 gravity = "out"                     # the chat at the terminal's left edge, not hugging the HUD
 left = "chat"
 center = "hud"
@@ -1009,7 +1054,7 @@ children = [
 kind = "bar"
 metric = "ratelimit.7d"
 label = "middle"
-fill = "━"
+fill_glyph = "━"
 empty = "zero"
 color = "#80ff20"
 
@@ -1044,6 +1089,8 @@ children = [
 ```
 
 Today the same skin is 290 lines. Here it is about 70, and nothing in it counts columns.
+
+**The cost of the exact centre.** The HUD is exactly in the middle, so the chat gets at most the left half of the room beside it. On 120 columns that is about 25 of the 40 columns it wants, which is above its minimum of 18, while the right half stays empty. Today the HUD moves right to give the chat room. The owner chose the exact centre (decision 1).
 
 ### 11.3 The one-line default game
 
@@ -1145,7 +1192,7 @@ selected_color = "$accent"          # the commands available right now
 children = [{ kind = "repeat", template = "command", items = [ … ] }]
 ```
 
-The races differ only in look here, so variables carry them and no `switch` is needed. A race whose console were built differently would get its own case under a `switch`, `when = "$race = 'orc'"` (§3.6).
+The races differ only in look here, so variables carry them and no `switch` is needed. A race whose console were built differently would get its own case under a `switch`, `when = "= $race = 'orc'"` (§3.6).
 
 The new pieces WC3 needs are draw scripts (the minimap, the units, a 3D portrait), image frames, joined panels and the before script. None of them is a new container: the container set holds.
 
@@ -1219,7 +1266,7 @@ direction = "vertical"
 cross = "center"
 children = [
   { kind = "label", text = "🤖" },
-  { kind = "label", text = "$item.time" },
+  { kind = "text", value = "$item.time", type = "duration" },   # a fixed width from the type, so the tile never grows
 ]
 ```
 
@@ -1239,38 +1286,70 @@ Everything else (rounded boxes, a grid of needs without lines, the portrait with
 
 The owner asked to bulldoze, so this is a clean break: skin format `version = 2`, bar `3.0.0`, and no adapter for version 1. The order below keeps every step reviewable.
 
+### What 3.0.0 builds
+
+3.0.0 builds what its three games use: DOOM, Minecraft and the built-in one-line default game. Everything else in this document stays **specified, not built**, and is built with the first game that needs it:
+
+| Specified now, built later | Built with |
+|---|---|
+| `each`, `trend`, vertical `bar` and `meter`, a gradient `fill`, `currency` | The Sims |
+| `marks`, draw scripts, `shared`, the before script, `joined`, pattern and image frames with overhang | WC3 |
+| a computed `value` with a `type`, user skins with `base` | the first skin that needs them |
+
+A specified feature keeps its place in this document so that the parts built now leave room for it. For example, the variables dictionary keeps the before script's step, and the script interface keeps `image` and `marks`.
+
+### The steps
+
 1. **The ledger, on today's engine, first.**
-   - For every skin and every width from 40 to 250, and rows 1 to 8, record a compact signature:
-     - the skin chosen;
-     - the elements dropped and absent;
-     - each node's width;
+   - For every skin, every width from 40 to 250 and every row budget from 1 to 8, record a signature that both engines can produce, in terms of what the user sees:
+     - how many rows are drawn;
+     - the titles of the boxes visible left and right of the mugshot, in order;
+     - the column where the mugshot starts;
+     - how many hotbar slots are visible;
      - whether the bar was clipped.
-   - Commit the result as a golden breakpoint map.
+
+     Skin names, element ids and node widths change in version 2, so a signature built on them would mark everything changed and catch nothing.
+   - Commit the result as a golden breakpoint map, with a list of the changes the redesign is expected to make. Examples: the mugshot's column, where it now stays exactly central; the widths where the bar falls back; the cost no longer moved into MODEL at 3 rows.
    - Today's snapshot tests sample three widths (`test/games/render-snapshot.test.mjs:56`, `WIDTHS = [60, 100, 200]`). That is how the 80-column break of PR #84 slipped through.
-   - From this step on, every change below shows up as a reviewed diff of that map.
-2. **Semantic value types in the catalogue** (§6). Producers emit raw numbers for money, durations, the clock and ratios. This step is additive and changes nothing on screen yet.
+   - From this step on, every change below shows up as a reviewed diff of that map, and every difference is either on the expected list or a bug.
+2. **Semantic value types in the catalogue** (§6), and the bounded formatters of §6.1. Producers still emit what they emit today. This step is additive and changes nothing on screen.
 3. **The engine core:**
-   - the node contract (§2);
+   - the node contract (§2), with the empty rule and `empty_when`;
+   - the variables dictionary (§7.1, without the before script's step yet) and inheritance (§7.3);
+   - the expression evaluator (§7.2);
    - the measure, place and degrade passes (§8);
-   - `list`, `anchor`, `box`, `switch`, `layers`;
+   - `list`, `anchor`, `box`, `grid` (equal cells, several selected cells, joints drawn from the arms that are there), `switch`, `layers`;
    - the v2 loader with inline nodes, shared ids and `repeat`.
 
    Conformance tests cover every kind:
    - its drawing is exactly its given size;
    - `min ≤ natural ≤ max`;
    - steps are respected.
+
+   And the guarantees of §8 are tested on every skin of the ledger:
+   - the root is never wider than the terminal, except in the reported cut case;
+   - under `mirror`, the centre starts at exactly `⌊(W − centre) / 2⌋`;
+   - all cells of a grid are equal;
+   - the same values and size give the same drawing.
 4. **Visuals** renamed and moved onto the contract (§5). `number` and `state` gain minimums.
-5. **Skins rewritten:**
-   - `doom.toml`: one file with three alternatives;
+5. **Producers switch to raw values, together with their consumers.** In the same step:
+   - the producers of the four value types (money, duration, time, ratio; six metrics) and of the token savings emit raw numbers (§6.1);
+   - the visuals format them;
+   - the chat's facts library formats its facts from them, and reads `F.removed` from `loc.removed`.
+
+   No consumer ever receives a raw value it cannot format.
+6. **Skins rewritten:**
+   - `doom.toml`: one file with four alternatives (tall, balanced, compact, line);
    - `minecraft.toml`: one file;
    - the new one-line default game.
 
-   Diff the ledger: every change must be intended.
-6. **Asset packages and the chat.**
-   - The hotbar-highlight script keeps its slot ids, because the `repeat` items carry them. The mugshot script is unchanged.
-   - The chat's facts library formats the four metrics that become raw numbers (§6.1). The Minecraft conversations read only those facts, so its package is unaffected while the facts stay strings.
-   - Bump `@claude-game-bar/doom` or `@claude-game-bar/minecraft` only if one of their scripts reads a renamed parameter or one of those four raw values. Check this with a grep of `packages/` at the time.
-7. **Docs.** `docs/architecture.md` and CONTRIBUTING's skin section are rewritten from this document. Release as 3.0.0.
+   Diff the ledger against its list of expected changes.
+7. **Asset packages.**
+   - The hotbar-highlight script keeps its slot ids, because the `repeat` items carry them, and returns its selected cell as a list of one.
+   - The mugshot script is unchanged.
+   - The Minecraft conversations read only facts, so their package is unaffected while the facts stay strings.
+   - Bump `@claude-game-bar/doom` or `@claude-game-bar/minecraft` only if one of their scripts reads a renamed parameter or a value that became raw. Check this with a grep of `packages/` at the time.
+8. **Docs.** `docs/architecture.md` and CONTRIBUTING's skin section are rewritten from this document. Release as 3.0.0.
 
 ### Old → new
 
@@ -1295,7 +1374,7 @@ The owner asked to bulldoze, so this is a clean break: skin format `version = 2`
 
 ## 13. Decisions
 
-All seven were settled by the owner on 20.11.2026, as recommended.
+Decisions 1 to 7 were settled by the owner on 20.11.2026, as recommended; the later ones were added the same day, as marked below.
 
 1. **The centre is exact.**
    - Under `balance = "mirror"`, a side that does not fit its half loses its own boxes rather than pushing the mugshot off centre. At narrow widths this drops more than today's drifting centre does.
@@ -1307,7 +1386,7 @@ All seven were settled by the owner on 20.11.2026, as recommended.
    - It is the largest reduction in the whole proposal. Today's 7 files hold 1,728 lines. One DOOM file and one Minecraft file, with inline leaves and `repeat`, should come to a fraction of that. The real count comes with the rewrite.
 4. **Semantic value types in the catalogue** (§6). This touches:
    - the catalogue;
-   - the producers of four metrics (money, durations, the clock, ratios), which switch to raw numbers;
+   - the producers of four value types (money, duration, time, ratio; six metrics) and of the token savings, which switch to raw numbers;
    - the chat's facts library, which then formats them itself.
 
    The published conversation package is not affected. Without the types, every width is typed by hand again, and the matrix "which visual fits which metric" cannot be checked.
@@ -1330,9 +1409,13 @@ Added after testing the catalogue against The Sims 2 and 3 (§11.5):
 
 Added after the review of chapter 3:
 
-15. **Expressions everywhere** (§7.2). Any parameter can be an expression (a string starting with `=`), with a `case when … then … else … end` for choices. Metric values are variables under their catalogue ids (`.hp`) beside the game's and the before script's variables, read the same way. A `switch` is a `case when` over its alternatives, each with a `when` condition and the last without one as the `else`, combined with the room available (§3.6). `empty_values`, `select` and value thresholds give way to expressions; `thresholds`, the gradient and `invert` stay as short forms.
+15. **Expressions everywhere** (§7.2). Any parameter can be an expression (a string starting with `=`), with a `case when … then … else … end` for choices. Metric values are variables under their catalogue ids (`$context.hp`) beside the game's and the before script's variables, read the same way. A `switch` is a `case when` over its alternatives, each with a `when` condition and the last without one as the `else`, combined with the room available (§3.6). `empty_values`, `select` and value thresholds give way to expressions; `thresholds`, the gradient and `invert` stay as short forms.
 16. **A map and a 3D model are a `sprite` with a draw script** (§5.1). A sprite's source is frames on the disk or a script that computes the picture each render. The before script can generate the session's world once (Perlin noise, the repository's structure) and keep it in `shared`. The draw script makes the view from it (a scrolling window, a 3D-to-2D projection, fog of war). Picture layers compose in pixels before rastering (§3.5). The `map` and `model3d` visuals are dropped.
 17. **Glyphs over pictures.** In `layers`, picture layers compose in pixels and are rastered first, then glyph layers are stamped over them. A glyph has its own colour and takes as its background the average colour of the picture under its cell. A new visual, `marks`, places glyphs (units, the player, names) from a draw script's list (§3.5, §5, §5.1). A mark is given in cells, or in pixels (as a minimap keeps its units). Then the platform snaps it to its cell and places the marks for reading: crowded marks move to a free neighbour, names go beside their point, and a mark on a cell's edge does not flicker.
+Added after the document review of 20.11.2026 (the owner accepted all the review's fixes and its two recommendations):
+
+18. **Minecraft keeps the exact centre** (`balance = "mirror"`): the HUD is in the middle and the chat gets the left half beside it (§11.2).
+19. **3.0.0 builds what DOOM, Minecraft and the default game use.** Everything else in this document is specified and built with the first game that needs it (§12, "What 3.0.0 builds").
 
 ---
 
@@ -1349,3 +1432,14 @@ Added after the review of chapter 3:
   - `bigtext`: text drawn in a game's bitmap font over several rows, like Pricedown digits or DOOM's large status numbers;
   - an event metric (`act.events`) for a notification feed;
   - zero padding on numbers (`pad`).
+
+---
+
+## 15. Open questions
+
+Raised by the document review of 20.11.2026, not decided yet:
+
+- **Who builds the list of games to choose from?** It is unclear whether the default game's entry in the npm organisation is part of 3.0.0 (principle 5).
+- **A critical value at a narrow width.** A fixed `priority` can drop the one number that matters: the 5h group goes even when the limit is nearly used up. `priority` could be an expression, or a dropped node could leave a trace such as a count of hidden items. Both touch principle 6.
+- **Terminals without octant glyphs.** Pictures, image frames and the minimap assume octant glyphs (2×4 pixels a cell). What such a terminal draws instead, and whether the `ascii` line set is ever chosen automatically, is not said yet.
+- **Contrast of a mark on its background.** A white mark on a snow-coloured cell is hard to see. A draw script could choose a mark's colour from the background it is given.
